@@ -52,7 +52,7 @@ You can exit these specials modes by typing backspace in the empty command promp
 
 To build the documentation run 
 
-    --project=. --color=yes docs/make.jl 
+    julia --project=. --color=yes docs/make.jl 
 
 in the root of the repository.
 
