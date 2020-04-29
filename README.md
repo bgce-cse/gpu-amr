@@ -59,3 +59,12 @@ in the root of the repository.
 
 The documentation will then be built in a subdirectory docs/build,
 you can open the documentation, eg. in your browser by opening the index.html
+
+**Running TerraDG**
+
+Using julia REPL (Terminal)
+
+    TerraDG.main("path-to-config")
+    
+
+
