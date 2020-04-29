@@ -63,8 +63,6 @@ TerraDG.inverse_jacobian
 
 ## Basis
 ```@docs
-TerraDG.legendre
-TerraDG.normalized_legendre
 TerraDG.lagrange_1d
 TerraDG.lagrange_diff
 TerraDG.get_quadpoints
