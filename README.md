@@ -31,6 +31,7 @@ You can check for compilation errors by using the command Revise.errors()
 You can enter package mode by pressing ].
 When first loading the module, run instantiate in this mode.
 
+    ] activate .
     ] instantiate
 
 This will install all needed packages automatically.
