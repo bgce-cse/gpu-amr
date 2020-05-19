@@ -15,23 +15,22 @@ function evaluate_error(eq::Equation, scenario::Scenario, grid::Grid, t::Float64
     l1_error .= 0
     l2_error .= 0
     linf_error .= 0
-    basis = grid.basis
-    basissize_1d = size(basis,1)
-    lin_idx = LinearIndices((
-        basissize_1d, basissize_1d
-    ))
+
+    dg_order = size(grid.basis,1)
+    quad_order = max(dg_order + 2, 6)
+    quad_basis = Basis(quad_order, grid.basis.dimensions)
+    number_of_quadpoints = size(quad_basis,1)
     for cell in grid.cells
-        for i=1:basissize_1d
-            for j=1:basissize_1d
-                x = basis.quadpoints[i]
-                y = basis.quadpoints[j]
-                quadweight = basis.quadweights[i] * basis.quadweights[j]
+        for i=1:number_of_quadpoints
+            for j=1:number_of_quadpoints
+                x = quad_basis.quadpoints[i]
+                y = quad_basis.quadpoints[j]
+                quadweight = quad_basis.quadweights[i] * quad_basis.quadweights[j]
                 weight = volume(cell) * quadweight
                 pxg, pyg = globalposition(cell, (x,y))
                 analytical = get_initial_values(eq, scenario, (pxg,pyg), t=t)
                 for var=1:get_ndofs(eq)
-                    coeff_idx = lin_idx[i,j]
-                    value = grid.dofs[coeff_idx, var, cell.dataidx]
+                    value = evaluate_basis(grid.basis, grid.dofs[:,var, cell.dataidx], (x,y))
 
                     error = abs(value - analytical[var])
                     l1_error[var] += weight * error
