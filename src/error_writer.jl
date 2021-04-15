@@ -19,7 +19,7 @@ function evaluate_error(eq::Equation, scenario::Scenario, grid::Grid, t::Float64
     dg_order = size(grid.basis,1)
     quad_order = max(dg_order + 2, 6)
     quad_basis = Basis(quad_order, grid.basis.dimensions)
-    number_of_quadpoints = size(quad_basis,1)
+    number_of_quadpoints = quad_basis.order
     for cell in grid.cells
         for i=1:number_of_quadpoints
             for j=1:number_of_quadpoints
