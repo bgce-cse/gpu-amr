@@ -188,7 +188,7 @@ if false
 end
 
 @testset "Derivative matrix is correct" begin
-    ns = [1,2,3,2,3,4,5,6]
+    ns = [1,2,3,2,3,4,5,6,2,5]
     funs = [
         (x, y) -> [1]
         (x, y) -> [1]
@@ -198,6 +198,8 @@ end
         (x, y) -> [(x + y)^3]
         (x, y) -> [(x + y)^4]
         (x, y) -> [(x + y)^5]
+        (x,y) ->  [x*y]
+        (x, y) -> [(x^3 + y^4 + x^2 * y^2)]
     ]
     funs_deriv_x = [
         (x,y) -> [0]
@@ -208,6 +210,8 @@ end
         (x,y) -> [3 * (x + y)^2]
         (x,y) -> [4 * (x + y)^3]
         (x,y) -> [5 * (x + y)^4]
+        (x,y) -> [y]
+        (x,y) -> [x * (3*x + 2*y^2)]
     ]
     funs_deriv_y = [
         (x,y) -> [0]
@@ -218,6 +222,8 @@ end
         (x,y) -> [3 * (x + y)^2]
         (x,y) -> [4 * (x + y)^3]
         (x,y) -> [5 * (x + y)^4]
+        (x,y) -> [x]
+        (x,y) -> [2 * y * (x^2 + 2*y^2)]
     ]
 
     for (n, fun, deriv_x, deriv_y) in zip(ns, funs, funs_deriv_x, funs_deriv_y)
