@@ -4,7 +4,7 @@ Adaptative Mesh Refinement (AMR)
 
 ## Project Wiki / Organization
 
-For meeting notes, questions, and team decisions, check out the [Wiki](./-/wiki/).
+For meeting notes, questions, and team decisions, check out the [Wiki](https://gitlab.lrz.de/riccardo.capellupo/gpu_amr/-/wikis/home).
 
 ## Getting started
 
