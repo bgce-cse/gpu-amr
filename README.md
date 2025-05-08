@@ -4,7 +4,7 @@ Adaptative Mesh Refinement (AMR)
 
 ## Project Wiki / Organization
 
-For meeting notes, questions, and team decisions, check out the [Wiki](./-/wikis/).
+For meeting notes, questions, and team decisions, check out the [Wiki](./-/wiki/).
 
 ## Getting started
 
