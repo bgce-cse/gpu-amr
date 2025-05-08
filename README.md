@@ -1,6 +1,6 @@
-# BGCE
+# GPU-Driven Adaptative Mesh Refinement
 
-this is an example
+Adaptative Mesh Refinement (AMR)
 
 ## Getting started
 
