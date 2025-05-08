@@ -2,6 +2,10 @@
 
 Adaptative Mesh Refinement (AMR)
 
+## Project Wiki / Organization
+
+For meeting notes, questions, and team decisions, check out the [Wiki](./-/wikis/home).
+
 ## Getting started
 
 To make it easy for you to get started with GitLab, here's a list of recommended next steps.
