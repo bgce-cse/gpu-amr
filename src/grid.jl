@@ -132,8 +132,8 @@ Returns a grid for equation `eq`, scenario `scenario`, with cells of size `size`
 """
 function make_grid(eq::Equation, scenario::Scenario, gridsize_1d, size, order)
     gridsize = gridsize_1d^2
-    dofs = Array{Float64,3}(undef, (order * order, get_ndofs(eq), gridsize))
-    flux = similar(dofs, order^2 * 2, get_ndofs(eq), gridsize)
+    dofs = Array{Float64,3}(undef, (order * order, get_ndofs(eq), gridsize))#1x3x400
+    flux = similar(dofs, order^2 * 2, get_ndofs(eq), gridsize)#2*3*400
     cellsize = size ./ gridsize_1d
     cells = make_mesh(eq, scenario, gridsize_1d, cellsize, [0.0,0.0])
     basis = Basis(order, 2)
@@ -148,9 +148,9 @@ Returns a grid for configuration `config`, equation `eq` and scenario `scenario`
 function make_grid(config::Configuration, eq::Equation, scenario::Scenario)
     make_grid(eq,
         scenario, 
-        config.grid_elements, 
-        config.physicalsize, 
-        config.order)
+        config.grid_elements, #n_grid (20)
+        config.physicalsize, #domain [grid_size, grid_size] length
+        config.order) #1
 end
 
 
