@@ -18,7 +18,9 @@ function is_analytical_solution(equation::Advection, scenario::PlanarWaves)
 end
 
 function evaluate_flux(eq::Advection, celldofs, cellflux)
-    cellflux = [1.0* celldofs, 1.0* celldofs] #courant?
+    
+    cellflux .= [1.0 .* celldofs ; 1.0 .* celldofs] #courant?
+    
 end
 
 function max_eigenval(eq::Advection, celldata, normalidx)
