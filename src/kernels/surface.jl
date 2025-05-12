@@ -90,10 +90,11 @@ function evaluate_face_integral(eq, globals, buffers, cell, face, celldu)
     maxeigenval = rusanov(eq, buffers.dofsface, buffers.dofsfaceneigh, buffers.fluxface, buffers.fluxfaceneigh, cell.size[1], normalidx, normalsign, buffers.numericalflux)
 
     # TODO Modify celldu with update from face integral
-    celldu .+= buffers.numericalflux
+    celldu .-= buffers.numericalflux
     # println("index: $(face)")
     # print(size(celldu))
     # println("celldu: $(celldu)")
 
     return maxeigenval
+
 end
