@@ -9,18 +9,23 @@ function is_periodic_boundary(equation::Advection, scenario::PlanarWaves)
 end
 
 function get_initial_values(eq::Advection, scenario::PlanarWaves, global_position; t=0.0)
-    return [sin(2*pi*(global_position[1]+global_position[2])), sin(2*pi*(global_position[2])), 1.0]
-    #return [1.0, 1.0, 1.0]
+    x, y = global_position
+    ρ1 = sin(2π*(x + y - 2*t))
+    ρ2 = sin(2π*(y - t))   
+    ρ3 = 1.0                    
+    return [ρ1, ρ2, ρ3]
 end
+
 
 function is_analytical_solution(equation::Advection, scenario::PlanarWaves)
     true
 end
 
-function evaluate_flux(eq::Advection, celldofs, cellflux)
-    
-    cellflux .= [1.0 .* celldofs ; 1.0 .* celldofs] #courant?
-    
+function evaluate_flux(eq::Advection, celldofs, cellflux) #1x3 2x3
+        
+    velocity = 1.0
+    cellflux .= vcat([velocity .* celldofs for _ in 1:size(cellflux, 1)]...) #check velocity
+
 end
 
 function max_eigenval(eq::Advection, celldata, normalidx)
