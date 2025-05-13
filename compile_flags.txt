@@ -1,0 +1,3 @@
+-I./gpu_amr/Utility
+
+-std=c++2b

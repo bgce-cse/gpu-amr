@@ -1,0 +1,37 @@
+---
+Language: Cpp
+BasedOnStyle: Microsoft
+
+AccessModifierOffset: -4
+AlignAfterOpenBracket: BlockIndent
+AlignOperands: true
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignTrailingComments: true
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: false
+AllowShortIfStatementsOnASingleLine : true
+AlwaysBreakTemplateDeclarations: Yes
+BinPackParameters: false
+BinPackArguments: false 
+BreakAfterAttributes: Always
+BreakBeforeConceptDeclarations: Always
+BreakConstructorInitializers: AfterColon
+ColumnLimit: 90
+IndentCaseBlocks: true
+IndentRequiresClause: true
+MaxEmptyLinesToKeep: 2
+#PackConstructorInitializers: NextLine 
+PackConstructorInitializers: Never
+PenaltyBreakTemplateDeclaration: 0
+PointerAlignment: Left
+# RequiresClausePositionStyle: OwnLine
+SeparateDefinitionBlocks: Always
+SortIncludes: true
+SpaceAfterTemplateKeyword: true
+SpacesInAngles: false
+
+Cpp11BracedListStyle: false
+...
