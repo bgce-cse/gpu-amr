@@ -81,7 +81,7 @@ public:
         }
     }
 
-    constexpr ndboundary(value_type const& v1, value_type v2) noexcept
+    constexpr ndboundary(value_type v1, value_type v2) noexcept
     {
         const std::pair<value_type, value_type> r = std::minmax(v1, v2);
         for (index_t i = 0; i != s_dimension; ++i)
@@ -381,7 +381,7 @@ public:
     }
 
     [[nodiscard]]
-    inline auto fragmented() const noexcept -> bool
+    auto fragmented() const noexcept -> bool
     {
         return m_fragmented;
     }
@@ -390,12 +390,6 @@ public:
     auto summary() const noexcept -> std::optional<sample_t> const&
     {
         return m_summary;
-    }
-
-    [[nodiscard]]
-    auto diagonal_length() const noexcept -> auto
-    {
-        return m_boundary.diagonal_length();
     }
 
     auto print_info(std::ostream& os) const -> void
@@ -414,8 +408,7 @@ public:
         os << header(m_depth + 1) << "Elements: " << elements() << '\n';
         if (!m_fragmented)
         {
-            auto&& elements = contained_elements();
-            for (auto const& e : elements)
+            for (auto const& e : contained_elements())
             {
                 os << header(m_depth + 1) << e->repr() << '\n';
             }
@@ -438,7 +431,7 @@ public:
                                   std::ranges::size(subboxes()),
                                   [](auto acc, const auto& b) { return acc + b.boxes(); }
                               )
-                            : 0;
+                            : 0uz;
     }
 
     [[nodiscard]]
@@ -517,7 +510,6 @@ private:
         {
             return;
         }
-        auto samples = std::move(contained_elements());
         m_elements   = std::vector<ndbox>();
         m_fragmented = true;
         subboxes().reserve(s_subdivisions);
@@ -547,14 +539,14 @@ private:
         }
         else
         {
-            for (auto n = decltype(s_subdivisions){ 0 }; n != s_subdivisions; ++n)
+            for (auto n = decltype(s_subdivisions){}; n != s_subdivisions; ++n)
             {
                 point_t min;
                 point_t max;
 
                 auto dim_idx = static_cast<value_type>(n);
 
-                for (auto i = size_type{ 0 }; i != s_dimension; ++i)
+                for (auto i = size_type{}; i != s_dimension; ++i)
                 {
                     const auto j = static_cast<value_type>(
                         static_cast<size_type>(dim_idx) % s_fanout
@@ -569,7 +561,7 @@ private:
                     boundary_t{ min, max }, m_capacity, m_depth + 1, m_max_depth, this });
             }
         }
-        for (auto const* const s : samples)
+        for (auto const* const s : contained_elements())
         {
             if (!s)
             {
