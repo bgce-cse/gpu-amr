@@ -50,8 +50,8 @@ using common_type_t = typename common_type<T1, T2>::type;
 } // namespace detail
 
 constexpr auto operator+(auto&& lhs, auto&& rhs) noexcept -> decltype(auto)
-    requires detail::Vector<std::remove_reference_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_reference_t<decltype(rhs)>>
+    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
     return operator_impl(
         std::forward<decltype(lhs)>(lhs), std::forward<decltype(rhs)>(rhs), std::plus{}
@@ -59,8 +59,8 @@ constexpr auto operator+(auto&& lhs, auto&& rhs) noexcept -> decltype(auto)
 }
 
 constexpr auto operator-(auto&& lhs, auto&& rhs) noexcept -> decltype(auto)
-    requires detail::Vector<std::remove_reference_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_reference_t<decltype(rhs)>>
+    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
     return operator_impl(
         std::forward<decltype(lhs)>(lhs), std::forward<decltype(rhs)>(rhs), std::minus{}
@@ -68,8 +68,8 @@ constexpr auto operator-(auto&& lhs, auto&& rhs) noexcept -> decltype(auto)
 }
 
 constexpr auto operator*(auto&& lhs, auto&& rhs) noexcept -> decltype(auto)
-    requires detail::Vector<std::remove_reference_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_reference_t<decltype(rhs)>>
+    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
     return operator_impl(
         std::forward<decltype(lhs)>(lhs),
@@ -79,8 +79,8 @@ constexpr auto operator*(auto&& lhs, auto&& rhs) noexcept -> decltype(auto)
 }
 
 constexpr auto operator/(auto&& lhs, auto&& rhs) noexcept -> decltype(auto)
-    requires detail::Vector<std::remove_reference_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_reference_t<decltype(rhs)>>
+    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
     return operator_impl(
         std::forward<decltype(lhs)>(lhs), std::forward<decltype(rhs)>(rhs), std::divides{}
@@ -88,8 +88,8 @@ constexpr auto operator/(auto&& lhs, auto&& rhs) noexcept -> decltype(auto)
 }
 
 constexpr auto max(auto&& lhs, auto&& rhs) noexcept -> decltype(auto)
-    requires detail::Vector<std::remove_reference_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_reference_t<decltype(rhs)>>
+    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
     return operator_impl(
         std::forward<decltype(lhs)>(lhs),
@@ -104,8 +104,8 @@ constexpr auto max(auto&& lhs, auto&& rhs) noexcept -> decltype(auto)
 }
 
 constexpr auto min(auto&& lhs, auto&& rhs) noexcept -> decltype(auto)
-    requires detail::Vector<std::remove_reference_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_reference_t<decltype(rhs)>>
+    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
     return operator_impl(
         std::forward<decltype(lhs)>(lhs),
@@ -123,11 +123,11 @@ template <typename T1, typename T2>
 [[nodiscard]]
 constexpr auto operator_impl(T1&& lhs, T2&& rhs, auto&& binary_op) noexcept
     -> decltype(auto)
-    requires detail::Vector<std::remove_reference_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_reference_t<decltype(rhs)>>
+    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
-    using a_type      = std::remove_reference_t<T1>;
-    using b_type      = std::remove_reference_t<T2>;
+    using a_type      = std::remove_cvref_t<T1>;
+    using b_type      = std::remove_cvref_t<T2>;
     using common_type = detail::common_type_t<a_type, b_type>;
 
     static_assert(std::is_trivially_constructible_v<common_type>);
@@ -135,11 +135,11 @@ constexpr auto operator_impl(T1&& lhs, T2&& rhs, auto&& binary_op) noexcept
 
     constexpr auto at_idx = [](auto&& v, std::integral auto idx) noexcept
         requires(
-            detail::Vector<std::remove_reference_t<decltype(v)>> ||
-            std::is_floating_point_v<std::remove_reference_t<decltype(v)>>
+            detail::Vector<std::remove_cvref_t<decltype(v)>> ||
+            std::is_floating_point_v<std::remove_cvref_t<decltype(v)>>
         )
     {
-        using v_type = std::remove_reference_t<decltype(v)>;
+        using v_type = std::remove_cvref_t<decltype(v)>;
         if constexpr (std::is_floating_point_v<v_type>)
         {
             return v;
