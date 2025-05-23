@@ -95,14 +95,14 @@ public:
 
 template <auto N, typename Value_Type>
     requires(std::integral<decltype(N)>)
-auto operator<<(std::ostream& os, static_vector<N, Value_Type> const& pv) noexcept
+auto operator<<(std::ostream& os, static_vector<N, Value_Type> const& v) noexcept
     -> std::ostream&
 {
     os << "{ ";
     std::size_t n{ 0 };
-    for (auto const v : pv)
+    for (auto const e : v)
     {
-        os << v << (++n != N ? ", " : " ");
+        os << e << (++n != N ? ", " : " ");
     }
     os << '}';
 
