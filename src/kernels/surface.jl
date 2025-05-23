@@ -42,10 +42,19 @@ The numerical flux is stored in `numericalflux`.
 Method also returns the maximal eigenvalue.
 """
 function rusanov(eq, dofs, dofsneigh, flux, fluxneigh, dx, normalidx, normalsign, numericalflux)
-    maxeigenval_left = max_eigenval(eq, dofs, normalidx)
-    maxeigenval_right = max_eigenval(eq, dofsneigh, normalidx)
-return max(maxeigenval_left, maxeigenval_right)
+    maxeigenval_center = max_eigenval(eq, dofs, normalidx)
+    maxeigenval_neigh = max_eigenval(eq, dofsneigh, normalidx)
+    maxeigenval = max(maxeigenval_center, maxeigenval_neigh)
+    
+    #where does normalisgn go (first/second term)?
+    #where does dx go?
 
+    first_term = 0.5 .* normalsign .* (flux[normalidx, :] .+ fluxneigh[normalidx, :])
+    second_term = 0.5 .* maxeigenval .* (dofs .- dofsneigh)
+    
+    numericalflux .= dx .* (first_term' .+ second_term)
+ 
+    return maxeigenval
 end
 
 
@@ -72,14 +81,13 @@ function evaluate_face_integral(eq, globals, buffers, cell, face, celldu)
     normalidx = globals.normalidxs[face]
     normalsign = globals.normalsigns[face]
 
-
     # Compute Riemann solver (in normal)
     buffers.numericalflux .= 0
-
     maxeigenval = rusanov(eq, buffers.dofsface, buffers.dofsfaceneigh, buffers.fluxface, buffers.fluxfaceneigh, cell.size[1], normalidx, normalsign, buffers.numericalflux)
 
     # TODO Modify celldu with update from face integral
-  
+    celldu .-= buffers.numericalflux
 
-    maxeigenval
+    return maxeigenval
+
 end
