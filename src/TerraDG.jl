@@ -55,7 +55,6 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
         @views flux = grid.flux[:,:,cell.dataidx]
         elem_massmatrix = volume(cell) * reference_massmatrix
         inv_massmatrix = inv(elem_massmatrix)
-        # println("\n")
 
         # Here we also need to compute the maximum eigenvalue of each cell
         # and store it for each cell (needed for timestep restriction later!)
@@ -73,8 +72,6 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
                 # Neighbor needs to project to opposite face
                 faceneigh = globals.oppositefaces[faces[i]]
                 project_to_faces(globals, dofsneigh, fluxneigh, buffers_face.dofsfaceneigh, buffers_face.fluxfaceneigh, faceneigh)
-                # println(buffers_face.dofsfaceneigh, buffers_face.fluxfaceneigh)
-
             else
                 @assert(facetypeneigh == boundary)
                 normalidx = globals.normalidxs[faces[i]]
@@ -90,9 +87,7 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
             @views cureigenval = evaluate_face_integral(eq, globals, buffers_face, cell, faces[i], du[:,:,cell.dataidx])
             maxeigenval = max(maxeigenval, cureigenval)
         end
-
         @views du[:,:,cell.dataidx] = inv_massmatrix * @views du[:,:,cell.dataidx] #
-        # println(size(du))
     end
     grid.maxeigenval = maxeigenval
 end
@@ -109,8 +104,6 @@ function main(configfile::String)
     scenario = make_scenario(config)
     grid = make_grid(config, eq, scenario)
     integrator = make_timeintegrator(config, grid)
-
-    # print(size(grid.dofs))
 
     @info "Initialising global matrices"
     globals = GlobalMatrices(grid.basis, filter, grid.basis.dimensions)
@@ -136,12 +129,10 @@ function main(configfile::String)
             # Only step up to either end or next plotting
             dt = min(dt, next_plotted-grid.time, config.end_time - grid.time)
             @assert dt > 0
-
             @info "Running timestep" timestep dt grid.time
             step(integrator, grid, dt) do du, dofs, time
                 evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
             end
-            
             grid.time += dt
             time_end = time()
             time_elapsed = time_end - time_start
