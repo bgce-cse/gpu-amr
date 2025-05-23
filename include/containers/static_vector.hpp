@@ -4,6 +4,7 @@
 #include "casts.hpp"
 #include <array>
 #include <concepts>
+#include <iterator>
 #include <ostream>
 #include <type_traits>
 
@@ -14,13 +15,67 @@ template <auto N, typename Value_Type>
     requires(std::integral<decltype(N)>)
 struct static_vector
 {
-    using value_type                         = Value_Type;
-    using size_type                          = decltype(N);
-    using index_t                            = size_type;
+    using value_type     = Value_Type;
+    using size_type      = decltype(N);
+    using index_t        = size_type;
+    using const_iterator = value_type const*;
+    using iterator       = value_type*;
+
+    // TODO: Alignment
     inline static constexpr auto s_dimension = N;
-    using container_t                        = std::array<value_type, s_dimension>;
-    using const_iterator                     = typename container_t::const_iterator;
-    using iterator                           = typename container_t::iterator;
+
+    static_assert(std::is_trivially_copyable_v<static_vector>);
+    static_assert(std::is_standard_layout_v<static_vector>);
+
+    [[nodiscard]]
+    constexpr auto operator[](index_t idx) const noexcept -> value_type const&
+    {
+        assert_in_bounds(idx);
+        return value_[idx];
+    }
+
+    [[nodiscard]]
+    constexpr auto operator[](index_t idx) noexcept -> value_type&
+    {
+        assert_in_bounds(idx);
+        return value_[idx];
+    }
+
+    [[nodiscard]]
+    constexpr auto cbegin() const noexcept -> const_iterator
+    {
+        return std::cbegin(value_);
+    }
+
+    [[nodiscard]]
+    constexpr auto cend() const noexcept -> const_iterator
+    {
+        return std::cend(value_);
+    }
+
+    [[nodiscard]]
+    constexpr auto begin() const noexcept -> const_iterator
+    {
+        return std::begin(value_);
+    }
+
+    [[nodiscard]]
+    constexpr auto end() const noexcept -> const_iterator
+    {
+        return std::end(value_);
+    }
+
+    [[nodiscard]]
+    constexpr auto begin() noexcept -> iterator
+    {
+        return std::begin(value_);
+    }
+
+    [[nodiscard]]
+    constexpr auto end() noexcept -> iterator
+    {
+        return std::end(value_);
+    }
 
     constexpr auto assert_in_bounds([[maybe_unused]] index_t const idx) const noexcept
         -> void
@@ -32,72 +87,10 @@ struct static_vector
         }
     }
 
-    [[nodiscard]]
-    constexpr auto value() noexcept -> container_t&
-    {
-        return value_;
-    }
-
-    [[nodiscard]]
-    constexpr auto value() const noexcept -> const container_t&
-    {
-        return value_;
-    }
-
-    [[nodiscard]]
-    constexpr auto operator[](std::size_t idx) const noexcept -> value_type
-    {
-        assert_in_bounds(idx);
-        return value_[idx];
-    }
-
-    [[nodiscard]]
-    constexpr auto operator[](std::size_t idx) noexcept -> value_type&
-    {
-        assert_in_bounds(idx);
-        return value_[idx];
-    }
-
-    [[nodiscard]]
-    constexpr auto cbegin() const noexcept -> container_t::const_iterator
-    {
-        return std::cbegin(value_);
-    }
-
-    [[nodiscard]]
-    constexpr auto cend() const noexcept -> container_t::const_iterator
-    {
-        return std::cend(value_);
-    }
-
-    [[nodiscard]]
-    constexpr auto begin() const noexcept -> container_t::const_iterator
-    {
-        return std::begin(value_);
-    }
-
-    [[nodiscard]]
-    constexpr auto end() const noexcept -> container_t::const_iterator
-    {
-        return std::end(value_);
-    }
-
-    [[nodiscard]]
-    constexpr auto begin() noexcept -> container_t::iterator
-    {
-        return std::begin(value_);
-    }
-
-    [[nodiscard]]
-    constexpr auto end() noexcept -> container_t::iterator
-    {
-        return std::end(value_);
-    }
-
     constexpr auto operator<=>(static_vector const&) const noexcept = default;
 
 public:
-    container_t value_;
+    value_type value_[s_dimension];
 };
 
 template <auto N, typename Value_Type>
