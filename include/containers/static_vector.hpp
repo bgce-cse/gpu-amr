@@ -5,97 +5,104 @@
 #include <array>
 #include <concepts>
 #include <ostream>
+#include <type_traits>
 
 namespace detail::containers
 {
 
 template <auto N, typename Value_Type>
     requires(std::integral<decltype(N)>)
-struct physical_vector
+struct static_vector
 {
     using value_type                         = Value_Type;
     using size_type                          = decltype(N);
+    using index_t                            = size_type;
     inline static constexpr auto s_dimension = N;
     using container_t                        = std::array<value_type, s_dimension>;
     using const_iterator                     = typename container_t::const_iterator;
     using iterator                           = typename container_t::iterator;
 
-    inline auto assert_in_bounds([[maybe_unused]] std::integral auto const idx) const
+    constexpr auto assert_in_bounds([[maybe_unused]] index_t const idx) const noexcept
         -> void
     {
-        assert(idx < utility::casts::safe_cast<decltype(idx)>(s_dimension));
+        assert(idx < s_dimension);
+        if constexpr (std::is_signed_v<index_t>)
+        {
+            assert(idx >= index_t{});
+        }
     }
 
     [[nodiscard]]
-    auto value() noexcept -> container_t&
+    constexpr auto value() noexcept -> container_t&
     {
         return value_;
     }
 
     [[nodiscard]]
-    auto value() const noexcept -> const container_t&
+    constexpr auto value() const noexcept -> const container_t&
     {
         return value_;
     }
 
     [[nodiscard]]
-    auto operator[](std::size_t idx) const -> value_type
+    constexpr auto operator[](std::size_t idx) const noexcept -> value_type
     {
         assert_in_bounds(idx);
         return value_[idx];
     }
 
     [[nodiscard]]
-    auto operator[](std::size_t idx) -> value_type&
+    constexpr auto operator[](std::size_t idx) noexcept -> value_type&
     {
         assert_in_bounds(idx);
         return value_[idx];
     }
 
     [[nodiscard]]
-    auto cbegin() const -> container_t::const_iterator
+    constexpr auto cbegin() const noexcept -> container_t::const_iterator
     {
         return std::cbegin(value_);
     }
 
     [[nodiscard]]
-    auto cend() const -> container_t::const_iterator
+    constexpr auto cend() const noexcept -> container_t::const_iterator
     {
         return std::cend(value_);
     }
 
     [[nodiscard]]
-    auto begin() const noexcept -> container_t::const_iterator
+    constexpr auto begin() const noexcept -> container_t::const_iterator
     {
         return std::begin(value_);
     }
 
     [[nodiscard]]
-    auto end() const noexcept -> container_t::const_iterator
+    constexpr auto end() const noexcept -> container_t::const_iterator
     {
         return std::end(value_);
     }
 
     [[nodiscard]]
-    auto begin() -> container_t::iterator
+    constexpr auto begin() noexcept -> container_t::iterator
     {
         return std::begin(value_);
     }
 
     [[nodiscard]]
-    auto end() -> container_t::iterator
+    constexpr auto end() noexcept -> container_t::iterator
     {
         return std::end(value_);
     }
 
-    constexpr auto operator<=>(physical_vector const&) const = default;
+    constexpr auto operator<=>(static_vector const&) const noexcept = default;
 
 public:
     container_t value_;
 };
 
-template <std::size_t N, std::floating_point F>
-auto operator<<(std::ostream& os, physical_vector<N, F> const& pv) noexcept
+template <auto N, typename Value_Type>
+    requires(std::integral<decltype(N)>)
+auto operator<<(std::ostream& os, static_vector<N, Value_Type> const& pv) noexcept
     -> std::ostream&
 {
     os << "{ ";

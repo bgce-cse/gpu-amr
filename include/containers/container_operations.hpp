@@ -121,7 +121,8 @@ constexpr auto min(auto&& lhs, auto&& rhs) noexcept -> decltype(auto)
 
 template <typename T1, typename T2>
 [[nodiscard]]
-auto operator_impl(T1&& lhs, T2&& rhs, auto&& binary_op) noexcept -> decltype(auto)
+constexpr auto operator_impl(T1&& lhs, T2&& rhs, auto&& binary_op) noexcept
+    -> decltype(auto)
     requires detail::Vector<std::remove_reference_t<decltype(lhs)>> ||
              detail::Vector<std::remove_reference_t<decltype(rhs)>>
 {
