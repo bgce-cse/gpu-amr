@@ -16,11 +16,8 @@ namespace detail
 template <typename V>
 concept Vector = requires(V v, typename V::size_type i) {
     typename V::value_type;
-    std::begin(v);
-    std::end(v);
-    v.size();
     v[i];
-} && std::is_trivially_constructible_v<V>;
+} && std::ranges::sized_range<V> && std::is_trivially_constructible_v<V>;
 
 template <typename T1, typename T2>
     requires Vector<T1> || Vector<T2>
