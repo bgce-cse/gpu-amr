@@ -164,7 +164,7 @@ function globalposition(cell::Cell, coordinate_reference)
     if minimum(coordinate_reference) < 0.0 || maximum(coordinate_reference) > 1.0
         throw(BoundsError())
     end
-    cell.size .* coordinate_reference .+ cell.center .- 0.5 .* cell.size
+    cell.size .* coordinate_reference .+ cell.center .- 0.5 .* cell.size #coordinate in the global element
 end
 
 """

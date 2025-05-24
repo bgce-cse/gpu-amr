@@ -7,7 +7,7 @@ Evaluate the Lagrange interpolation polynomial defined over nodal `points` with 
 at point `x`.
 """
 function lagrange_1d(points, i, x)
-    1.0
+    return prod(x .- points[1:i-1])*prod(x .- points[i+1:end]) / (prod(points[i] .- points[1:i-1])*prod(points[i] .- points[i+1:end]))
 end
 
 """
@@ -17,7 +17,8 @@ Evaluate the derivative of the Lagrange interpolation polynomial defined over no
 with index `i` at point `x`.
 """
 function lagrange_diff(points, i, x)
-    0.0
+    return lagrange_1d(points, i, x) * (sum(1.0./(x .- points[1:i-1])) + sum(1.0./(x .- points[i+1:end])) )
+    
 end
 
 """
@@ -69,7 +70,7 @@ end
 
 Return number of points for `basis` in n-dimensions.
 """
-Base.length(basis::Basis) = 1
+Base.length(basis::Basis) = length(basis.quadpoints)^basis.dimensions
 
 """
     Base.size(basis::Basis)
@@ -77,9 +78,7 @@ Base.length(basis::Basis) = 1
 Return number of points for `basis` for each dimensions as tuple.
 """
 function Base.size(basis::Basis) 
-    ntuple(basis.dimensions) do x 
-       1
-    end
+    ntuple(_->length(basis.quadpoints),basis.dimensions)
 end
 
 """
@@ -88,7 +87,8 @@ end
 Return number of points for `basis` for dimensions `dim`.
 """
 function Base.size(basis::Basis, dim::Integer)
-    1
+    @boundscheck 1 <= dim <= basis.dimensions || throw(BoundsError(basis.dimensions, dim))
+    size(basis)[dim]
 end
 
 """
@@ -98,8 +98,13 @@ Evaluate the `basis` with coefficients
 `coeffs` at point `x`.
 """
 function evaluate_basis(basis::Basis, coeffs, x)
-    coeffs[1]
+
+    C = reshape(coeffs,size(basis,1),size(basis,2))
+    sum([C[i,j]*lagrange_1d(basis.quadpoints,i,x[1])*lagrange_1d(basis.quadpoints,j,x[2]) for i in 1:size(basis,1) for j in 1:size(basis,2)])
+    
+   
 end
+
 
 """
     project_to_reference_basis(fun, basis::Basis, ndofs)
@@ -110,9 +115,21 @@ The function `fun(x,y)`  takes in the ``x, y``-coordinates
 and returns a vector with size `ndofs`.
 The corresponding coefficients are returned.
 """
-function project_to_reference_basis(fun, basis::Basis, ndofs)
-    reshape(fun(0.5, 0.5), (1,ndofs))
-end
+function project_to_reference_basis(fun, basis::Basis, ndofs::Integer)
+    n   = basis.order
+    pts = basis.quadpoints
+
+    M = zeros(n*n, ndofs)
+
+    # Loop once over every (i,j) pair in natural column-major order:
+    for (row, idx) in enumerate(CartesianIndices((n, n)))
+        i, j          = Tuple(idx)       # unpack the CartesianIndex
+        x, y          = pts[i], pts[j]   # reference coords
+        M[row, :]     = fun(x, y)        # fill that row
+    end
+
+    return M
+end#return order*order *3
 
 
 """
@@ -144,7 +161,25 @@ end
 Return the quadrature points at the face `face` for basis `basis`.
 """
 function get_face_quadpoints(basis::Basis, face)
-    ones(1.0, 1.0)
+    n_x = size(basis,1)
+    n_y = size(basis,2)
+    points = basis.quadpoints
+    
+    if face == left
+        # x = 0, y varies
+        return [(0.0, points[i]) for i in 1:n_y]
+    elseif face == right
+        # x = 1, y varies
+        return [(1.0, points[i]) for i in 1:n_y]
+    elseif face == bottom
+        # y = 0, x varies
+        return [(points[i], 0.0) for i in 1:n_x]
+    elseif face == top
+        # y = 1, x varies
+        return [(points[i], 1.0) for i in 1:n_x]
+    else
+        error("Unknown face")
+    end
 end
 
 """
@@ -156,7 +191,12 @@ returns the coefficients of the solution evaluated at the
 quadrature nodes of the face.
 """
 function face_projection_matrix(basis, face)
+    # face_quad = get_face_quadpoints(basis,face)
+    # size = max(size(face_quad))
+    # P = zeros(size, size)
+
     ones(1,1)
+
 end
 
 """

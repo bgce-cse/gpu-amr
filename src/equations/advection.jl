@@ -32,5 +32,3 @@ function max_eigenval(eq::Advection, celldata, normalidx)
     # Is actually correct!
     1.0
 end
-
-#ciaociaocioa

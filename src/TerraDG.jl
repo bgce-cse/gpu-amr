@@ -41,6 +41,7 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
         @views cell = grid.cells[i]
         @views data = dofs[:,:, cell.dataidx]
         @views flux = grid.flux[:,:,cell.dataidx]
+        println("DEBUG: Before evaluate_flux - celldofs: ", size(celldofs), " cellflux: ", size(cellflux))
 
         evaluate_flux(eq, data, flux)
 
@@ -161,5 +162,6 @@ function main(configfile::String)
         evaluate_error(eq, scenario, grid, grid.time)
     end
 end
+
 
 end

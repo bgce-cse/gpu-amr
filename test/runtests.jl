@@ -154,8 +154,8 @@ end
     @test TerraDG.massmatrix(basis_order2, 2) == massmatrix_order2
 end
 
-# TODO: Enable for worksheet >2
-if false
+# # TODO: Enable for worksheet >2
+# if false
 @testset "Projection/evaluation works for polynomials" begin
     ns = [1,2,3,4,5,6]
     funs = [
@@ -261,7 +261,6 @@ end
             end
         end
     end
-end
 end
 
 end
