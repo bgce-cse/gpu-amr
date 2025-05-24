@@ -191,12 +191,38 @@ returns the coefficients of the solution evaluated at the
 quadrature nodes of the face.
 """
 function face_projection_matrix(basis, face)
-    # face_quad = get_face_quadpoints(basis,face)
-    # size = max(size(face_quad))
-    # P = zeros(size, size)
-
-    ones(1,1)
-
+    n = length(basis.quadpoints)
+    n2d = n^2
+    
+    # Create face projection matrix
+    P = zeros(n, n2d)
+    
+    # Get quadrature points on the face
+    face_points = get_face_quadpoints(basis, face)
+    
+    # Fill the projection matrix
+    for i in 1:n  # Row index (face point index)
+        x, y = face_points[i]
+        
+        for j in 1:n  # Column indices (volume basis functions)
+            for k in 1:n
+                idx = (k-1)*n + j  # Linear index for 2D basis
+                
+                # Evaluate basis function at face point
+                if face == left || face == right
+                    # For left/right faces, y varies along the face
+                    P[i, idx] = lagrange_1d(basis.quadpoints, j, x) * 
+                                lagrange_1d(basis.quadpoints, k, y)
+                else  # top or bottom
+                    # For top/bottom faces, x varies along the face
+                    P[i, idx] = lagrange_1d(basis.quadpoints, j, x) * 
+                                lagrange_1d(basis.quadpoints, k, y)
+                end
+            end
+        end
+    end
+    
+    return P
 end
 
 """
