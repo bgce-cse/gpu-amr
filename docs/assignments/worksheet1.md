@@ -11,14 +11,14 @@ Advection Velocity $\quad v = 1 \frac{m}{s}$
 
 ### 1.1 
 
- $\rho_1(x,y, t=0) = \sin(2\pi(x + y))$
+$\rho_1(x,y, t=0) = \sin(2\pi(x + y))$
 
 Analytic solution:
 
-$ \quad \begin{aligned}&\rho_1(x,y,t) = sin(2\pi(x+y-2vt)) \\ &\rho_1(x,y,t=1) = sin(2\pi(x+y) - 4\pi) = \rho_1(x,y, t=0)\end{aligned}$
+$\quad \begin{aligned}&\rho_1(x,y,t) = sin(2\pi(x+y-2vt)) \\ &\rho_1(x,y,t=1) = sin(2\pi(x+y) - 4\pi) = \rho_1(x,y, t=0)\end{aligned}$
 
 <div style="text-align: center;">
-  <img src="/home/matteot/Documents/TUM/my_courses/ss2025/modern_wave_propagation_DG/terradg.jl/docs/assignments/images/rho1_ws1.png" width="700"/>
+  <img src="images/rho1_ws1.png" width="700"/>
 </div>
 
 ---
@@ -29,9 +29,9 @@ $\rho_1(x,y, t=0) = \sin(2\pi y)$
 
 Analytic solution:
 
-$ \quad \begin{aligned}&\rho_1(x,y,t) = sin(2\pi (y - vt) \\ &\rho_1(x,y,t=1) = sin(2\pi y - 2\pi) = \rho_2(x,y, t=0)\end{aligned}$
+$\quad \begin{aligned}&\rho_1(x,y,t) = sin(2\pi (y - vt) \\ &\rho_1(x,y,t=1) = sin(2\pi y - 2\pi) = \rho_2(x,y, t=0)\end{aligned}$
 <div style="text-align: center;">
-  <img src="/home/matteot/Documents/TUM/my_courses/ss2025/modern_wave_propagation_DG/terradg.jl/docs/assignments/images/rho2_ws1.png" width="700"/>
+  <img src="images/rho2_ws1.png" width="700"/>
 </div>
 
 ---
@@ -40,16 +40,16 @@ $ \quad \begin{aligned}&\rho_1(x,y,t) = sin(2\pi (y - vt) \\ &\rho_1(x,y,t=1) = 
 
 $\rho_1(x,y, t=0) = 1$
 
-Analytic solution: $ \quad \rho_3 = 1$
+Analytic solution: $\quad \rho_3 = 1$
 <div style="text-align: center;">
-  <img src="/home/matteot/Documents/TUM/my_courses/ss2025/modern_wave_propagation_DG/terradg.jl/docs/assignments/images/rho3_ws1.png" width="700"/>
+  <img src="images/rho3_ws1.png" width="700"/>
 </div>
 
 As expected, the solutions at $t=1$ coincide with the initial conditions. This is due to the periodic nature of the sine functions used, combined with the fact that the underlying advection equation transports the solution without distortion or decay, regardless of the numerical dissipation introduced by the low-order scheme used.
 
 ## 2. Convergence Analysis
 
-Grid elements $ \ N^* = 50 \quad (h^*_{x,y} = 2 \times10^{-2})$
+Grid elements $\ N^* = 50 \quad (h^*_{x,y} = 2 \times10^{-2})$
 
 <div style="text-align: center;">
 <table style="display: inline-block;">
@@ -73,7 +73,7 @@ Grid elements $ \ N^* = 50 \quad (h^*_{x,y} = 2 \times10^{-2})$
 </div>
 
 
-Grid elements $ \ N = 2N^* \quad (h_{x,y} = \frac{1}{2}h^*)$
+Grid elements $\ N = 2N^* \quad (h_{x,y} = \frac{1}{2}h^*)$
 
 <div style="text-align: center;">
 <table style="display: inline-block;">
@@ -96,7 +96,7 @@ Grid elements $ \ N = 2N^* \quad (h_{x,y} = \frac{1}{2}h^*)$
     </table>
 </div>
 
-Grid elements $ \ N = 4N^* \quad (h_{x,y} = \frac{1}{4}h^*)$
+Grid elements $\ N = 4N^* \quad (h_{x,y} = \frac{1}{4}h^*)$
 
 <div style="text-align: center;">
 <table style="display: inline-block;">
@@ -121,9 +121,7 @@ Grid elements $ \ N = 4N^* \quad (h_{x,y} = \frac{1}{4}h^*)$
 
 **Convergence Rate**
 
-$$
-r = \frac{log(err_{2h}/err_{h})}{log(2)}
-$$
+$r = \frac{log(err_{2h}/err_{h})}{log(2)}$
 
 <div style="text-align: center;">
 <table style="display: inline-block; border-collapse: collapse;" border="1" cellpadding="6" cellspacing="0">
