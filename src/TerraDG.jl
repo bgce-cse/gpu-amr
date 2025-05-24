@@ -84,11 +84,9 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
                 evaluate_flux(eq, buffers_face.dofsfaceneigh, buffers_face.fluxfaceneigh)
             end
 
-
             @views cureigenval = evaluate_face_integral(eq, globals, buffers_face, cell, faces[i], du[:,:,cell.dataidx])
             maxeigenval = max(maxeigenval, cureigenval)
         end
-
         @views du[:,:,cell.dataidx] = inv_massmatrix * @views du[:,:,cell.dataidx] #
     end
     grid.maxeigenval = maxeigenval
@@ -131,12 +129,10 @@ function main(configfile::String)
             # Only step up to either end or next plotting
             dt = min(dt, next_plotted-grid.time, config.end_time - grid.time)
             @assert dt > 0
-
             @info "Running timestep" timestep dt grid.time
             step(integrator, grid, dt) do du, dofs, time
                 evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
             end
-
             grid.time += dt
             time_end = time()
             time_elapsed = time_end - time_start
