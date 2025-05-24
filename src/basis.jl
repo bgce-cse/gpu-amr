@@ -64,7 +64,6 @@ struct Basis
     end
 end
 
-
 """
     Base.length(basis::Basis)
 
@@ -104,7 +103,6 @@ function evaluate_basis(basis::Basis, coeffs, x)
     
    
 end
-
 
 """
     project_to_reference_basis(fun, basis::Basis, ndofs)

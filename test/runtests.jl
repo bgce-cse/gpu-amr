@@ -127,8 +127,14 @@ end
 end
 
 @testset "Integral of derivatives of 1D-Lagrange polynomials is correct" begin
-    # TODO Implement
-    @test false
+    L = 5
+    n = 10
+    basis = TerraDG.Basis(n,1)
+    for i in 1:length(basis.quadpoints)
+        lhs = TerraDG.lagrange_1d(basis.quadpoints, i, L) - TerraDG.lagrange_1d(basis.quadpoints, i, 0)
+        rhs = sum(L*basis.quadweights[n] * TerraDG.lagrange_diff(basis.quadpoints, i, L*basis.quadpoints[n]) for n in 1:length(basis.quadpoints))
+        @test isapprox(lhs, rhs, atol=1e-4)
+    end
 end
 
 @testset "Integral of derivatives of 2D-Lagrange polynomials is also correct" begin
