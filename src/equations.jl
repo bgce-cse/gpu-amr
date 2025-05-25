@@ -11,7 +11,7 @@ It then interpolates this on the `basis`.
 """
 function interpolate_initial_dofs(eq::Equation, scenario::Scenario, celldofs, cell, basis)
     celldofs .= project_to_reference_basis(basis, get_ndofs(eq)) do px, py
-        pxg, pyg = globalposition(cell, (px, py))#this fetch the coordinate from the global domain based on the refecrence coords
+        pxg, pyg = globalposition(cell, (px, py))#this fetch the coordinate from the global domain based on the local 
         get_initial_values(eq, scenario, (pxg, pyg))
     end
 end

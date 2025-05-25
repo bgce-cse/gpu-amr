@@ -40,9 +40,7 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
     for i in eachindex(grid.cells)
         @views cell = grid.cells[i]
         @views data = dofs[:,:, cell.dataidx]
-        @views flux = grid.flux[:,:,cell.dataidx]
-        println("DEBUG: Before evaluate_flux - celldofs: ", size(celldofs), " cellflux: ", size(cellflux))
-
+        @views flux = grid.flux[:,:,cell.dataidx]        
         evaluate_flux(eq, data, flux)
 
         # Volume matrix is zero for FV/order=1
