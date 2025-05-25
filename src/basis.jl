@@ -17,6 +17,7 @@ Evaluate the derivative of the Lagrange interpolation polynomial defined over no
 with index `j` at point `x`.
 """
 function lagrange_diff(points, j, x)
+    # using formula that avoids 1/(x-quadpoints) due to division by zero for L=1
     sum([
         (1 / (points[j] - points[i])) *
         prod((x .- points[setdiff(1:end, (i, j))]) ./ (points[j] .- points[setdiff(1:end, (i, j))]))
@@ -132,7 +133,6 @@ function project_to_reference_basis(fun, basis::Basis, ndofs::Integer)
     return M
 end#return order*order *3
 
-
 """
     massmatrix(basis, dimensions)
 
@@ -150,7 +150,6 @@ function massmatrix(basis, dimensions)
     return M
 end
 
-
 """
     derivativematrix(basis)
 
@@ -162,7 +161,6 @@ coefficients of the corresponding derivative.
 function derivativematrix(basis)
     zeros(1, basis.dimensions * 1)
 end
-
 
 """
     get_face_quadpoints(basis::Basis, face)
@@ -242,7 +240,6 @@ function face_projection_matrix(basis, face)
     LinearAlgebra.kron(LinearAlgebra.I(basis.order),phi)'
 
 end
-
 
 """
     evaluate_m_to_n_vandermonde_basis(basis) 

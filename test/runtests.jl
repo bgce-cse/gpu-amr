@@ -127,15 +127,11 @@ end
 
 @testset "Integral of derivatives of 1D-Lagrange polynomials is correct" begin
     Lvec = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-    order = 2
+    order = 10
     basis = TerraDG.Basis(order,1)
-
     for j in eachindex(Lvec)
         L = Lvec[j]
-
-        
         for i in 1:length(basis.quadpoints)
-            print("******** x $(i), points: $(basis.quadpoints), scaled points $(L*basis.quadpoints)\n")
             lhs = TerraDG.lagrange_1d(basis.quadpoints, i, L) - TerraDG.lagrange_1d(basis.quadpoints, i, 0)
             rhs = sum(L*basis.quadweights .* [TerraDG.lagrange_diff(basis.quadpoints, i, L*basis.quadpoints[n]) for n in 1:length(basis.quadpoints)])
             @test isapprox(lhs, rhs, atol=1e-14)
@@ -145,11 +141,9 @@ end
 
 @testset "Integral of derivatives of 2D-Lagrange polynomials is correct" begin
     Lvec = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-    order = 2
+    order = 10
     basis = TerraDG.Basis(order,2)
-    
     for L in Lvec
-        # For each pair of basis functions (tensor product construction)
         for i in 1:length(basis.quadpoints)
             for j in 1:length(basis.quadpoints)
 
@@ -158,7 +152,6 @@ end
                     (TerraDG.lagrange_1d(basis.quadpoints, i, 0) * TerraDG.lagrange_1d(basis.quadpoints, j, basis.quadpoints[n]))
                     for n in 1:length(basis.quadpoints)
                 ])
-                
 
                 rhs = sum([
                     (L * basis.quadweights[n1]) * basis.quadweights[n2] * 
@@ -166,13 +159,12 @@ end
                     TerraDG.lagrange_1d(basis.quadpoints, j, basis.quadpoints[n2])
                     for n1 in 1:length(basis.quadpoints), n2 in 1:length(basis.quadpoints)
                 ])
-                
+
                 @test isapprox(lhs, rhs, atol=1e-14)
             end
         end
     end
 end
-
 
 @testset "Derivative of const = 0" begin
     for n=1:6
@@ -277,7 +269,6 @@ end
         @test all(isapprox.(derivy_evaluated, reference_derivy_evaluated, atol=10e-12))
     end
 end
-
 
 @testset "Face projection matrix is correct" begin
     ns = [1,2,3,4,5,6]
