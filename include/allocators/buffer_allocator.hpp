@@ -17,9 +17,10 @@
 #        define ALLOCATOR_DEBUG_INITIALIZE 1
 #        if ALLOCATOR_DEBUG_INITIALIZE
 #            include <algorithm>
-#            define ALLOCATOR_DEBUG_INITIALIZE_VALUE std::byte{ 0x80 }
-#            define ALLOCATOR_DEBUG_DEALLOC_VALUE    std::byte{ 0xFF }
-#            define ALLOCATOR_DEBUG_ALLOC_VALUE      std::byte{ 0xFF }
+#            define ALLOCATOR_DEBUG_INIT_VALUE    std::byte{ 0xCD }
+#            define ALLOCATOR_DEBUG_ALLOC_VALUE   std::byte{ 0xAA }
+#            define ALLOCATOR_DEBUG_DEALLOC_VALUE std::byte{ 0xDD }
+#            define ALLOCATOR_DEBUG_RELEASE_VALUE std::byte{ 0xFE }
 #        endif
 #    endif
 #endif
@@ -90,6 +91,9 @@ public:
     {
         for (auto&& [buffer, size] : m_release_list)
         {
+#if ALLOCATOR_DEBUG_INITIALIZE
+            fill_buffer(buffer, size, ALLOCATOR_DEBUG_RELEASE_VALUE);
+#endif
             std::free(buffer, size);
         }
     }
@@ -105,7 +109,7 @@ public:
             static_cast<pointer>(std::aligned_alloc(s_alignment, underlying_buffer_size));
         m_release_list.emplace_back({ buffer, underlying_buffer_size });
 #if ALLOCATOR_DEBUG_INITIALIZE
-        fill_buffer(buffer, underlying_buffer_size, ALLOCATOR_DEBUG_INITIALIZE_VALUE);
+        fill_buffer(buffer, underlying_buffer_size, ALLOCATOR_DEBUG_INIT_VALUE);
 #endif
         [[assume(n > 0)]];
         for (auto i = size_type{}; i != n; ++i)
@@ -152,7 +156,7 @@ public:
         assert(!std::ranges::contains(m_free_list, p));
         m_free_list.push_back(p);
 #if ALLOCATOR_DEBUG_INITIALIZE
-        fill_buffer(p, s_block_alloc_size, ALLOCATOR_DEBUG_DEALLOC_VALUE);
+        fill_buffer(p, s_block_alloc_size, ALLOCATOR_DEBUG_RELEASE_VALUE);
 #endif
     }
 
