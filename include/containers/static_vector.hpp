@@ -8,7 +8,7 @@
 #include <ostream>
 #include <type_traits>
 
-namespace detail::containers
+namespace amr::containers
 {
 
 template <auto N, typename Value_Type>
@@ -21,7 +21,7 @@ struct static_vector
     using iterator       = value_type*;
 
     // TODO: Alignment
-    inline static constexpr auto s_size = N;
+    static constexpr auto s_size = N;
 
     static_assert(std::is_trivially_copyable_v<static_vector>);
     static_assert(std::is_standard_layout_v<static_vector>);
@@ -113,6 +113,6 @@ auto operator<<(std::ostream& os, static_vector<N, Value_Type> const& v) noexcep
     return os;
 }
 
-} // namespace detail::containers
+} // namespace amr::containers
 
 #endif // AMR_INCLUDED_STATIC_VECTOR
