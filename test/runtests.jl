@@ -127,13 +127,35 @@ end
 end
 
 @testset "Integral of derivatives of 1D-Lagrange polynomials is correct" begin
-    # TODO Implement
-    @test false
+    Lvec = [0.2, 0.4, 0.6, 0.8, 1.0]
+    n = 10
+    basis = TerraDG.Basis(n,1)
+    for j in eachindex(Lvec)
+        L = Lvec[j]
+        for i in 1:length(basis.quadpoints)
+            lhs = TerraDG.lagrange_1d(basis.quadpoints, i, L) - TerraDG.lagrange_1d(basis.quadpoints, i, 0)
+            rhs = sum(L*basis.quadweights[n] * TerraDG.lagrange_diff(basis.quadpoints, i, L*basis.quadpoints[n]) for n in 1:length(basis.quadpoints))
+            @test isapprox(lhs, rhs, atol=1e-4)
+        end
+    end
 end
 
 @testset "Integral of derivatives of 2D-Lagrange polynomials is also correct" begin
     # TODO Implement
     @test false
+
+    L = 5
+    n_x = 5
+    n_y = 10
+    # basis_x = TerraDG.Basis(n,1)
+    # basis_y = TerraDG.Basis(n,1)
+
+
+
+    # lhs = 1
+    # rhs = 1
+    # # @test isapprox(lhs, rhs, atol=1e-4)
+
 end
 
 @testset "Derivative of const = 0" begin
@@ -263,4 +285,4 @@ end
     end
 end
 
-end
+en
