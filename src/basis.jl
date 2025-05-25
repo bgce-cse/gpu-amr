@@ -7,22 +7,25 @@ Evaluate the Lagrange interpolation polynomial defined over nodal `points` with 
 at point `x`.
 """
 function lagrange_1d(points, i, x)
-    return prod(x .- points[1:i-1])*prod(x .- points[i+1:end]) / (prod(points[i] .- points[1:i-1])*prod(points[i] .- points[i+1:end]))
+    return prod(x .- points[collect(1:end) .!=i]) / prod(points[i] .- points[collect(1:end) .!=i])
 end
 
 """
-    lagrange_diff(points, i, x)
+    lagrange_diff(points, j, x)
 
-Evaluate the derivative of the Lagrange interpolation polynomial defined over nodal `points` 
-with index `i` at point `x`.
+Evaluate the derivative of the Lagrange interpolation polynomial defined over nodal `points`
+with index `j` at point `x`.
 """
-function lagrange_diff(points, i, x)
-    return lagrange_1d(points, i, x) * (sum(1.0./(x .- points[1:i-1])) + sum(1.0./(x .- points[i+1:end])) )
-    
+function lagrange_diff(points, j, x)
+    sum([
+        (1 / (points[j] - points[i])) *
+        prod((x .- points[setdiff(1:end, (i, j))]) ./ (points[j] .- points[setdiff(1:end, (i, j))]))
+        for i in 1:length(points) if i != j
+    ])
 end
 
 """
-    get_quadpoints(n)
+    get_quadpoints(n)   
 
 Compute quadrature points and weights for Gaussian quadrature
 of order `n`.
@@ -101,7 +104,7 @@ function evaluate_basis(basis::Basis, coeffs, x)
     C = reshape(coeffs,size(basis,1),size(basis,2))
     sum([C[i,j]*lagrange_1d(basis.quadpoints,i,x[1])*lagrange_1d(basis.quadpoints,j,x[2]) for i in 1:size(basis,1) for j in 1:size(basis,2)])
     
-   
+
 end
 
 """
@@ -137,8 +140,16 @@ Return the mass-matrix for a `dimensions`-dimensional
 tensor-product basis built up from the 1d-basis `basis`.
 """
 function massmatrix(basis, dimensions)
-    ones(1,1)
+    # 1D mass matrix: diagonal of quadweights
+    M1 = Diagonal(basis.quadweights)
+    # Tensor‐product to d dimensions
+    M = M1
+    for _ in 2:dimensions
+        M = LinearAlgebra.kron(M, M1)
+    end
+    return M
 end
+
 
 """
     derivativematrix(basis)
@@ -228,7 +239,6 @@ function face_projection_matrix(basis, face)
     else 
         phi = [lagrange_1d(face_quad[1],j,face_quad[2]) for j in 1:length(basis.quadpoints)]
     end
-    print(phi)
     LinearAlgebra.kron(LinearAlgebra.I(basis.order),phi)'
 
 end

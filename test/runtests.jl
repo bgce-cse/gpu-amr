@@ -54,7 +54,6 @@ end
     end
 end
 
-
 @testset "Volume of 2D cells is correct" begin
     sizes = [
         [1.0, 1.0],
@@ -127,36 +126,53 @@ end
 end
 
 @testset "Integral of derivatives of 1D-Lagrange polynomials is correct" begin
-    Lvec = [0.2, 0.4, 0.6, 0.8, 1.0]
-    n = 10
-    basis = TerraDG.Basis(n,1)
+    Lvec = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    order = 2
+    basis = TerraDG.Basis(order,1)
+
     for j in eachindex(Lvec)
         L = Lvec[j]
+
+        
         for i in 1:length(basis.quadpoints)
+            print("******** x $(i), points: $(basis.quadpoints), scaled points $(L*basis.quadpoints)\n")
             lhs = TerraDG.lagrange_1d(basis.quadpoints, i, L) - TerraDG.lagrange_1d(basis.quadpoints, i, 0)
-            rhs = sum(L*basis.quadweights[n] * TerraDG.lagrange_diff(basis.quadpoints, i, L*basis.quadpoints[n]) for n in 1:length(basis.quadpoints))
-            @test isapprox(lhs, rhs, atol=1e-4)
+            rhs = sum(L*basis.quadweights .* [TerraDG.lagrange_diff(basis.quadpoints, i, L*basis.quadpoints[n]) for n in 1:length(basis.quadpoints)])
+            @test isapprox(lhs, rhs, atol=1e-14)
         end
     end
 end
 
-@testset "Integral of derivatives of 2D-Lagrange polynomials is also correct" begin
-    # TODO Implement
-    @test false
+@testset "Integral of derivatives of 2D-Lagrange polynomials is correct" begin
+    Lvec = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    order = 2
+    basis = TerraDG.Basis(order,2)
+    
+    for L in Lvec
+        # For each pair of basis functions (tensor product construction)
+        for i in 1:length(basis.quadpoints)
+            for j in 1:length(basis.quadpoints)
 
-    L = 5
-    n_x = 5
-    n_y = 10
-    # basis_x = TerraDG.Basis(n,1)
-    # basis_y = TerraDG.Basis(n,1)
+                lhs = sum(basis.quadweights .* [
+                    (TerraDG.lagrange_1d(basis.quadpoints, i, L) * TerraDG.lagrange_1d(basis.quadpoints, j, basis.quadpoints[n])) - 
+                    (TerraDG.lagrange_1d(basis.quadpoints, i, 0) * TerraDG.lagrange_1d(basis.quadpoints, j, basis.quadpoints[n]))
+                    for n in 1:length(basis.quadpoints)
+                ])
+                
 
-
-
-    # lhs = 1
-    # rhs = 1
-    # # @test isapprox(lhs, rhs, atol=1e-4)
-
+                rhs = sum([
+                    (L * basis.quadweights[n1]) * basis.quadweights[n2] * 
+                    TerraDG.lagrange_diff(basis.quadpoints, i, L * basis.quadpoints[n1]) * 
+                    TerraDG.lagrange_1d(basis.quadpoints, j, basis.quadpoints[n2])
+                    for n1 in 1:length(basis.quadpoints), n2 in 1:length(basis.quadpoints)
+                ])
+                
+                @test isapprox(lhs, rhs, atol=1e-14)
+            end
+        end
+    end
 end
+
 
 @testset "Derivative of const = 0" begin
     for n=1:6
@@ -176,8 +192,6 @@ end
     @test TerraDG.massmatrix(basis_order2, 2) == massmatrix_order2
 end
 
-# # TODO: Enable for worksheet >2
-# if false
 @testset "Projection/evaluation works for polynomials" begin
     ns = [1,2,3,4,5,6]
     funs = [
@@ -285,4 +299,4 @@ end
     end
 end
 
-en
+end
