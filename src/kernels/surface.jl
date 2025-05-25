@@ -66,8 +66,11 @@ Result is stored in `dofsface` and `fluxface`.
 Projection matrices are stored in `globals`.
 """
 function project_to_faces(globals, dofs, flux, dofsface, fluxface, face)
-    dofsface .= dofs
-    fluxface .= flux
+    
+    print("size of everything: ", size(globals.project_dofs_to_face[face] * dofs), " ", size(globals.project_flux_to_face[face]), " ",size(flux), " ", size(dofsface), " ", size(fluxface), "\n")
+    dofsface .= globals.project_dofs_to_face[face] * dofs
+    fluxface .= globals.project_flux_to_face[face] * flux
+   
 end
 
 """
