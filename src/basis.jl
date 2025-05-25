@@ -125,9 +125,9 @@ function project_to_reference_basis(fun, basis::Basis, ndofs::Integer)
 
     # Loop once over every (i,j) pair in natural column-major order:
     for (row, idx) in enumerate(CartesianIndices((n, n)))
-        i, j          = Tuple(idx)       # unpack the CartesianIndex
-        x, y          = pts[i], pts[j]   # reference coords
-        M[row, :]     = fun(x, y)        # fill that row
+        i, j = Tuple(idx)       
+        x, y = pts[i], pts[j]   
+        M[row, :] = fun(x, y)        
     end
 
     return M
@@ -162,15 +162,14 @@ coefficients of the corresponding derivative.
 
 function derivativematrix(basis::Basis)
     pts = basis.quadpoints
-    n   = length(pts)
+    n = basis.order
 
     D1 = [ lagrange_diff(pts, j, pts[i]) 
-           for i in 1:n, j in 1:n ]
+           for i in 1:n, j in 1:n]
 
     Dx = kron(I(n), D1)'   # size n^2 × n^2
     Dy = kron(D1, I(n))'   # size n^2 × n^2
     
-
     hcat(Dx,Dy)
 end
 
