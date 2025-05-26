@@ -104,6 +104,7 @@ public:
         -> pointer
     {
         assert(n > 0);
+        static_assert(s_block_alloc_size % s_alignment == 0);
         const auto underlying_buffer_size = n * s_block_alloc_size;
         const auto buffer =
             static_cast<pointer>(std::aligned_alloc(s_alignment, underlying_buffer_size));
@@ -112,11 +113,13 @@ public:
         fill_buffer(buffer, underlying_buffer_size, ALLOCATOR_DEBUG_INIT_VALUE);
 #endif
         [[assume(n > 0)]];
-        for (auto i = size_type{}; i != n; ++i)
+        for (auto p = buffer; p != p + underlying_buffer_size; p += s_block_alloc_size)
         {
-            m_free_list.push_back(buffer);
-            buffer += s_block_alloc_size;
-            assert(std::less_equal(buffer, &buffer[underlying_buffer_size]));
+            assert(std::less_equal(p, &buffer[underlying_buffer_size]));
+            assert(
+                std::less_equal(p + s_block_alloc_size, &buffer[underlying_buffer_size])
+            );
+            m_free_list.push_back(p);
         }
         return buffer;
     }
