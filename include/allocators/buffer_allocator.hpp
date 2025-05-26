@@ -12,19 +12,6 @@
 #include <limits>
 #include <vector>
 
-#ifndef NDEBUG
-#    ifndef ALLOCATOR_DEBUG_NAN_INITIALIZE
-#        define ALLOCATOR_DEBUG_INITIALIZE 1
-#        if ALLOCATOR_DEBUG_INITIALIZE
-#            include <algorithm>
-#            define ALLOCATOR_DEBUG_INIT_VALUE    std::byte{ 0xCD }
-#            define ALLOCATOR_DEBUG_ALLOC_VALUE   std::byte{ 0xAA }
-#            define ALLOCATOR_DEBUG_DEALLOC_VALUE std::byte{ 0xDD }
-#            define ALLOCATOR_DEBUG_RELEASE_VALUE std::byte{ 0xFE }
-#        endif
-#    endif
-#endif
-
 namespace amr::allocator
 {
 
@@ -92,7 +79,7 @@ public:
         for (auto&& [buffer, size] : m_release_list)
         {
 #if ALLOCATOR_DEBUG_INITIALIZE
-            fill_buffer(buffer, size, ALLOCATOR_DEBUG_RELEASE_VALUE);
+            utils::fill_buffer(buffer, size, ALLOCATOR_DEBUG_RELEASE_VALUE);
 #endif
             std::free(buffer, size);
         }
@@ -100,7 +87,7 @@ public:
 
     // TODO: Implement hint
     // TODO: Backup allocator?
-    auto allocate_buffer(size_type const n, [[maybe_unused]] const_pointer hint = nullptr)
+    auto allocate_buffer(size_type const n, [[maybe_unused]] pointer const hint = nullptr)
         -> pointer
     {
         assert(n > 0);
@@ -110,7 +97,7 @@ public:
             static_cast<pointer>(std::aligned_alloc(s_alignment, underlying_buffer_size));
         m_release_list.emplace_back({ buffer, underlying_buffer_size });
 #if ALLOCATOR_DEBUG_INITIALIZE
-        fill_buffer(buffer, underlying_buffer_size, ALLOCATOR_DEBUG_INIT_VALUE);
+        utils::fill_buffer(buffer, underlying_buffer_size, ALLOCATOR_DEBUG_INIT_VALUE);
 #endif
         [[assume(n > 0)]];
         for (auto p = buffer; p != p + underlying_buffer_size; p += s_block_alloc_size)
@@ -133,16 +120,16 @@ public:
         }
         const auto p = *std::end(m_free_list);
 #if ALLOCATOR_DEBUG_INITIALIZE
-        fill_buffer(p, s_block_alloc_size, ALLOCATOR_DEBUG_ALLOC_VALUE);
+        utils::fill_buffer(p, s_block_alloc_size, ALLOCATOR_DEBUG_ALLOC_VALUE);
 #endif
         m_free_list.pop_back();
         return p;
     }
 
     [[nodiscard]]
-    auto allocate_n(const size_type n) -> pointer
+    auto allocate_n(size_type const n) -> pointer
     {
-        if (available() < n) [[unlikely]]
+        if (available() < n)
         {
             // TODO: This block is to be returned
             // Maybe unless it happens to be contiguous to some empty space?
@@ -154,18 +141,17 @@ public:
         // TODO: Debug initialize memory
     }
 
-    inline auto deallocate_one(pointer p) noexcept -> void
+    inline auto deallocate_one(pointer p) -> void
     {
         assert(!std::ranges::contains(m_free_list, p));
         m_free_list.push_back(p);
 #if ALLOCATOR_DEBUG_INITIALIZE
-        fill_buffer(p, s_block_alloc_size, ALLOCATOR_DEBUG_RELEASE_VALUE);
+        utils::fill_buffer(p, s_block_alloc_size, ALLOCATOR_DEBUG_RELEASE_VALUE);
 #endif
     }
 
-    inline auto deallocate_n(pointer p, const size_type n) noexcept -> void
+    inline auto deallocate_n(pointer p, size_type const n) noexcept -> void
     {
-        assert(m_free_list.size() + n <= m_free_list.capacity());
         for (auto i = size_type{}; i != n; ++i)
         {
             deallocate_one(p);
@@ -185,15 +171,6 @@ private:
     {
         return s_block_alloc_size;
     }
-
-#if ALLOCATOR_DEBUG_INITIALIZE
-    static auto fill_buffer(std::byte* buffer, size_type size, std::byte value)
-    {
-        asser(size > 0);
-        [[assume(size > 0)]];
-        std::fill_n((std::byte*)buffer, size, value);
-    }
-#endif
 
 private:
     free_list_t    m_free_list{};
