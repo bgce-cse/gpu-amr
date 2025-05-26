@@ -1,5 +1,5 @@
-#ifndef AMR_INCLUDED_AMR_BUFFER_ALLOCATOR
-#define AMR_INCLUDED_AMR_BUFFER_ALLOCATOR
+#ifndef AMR_INCLUDED_BUFFER_ALLOCATOR
+#define AMR_INCLUDED_BUFFER_ALLOCATOR
 
 #include "allocator_types.hpp"
 #include "allocator_utils.hpp"
@@ -181,4 +181,4 @@ private:
 
 } // namespace amr::allocator
 
-#endif // AMR_INCLUDED_AMR_BUFFER_ALLOCATOR
+#endif // AMR_INCLUDED_BUFFER_ALLOCATOR
