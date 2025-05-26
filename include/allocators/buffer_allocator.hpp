@@ -100,7 +100,8 @@ public:
         utils::fill_buffer(buffer, underlying_buffer_size, ALLOCATOR_DEBUG_INIT_VALUE);
 #endif
         [[assume(n > 0)]];
-        for (auto p = buffer; p != p + underlying_buffer_size; p += s_block_alloc_size)
+        for (auto p = buffer; p != buffer + underlying_buffer_size;
+             p += s_block_alloc_size)
         {
             assert(std::less_equal(p, &buffer[underlying_buffer_size]));
             assert(
