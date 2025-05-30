@@ -173,7 +173,7 @@ function get_face_quadpoints(basis::Basis, face)
         return (0.0, basis.quadpoints)
     elseif face == right
         # x = 1, y varies
-        return (1.0, p)
+        return (1.0, basis.quadpoints)
     elseif face == bottom
         # y = 0, x varies
         return (basis.quadpoints, 0.0)
