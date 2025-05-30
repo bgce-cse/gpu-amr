@@ -152,6 +152,12 @@ function main(configfile::String)
             @info "Writing output" grid.time
             plot(plotter)
             next_plotted = grid.time + config.plot_step
+
+            #TODO delete if want to solve sibson for time
+            if config.equation_name == "sibson" 
+                break
+            end
+
         end
         timestep += 1
     end

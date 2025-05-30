@@ -5,6 +5,7 @@ struct PlanarWaves <: Scenario
 end
 
 function is_periodic_boundary(equation::Advection, scenario::PlanarWaves)
+    #TODO do we have to do something?
     true
 end
 
@@ -16,8 +17,8 @@ function get_initial_values(eq::Advection, scenario::PlanarWaves, global_positio
     return [ρ1, ρ2, ρ3]
 end
 
-
 function is_analytical_solution(equation::Advection, scenario::PlanarWaves)
+    #TODO implement?
     true
 end
 
