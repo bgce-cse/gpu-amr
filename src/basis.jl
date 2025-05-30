@@ -125,9 +125,9 @@ function project_to_reference_basis(fun, basis::Basis, ndofs::Integer)
 
     # Loop once over every (i,j) pair in natural column-major order:
     for (row, idx) in enumerate(CartesianIndices((n, n)))
-        i, j          = Tuple(idx)       # unpack the CartesianIndex
-        x, y          = pts[i], pts[j]   # reference coords
-        M[row, :]     = fun(x, y)        # fill that row
+        i, j = Tuple(idx)       
+        x, y = pts[i], pts[j]   
+        M[row, :] = fun(x, y)        
     end
 
     return M
@@ -139,13 +139,14 @@ end#return order*order *3
 Return the mass-matrix for a `dimensions`-dimensional
 tensor-product basis built up from the 1d-basis `basis`.
 """
+#for the referece element the volume is multiplied afterwards
 function massmatrix(basis, dimensions)
-    # 1D mass matrix: diagonal of quadweights
+
     M1 = Diagonal(basis.quadweights)
-    # Tensor‐product to d dimensions
+
     M = M1
     for _ in 2:dimensions
-        M = LinearAlgebra.kron(M, M1)
+        M = kron(M, M1)
     end
     return M
 end
@@ -158,8 +159,18 @@ Multiplying this with flux-coefficients of shape
 `(dimensions * basissize_2d, ndofs)` returns the
 coefficients of the corresponding derivative.
 """
-function derivativematrix(basis)
-    zeros(1, basis.dimensions * 1)
+
+function derivativematrix(basis::Basis)
+    pts = basis.quadpoints
+    n = basis.order
+
+    D1 = [ lagrange_diff(pts, j, pts[i]) 
+           for i in 1:n, j in 1:n]
+
+    Dx = kron(I(n), D1)'   # size n^2 × n^2
+    Dy = kron(D1, I(n))'   # size n^2 × n^2
+    
+    hcat(Dx,Dy)
 end
 
 """
