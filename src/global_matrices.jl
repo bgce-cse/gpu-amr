@@ -34,13 +34,13 @@ Initialize GlobalMatrices for `basis`, `filter` and `dimensions`.
 
         # TODO: Implement
         project_dofs_to_face = Dict(f => face_projection_matrix(basis, f) for f in faces)
-        project_flux_to_face = Dict(f => ones(1,2) for f in faces)
-        project_dofs_from_face = Dict(f => ones(1,1) for f in faces)
+        project_flux_to_face = Dict(f => kron(ones(2,2),face_projection_matrix(basis, f)) for f in faces)
+        project_dofs_from_face = Dict(f => face_projection_matrix(basis, f)' for f in faces)
 
         # TODO: Implement
-        basissize_1d = 1
-        basissize_nd = 1
-        quadweights_nd = [1.0]
+        basissize_1d = basis.order
+        basissize_nd = basis.order
+        quadweights_nd = basis.quadweights
 
         reference_massmatrix_cell = massmatrix(basis, dimensions)
         reference_massmatrix_face = massmatrix(basis, dimensions - 1)

@@ -1,0 +1,19 @@
+simulation:
+  end_time: 1.0
+  grid_elements: 30
+  grid_size: 1.0
+  offset: [0.0, 0.0]
+
+
+solver:
+  order: 4
+  courant: 0.5
+  timeintegrator: SSPRK2
+
+equation:
+  equation: acoustic
+  scenario: gaussian_wave
+  
+output:
+  start: 0 #s
+  step: 0.1 #s

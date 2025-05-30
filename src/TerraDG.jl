@@ -125,6 +125,8 @@ function main(configfile::String)
         if timestep > 0
             time_start = time()
             dt = 1/(config.order^2+1) * config.cellsize[1] * config.courant * 1/grid.maxeigenval
+            print("dt = %g, order = %d, cellsize[1] = %g, courant = %g, maxeigenval = %g\n", dt, config.order, config.cellsize[1], config.courant, grid.maxeigenval)######
+
             # Only step up to either end or next plotting
             dt = min(dt, next_plotted-grid.time, config.end_time - grid.time)
             @assert dt > 0

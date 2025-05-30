@@ -189,6 +189,7 @@ end
 #TODO is there a way to include all files in equations/?
 include("equations/advection.jl")
 include("equations/sibson.jl")
+include("equations/acoustic.jl")
 
 """
     make_equation(config::Configuration)
@@ -199,8 +200,10 @@ function make_equation(config::Configuration)
     #TODO create list instead of a bunch of conditions
     if config.equation_name == "advection"
         return Advection()
-    elseif config.equation_name =="sibson"
+    elseif config.equation_name == "sibson"
         return Sibson()
+    elseif config.equation_name == "acoustic"
+        return Acoustic()
     else
         error(string("Unknown equation name: ", config.equation_name))
     end
@@ -217,6 +220,8 @@ function make_scenario(config::Configuration)
         return PlanarWaves()
     elseif config.scenario_name == "concentric_waves"
         return ConcentricWaves()
+    elseif config.scenario_name == "gaussian_wave"
+        return GaussianWave()
     else
         error(string("Unknown scenario name: ", scenario_name))
     end

@@ -53,7 +53,7 @@ function rusanov(eq, dofs, dofsneigh, flux, fluxneigh, dx, normalidx, normalsign
     second_term = 0.5 .* maxeigenval .* (dofs .- dofsneigh)
     
     numericalflux .= dx .* (first_term' .+ second_term)
- 
+
     return maxeigenval
 end
 
@@ -68,7 +68,7 @@ Projection matrices are stored in `globals`.
 function project_to_faces(globals, dofs, flux, dofsface, fluxface, face)
     
     dofsface .= globals.project_dofs_to_face[face] * dofs
-    fluxface .= globals.project_flux_to_face[face] * flux# TODO fix this 
+    fluxface .= globals.project_flux_to_face[face] * flux # TODO fix this 
    
 end
 
@@ -87,8 +87,9 @@ function evaluate_face_integral(eq, globals, buffers, cell, face, celldu)
     buffers.numericalflux .= 0
     maxeigenval = rusanov(eq, buffers.dofsface, buffers.dofsfaceneigh, buffers.fluxface, buffers.fluxfaceneigh, cell.size[1], normalidx, normalsign, buffers.numericalflux)
 
-    # TODO Modify celldu with update from face integral
-    celldu .-= buffers.numericalflux
+    # TODO Modify celldu with update from face integralù
+
+    celldu .-= globals.project_dofs_from_face[face] * (buffers.dofsface  - buffers.numericalflux)
 
     return maxeigenval
 
