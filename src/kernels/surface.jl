@@ -66,8 +66,8 @@ Result is stored in `dofsface` and `fluxface`.
 Projection matrices are stored in `globals`.
 """
 function project_to_faces(globals, dofs, flux, dofsface, fluxface, face)
-    dofsface .= dofs
-    fluxface .= flux
+    dofsface .= globals.project_dofs_to_face[face] * dofs
+    fluxface .= globals.project_flux_to_face[face] * flux
 end
 
 """
@@ -85,7 +85,7 @@ function evaluate_face_integral(eq, globals, buffers, cell, face, celldu)
     buffers.numericalflux .= 0
     maxeigenval = rusanov(eq, buffers.dofsface, buffers.dofsfaceneigh, buffers.fluxface, buffers.fluxfaceneigh, cell.size[1], normalidx, normalsign, buffers.numericalflux)
 
-    # TODO Modify celldu with update from face integral
+
     celldu .-= buffers.numericalflux
 
     return maxeigenval
