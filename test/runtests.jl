@@ -54,6 +54,7 @@ end
     end
 end
 
+
 @testset "Volume of 2D cells is correct" begin
     sizes = [
         [1.0, 1.0],
@@ -126,44 +127,13 @@ end
 end
 
 @testset "Integral of derivatives of 1D-Lagrange polynomials is correct" begin
-    Lvec = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-    order = 10
-    basis = TerraDG.Basis(order,1)
-    for j in eachindex(Lvec)
-        L = Lvec[j]
-        for i in 1:length(basis.quadpoints)
-            lhs = TerraDG.lagrange_1d(basis.quadpoints, i, L) - TerraDG.lagrange_1d(basis.quadpoints, i, 0)
-            rhs = sum(L*basis.quadweights .* [TerraDG.lagrange_diff(basis.quadpoints, i, L*basis.quadpoints[n]) for n in 1:length(basis.quadpoints)])
-            @test isapprox(lhs, rhs, atol=1e-14)
-        end
-    end
+    # TODO Implement
+    @test false
 end
 
-@testset "Integral of derivatives of 2D-Lagrange polynomials is correct" begin
-    Lvec = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-    order = 10
-    basis = TerraDG.Basis(order,2)
-    for L in Lvec
-        for i in 1:length(basis.quadpoints)
-            for j in 1:length(basis.quadpoints)
-
-                lhs = sum(basis.quadweights .* [
-                    (TerraDG.lagrange_1d(basis.quadpoints, i, L) * TerraDG.lagrange_1d(basis.quadpoints, j, basis.quadpoints[n])) - 
-                    (TerraDG.lagrange_1d(basis.quadpoints, i, 0) * TerraDG.lagrange_1d(basis.quadpoints, j, basis.quadpoints[n]))
-                    for n in 1:length(basis.quadpoints)
-                ])
-
-                rhs = sum([
-                    (L * basis.quadweights[n1]) * basis.quadweights[n2] * 
-                    TerraDG.lagrange_diff(basis.quadpoints, i, L * basis.quadpoints[n1]) * 
-                    TerraDG.lagrange_1d(basis.quadpoints, j, basis.quadpoints[n2])
-                    for n1 in 1:length(basis.quadpoints), n2 in 1:length(basis.quadpoints)
-                ])
-
-                @test isapprox(lhs, rhs, atol=1e-14)
-            end
-        end
-    end
+@testset "Integral of derivatives of 2D-Lagrange polynomials is also correct" begin
+    # TODO Implement
+    @test false
 end
 
 @testset "Derivative of const = 0" begin
@@ -184,6 +154,8 @@ end
     @test TerraDG.massmatrix(basis_order2, 2) == massmatrix_order2
 end
 
+# TODO: Enable for worksheet >2
+if false
 @testset "Projection/evaluation works for polynomials" begin
     ns = [1,2,3,4,5,6]
     funs = [
@@ -270,6 +242,7 @@ end
     end
 end
 
+
 @testset "Face projection matrix is correct" begin
     ns = [1,2,3,4,5,6]
     funs = [
@@ -288,6 +261,7 @@ end
             end
         end
     end
+end
 end
 
 end

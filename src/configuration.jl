@@ -20,8 +20,6 @@ struct Configuration
     physicalsize::Array{Float64,1}
     cellsize::Array{Float64,1}
 
-    offset::Array{Float64,1}
-
     function Configuration(configfile::String)
         config = YAML.load(open(configfile))
         equation_name = config["equation"]["equation"]
@@ -41,8 +39,6 @@ struct Configuration
         physicalsize = [physicalsize_1d, physicalsize_1d]
         cellsize = physicalsize ./ grid_elements
 
-        offset = config["simulation"]["offset"]
-
         new(
             equation_name,
             scenario_name,
@@ -56,8 +52,7 @@ struct Configuration
             plot_step,
             grid_elements,
             physicalsize,
-            cellsize,
-            offset
+            cellsize
         )
     end
 end
