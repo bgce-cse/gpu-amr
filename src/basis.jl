@@ -140,16 +140,20 @@ Return the mass-matrix for a `dimensions`-dimensional
 tensor-product basis built up from the 1d-basis `basis`.
 """
 #for the referece element the volume is multiplied afterwards
+# function massmatrix(basis, dimensions)
+#     M1 = Diagonal(basis.quadweights)
+
+#     M = M1
+#     for _ in 2:dimensions
+#         M = kron(M, M1)
+#     end
+#     return M
+# end
+
 function massmatrix(basis, dimensions)
-
-    M1 = Diagonal(basis.quadweights)
-
-    M = M1
-    for _ in 2:dimensions
-        M = kron(M, M1)
-    end
-    return M
+    ones(1,1)
 end
+
 
 """
     derivativematrix(basis)
