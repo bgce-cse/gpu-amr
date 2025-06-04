@@ -7,21 +7,26 @@ Evaluate the Lagrange interpolation polynomial defined over nodal `points` with 
 at point `x`.
 """
 function lagrange_1d(points, i, x)
-    1.0
+    return prod(x .- points[collect(1:end) .!=i]) / prod(points[i] .- points[collect(1:end) .!=i])
 end
 
 """
-    lagrange_diff(points, i, x)
+    lagrange_diff(points, j, x)
 
-Evaluate the derivative of the Lagrange interpolation polynomial defined over nodal `points` 
-with index `i` at point `x`.
+Evaluate the derivative of the Lagrange interpolation polynomial defined over nodal `points`
+with index `j` at point `x`.
 """
-function lagrange_diff(points, i, x)
-    0.0
+function lagrange_diff(points, j, x)
+    # using formula that avoids 1/(x-quadpoints) due to division by zero for L=1
+    sum([
+        (1 / (points[j] - points[i])) *
+        prod((x .- points[setdiff(1:end, (i, j))]) ./ (points[j] .- points[setdiff(1:end, (i, j))]))
+        for i in 1:length(points) if i != j
+    ])
 end
 
 """
-    get_quadpoints(n)
+    get_quadpoints(n)   
 
 Compute quadrature points and weights for Gaussian quadrature
 of order `n`.
@@ -63,13 +68,12 @@ struct Basis
     end
 end
 
-
 """
     Base.length(basis::Basis)
 
 Return number of points for `basis` in n-dimensions.
 """
-Base.length(basis::Basis) = 1
+Base.length(basis::Basis) = length(basis.quadpoints)^basis.dimensions
 
 """
     Base.size(basis::Basis)
@@ -77,9 +81,7 @@ Base.length(basis::Basis) = 1
 Return number of points for `basis` for each dimensions as tuple.
 """
 function Base.size(basis::Basis) 
-    ntuple(basis.dimensions) do x 
-       1
-    end
+    ntuple(_->length(basis.quadpoints),basis.dimensions)
 end
 
 """
@@ -88,7 +90,8 @@ end
 Return number of points for `basis` for dimensions `dim`.
 """
 function Base.size(basis::Basis, dim::Integer)
-    1
+    @boundscheck 1 <= dim <= basis.dimensions || throw(BoundsError(basis.dimensions, dim))
+    size(basis)[dim]
 end
 
 """
@@ -98,7 +101,11 @@ Evaluate the `basis` with coefficients
 `coeffs` at point `x`.
 """
 function evaluate_basis(basis::Basis, coeffs, x)
-    coeffs[1]
+
+    C = reshape(coeffs,size(basis,1),size(basis,2))
+    sum([C[i,j]*lagrange_1d(basis.quadpoints,i,x[1])*lagrange_1d(basis.quadpoints,j,x[2]) for i in 1:size(basis,1) for j in 1:size(basis,2)])
+    
+
 end
 
 """
@@ -110,10 +117,21 @@ The function `fun(x,y)`  takes in the ``x, y``-coordinates
 and returns a vector with size `ndofs`.
 The corresponding coefficients are returned.
 """
-function project_to_reference_basis(fun, basis::Basis, ndofs)
-    reshape(fun(0.5, 0.5), (1,ndofs))
-end
+function project_to_reference_basis(fun, basis::Basis, ndofs::Integer)
+    n   = basis.order
+    pts = basis.quadpoints
 
+    M = zeros(n*n, ndofs)
+
+    # Loop once over every (i,j) pair in natural column-major order:
+    for (row, idx) in enumerate(CartesianIndices((n, n)))
+        i, j = Tuple(idx)       
+        x, y = pts[i], pts[j]   
+        M[row, :] = fun(x, y)        
+    end
+
+    return M
+end#return order*order *3
 
 """
     massmatrix(basis, dimensions)
@@ -121,9 +139,21 @@ end
 Return the mass-matrix for a `dimensions`-dimensional
 tensor-product basis built up from the 1d-basis `basis`.
 """
+#for the referece element the volume is multiplied afterwards
+# function massmatrix(basis, dimensions)
+#     M1 = Diagonal(basis.quadweights)
+
+#     M = M1
+#     for _ in 2:dimensions
+#         M = kron(M, M1)
+#     end
+#     return M
+# end
+
 function massmatrix(basis, dimensions)
     ones(1,1)
 end
+
 
 """
     derivativematrix(basis)
@@ -133,10 +163,19 @@ Multiplying this with flux-coefficients of shape
 `(dimensions * basissize_2d, ndofs)` returns the
 coefficients of the corresponding derivative.
 """
-function derivativematrix(basis)
-    zeros(1, basis.dimensions * 1)
-end
 
+function derivativematrix(basis::Basis)
+    pts = basis.quadpoints
+    n = basis.order
+
+    D1 = [ lagrange_diff(pts, j, pts[i]) 
+           for i in 1:n, j in 1:n]
+
+    Dx = kron(I(n), D1)'   # size n^2 × n^2
+    Dy = kron(D1, I(n))'   # size n^2 × n^2
+    
+    hcat(Dx,Dy)
+end
 
 """
     get_face_quadpoints(basis::Basis, face)
@@ -144,7 +183,21 @@ end
 Return the quadrature points at the face `face` for basis `basis`.
 """
 function get_face_quadpoints(basis::Basis, face)
-    ones(1.0, 1.0)
+    if face == left
+        # x = 0, y varies
+        return (0.0, basis.quadpoints)
+    elseif face == right
+        # x = 1, y varies
+        return (1.0, basis.quadpoints)
+    elseif face == bottom
+        # y = 0, x varies
+        return (basis.quadpoints, 0.0)
+    elseif face == top
+        # y = 1, x varies
+        return (basis.quadpoints, 1.0)
+    else
+        error("Unknown face")
+    end
 end
 
 """
@@ -155,8 +208,52 @@ Multiplying it with coefficient vector for the right basis
 returns the coefficients of the solution evaluated at the 
 quadrature nodes of the face.
 """
+# function face_projection_matrix(basis, face)
+#     n = length(basis.quadpoints)
+#     n2d = n^2
+    
+#     # Create face projection matrix
+#     P = zeros(n, n2d)
+    
+#     # Get quadrature points on the face
+#     face_points = get_face_quadpoints(basis, face)
+
+
+    
+#     # Fill the projection matrix
+#     for i in 1:n  # Row index (face point index)
+#         x, y = face_points[i]
+        
+#         for j in 1:n  # Column indices (volume basis functions)
+#             for k in 1:n
+#                 idx = (k-1)*n + j  # Linear index for 2D basis
+                
+#                 # Evaluate basis function at face point
+#                 if face == left || face == right
+#                     # For left/right faces, y varies along the face
+#                     P[i, idx] = lagrange_1d(basis.quadpoints, j, x) * 
+#                                 lagrange_1d(basis.quadpoints, k, y)
+#                 else  # top or bottom
+#                     # For top/bottom faces, x varies along the face
+#                     P[i, idx] = lagrange_1d(basis.quadpoints, j, x) * 
+#                                 lagrange_1d(basis.quadpoints, k, y)
+#                 end
+#             end
+#         end
+#     end
+    
+#     return P
+# end
+
 function face_projection_matrix(basis, face)
-    ones(1,1)
+    face_quad = get_face_quadpoints(basis,face)
+    if face == left || face == right
+        phi = [lagrange_1d(face_quad[2],j,face_quad[1]) for j in 1:length(basis.quadpoints)]
+    else 
+        phi = [lagrange_1d(face_quad[1],j,face_quad[2]) for j in 1:length(basis.quadpoints)]
+    end
+    LinearAlgebra.kron(LinearAlgebra.I(basis.order),phi)'
+
 end
 
 """

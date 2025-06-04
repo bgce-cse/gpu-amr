@@ -1,17 +1,17 @@
 simulation:
   end_time: 1.0
-  grid_elements: 100
+  grid_elements: 50
   grid_size: 1.0
-  offset: [0.0, 0.0]
+  offset: [-0.5, -0.5]
 
 solver:
-  order: 1
+  order: 5
   courant: 0.5
   timeintegrator: Euler
 
 equation:
-  equation: advection
-  scenario: planar_waves
+  equation: sibson
+  scenario: concentric_waves
 
 output:
   start: 0  #s
