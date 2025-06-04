@@ -40,7 +40,8 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
     for i in eachindex(grid.cells)
         @views cell = grid.cells[i]
         @views data = dofs[:,:, cell.dataidx]
-        @views flux = grid.flux[:,:,cell.dataidx]        
+        @views flux = grid.flux[:,:,cell.dataidx]
+
         evaluate_flux(eq, data, flux)
 
         # Volume matrix is zero for FV/order=1
@@ -152,12 +153,6 @@ function main(configfile::String)
             @info "Writing output" grid.time
             plot(plotter)
             next_plotted = grid.time + config.plot_step
-
-            #TODO delete if want to solve sibson for time
-            if config.equation_name == "sibson" 
-                break
-            end
-
         end
         timestep += 1
     end
@@ -166,6 +161,5 @@ function main(configfile::String)
         evaluate_error(eq, scenario, grid, grid.time)
     end
 end
-
 
 end
