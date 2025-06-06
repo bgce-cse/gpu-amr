@@ -7,7 +7,7 @@
 #include <ranges>
 #include <type_traits>
 
-namespace containers::vector_operations
+namespace amr::containers::vector_operations
 {
 
 namespace detail
@@ -169,6 +169,6 @@ constexpr auto operator_impl(T1&& lhs, T2&& rhs, auto&& binary_op) noexcept
     return ret;
 }
 
-} // namespace containers::vector_operations
+} // namespace amr::containers::vector_operations
 
 #endif // AMR_INCLUDED_CONTAINER_OPERATIONS
