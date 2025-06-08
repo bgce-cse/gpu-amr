@@ -7,6 +7,7 @@
 #include "utility/error_handling.hpp"
 #include <algorithm>
 #include <bitset>
+#include <climits>
 #include <concepts>
 #include <cstdint>
 #include <type_traits>
@@ -25,7 +26,7 @@ public:
     static constexpr auto s_depth           = Depth;
     static constexpr auto s_generation_bits = utility::cx_functions::bits_for(s_fanout);
     static constexpr auto s_hierarchy_bits  = s_generation_bits * s_depth;
-    static_assert(s_hierarchy_bits <= sizeof(mask_t) * 8);
+    static_assert(s_hierarchy_bits <= sizeof(mask_t) * CHAR_BIT);
     using id_t = std::bitset<s_hierarchy_bits>;
 
     static constexpr std::array<mask_t, Depth + 1> s_generation_masks = []() constexpr
