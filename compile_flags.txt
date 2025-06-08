@@ -1,3 +1,4 @@
 -I./include/utility
+-I./include/morton
 
 -std=c++2b
