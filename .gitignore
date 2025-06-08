@@ -34,7 +34,19 @@ out/
 *.tmp
 
 # Profile
-perf.data.*
+###### Valgrind
+vgcore.*
+*.vglog
+callgrind.out.*
+cachegrind.out.*
+massif.out.*
+vgcore.*
+valgrind.log*
+
+###### perf
+perf.data*
+perf.report
+perf.script
 
 # Defualt Private
 .pdf
