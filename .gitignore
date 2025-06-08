@@ -1,0 +1,11 @@
+# Ignore Visual Studio Code settings
+.vscode/
+
+# Ignore build artifacts
+build/
+cmake-build-*/  # For CMake builds
+*.o             # Object files
+*.a             # Static libraries
+*.so            # Shared libraries
+*.exe           # Executables
+*.out           # Output files
