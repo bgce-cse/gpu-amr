@@ -1,6 +1,7 @@
 #ifndef INCLUDED_CONSTEXPR_FUNNCTIONS
 #define INCLUDED_CONSTEXPR_FUNNCTIONS
 
+#include "utility_concepts.hpp"
 #include <concepts>
 #include <type_traits>
 
@@ -8,7 +9,7 @@ namespace utility::cx_functions
 {
 
 // Do not use this for anything serious
-template <typename T>
+template <concepts::Arithmetic T>
 constexpr auto pow(T base, T exp) noexcept -> T
 {
     T result{ 1 };
@@ -19,20 +20,12 @@ constexpr auto pow(T base, T exp) noexcept -> T
     return result;
 }
 
-template <std::integral auto Num>
-    requires std::is_unsigned_v<decltype(Num)>
 [[nodiscard]]
-constexpr auto log2() noexcept -> decltype(Num)
+consteval auto bits_for(std::unsigned_integral auto const n) noexcept -> decltype(n)
 {
-    constexpr auto is_power_of_two = [] [[nodiscard]]
-                                     (auto num) constexpr noexcept
-    {
-        return num > 0 && (num & (num - 1)) == 0;
-    };
-    static_assert(is_power_of_two(Num));
-    decltype(Num) result = 0;
-    decltype(Num) n      = Num;
-    while (n >>= 1)
+    using T  = std::remove_cvref_t<decltype(n)>;
+    T result = 1;
+    while (pow(T{ 2 }, result) < n)
     {
         ++result;
     }

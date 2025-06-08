@@ -1,7 +1,7 @@
 #ifndef AMR_INCLUDED_STATIC_VECTOR
 #define AMR_INCLUDED_STATIC_VECTOR
 
-#include "casts.hpp"
+#include "utility/casts.hpp"
 #include <array>
 #include <concepts>
 #include <iterator>
@@ -23,8 +23,8 @@ struct static_vector
     // TODO: Alignment
     static constexpr auto s_size = N;
 
-    static_assert(std::is_trivially_copyable_v<static_vector>);
-    static_assert(std::is_standard_layout_v<static_vector>);
+    static_assert(std::is_trivially_copyable_v<Value_Type>);
+    static_assert(std::is_standard_layout_v<Value_Type>);
 
     [[nodiscard]]
     constexpr static auto size() noexcept -> size_type

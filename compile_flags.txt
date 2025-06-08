@@ -1,3 +1,7 @@
+-I./include/
+-I./include/allocators/
+-I./include/containers/
+-I./include/ndtree/ndtree/
 -I./include/utility
 
 -std=c++2b

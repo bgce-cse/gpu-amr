@@ -1,15 +1,15 @@
-#ifndef GPU_ARM_NDT_CONCEPTS
-#define GPU_ARM_NDT_CONCEPTS
+#ifndef AMR_INCLUDED_NDCONCEPTS
+#define AMR_INCLUDED_NDCONCEPTS
 
 #include <iterator>
 #include <optional>
 #include <type_traits>
 
-namespace ndt_concepts
+namespace amr::tree::concepts
 {
 
 template <typename T>
-concept point = requires(T t) {
+concept Point = requires(T t) {
     typename T::value_type;
     T::s_dimension;
     t[std::declval<int>()];
@@ -18,14 +18,14 @@ concept point = requires(T t) {
 };
 
 template <typename T>
-concept boundary = requires(T t) {
+concept Boundary = requires(T t) {
     t.min();
     t.max();
     t.mid(0);
 };
 
 template <typename T>
-concept cell = requires(T t) {
+concept Cell = requires(T t) {
     typename T::value_type;
     T::s_dimension;
     { t.position() } -> std::convertible_to<typename T::position_t>;
@@ -33,6 +33,6 @@ concept cell = requires(T t) {
     { merge(std::array{ t, t }) } -> std::same_as<std::optional<T>>;
 } && std::is_destructible_v<T>;
 
-} // namespace ndt_concepts
+} // namespace amr::tree::concepts
 
-#endif // GPU_ARM_NDT_CONCEPTS
+#endif // AMR_INCLUDED_NDT_CONCEPTS

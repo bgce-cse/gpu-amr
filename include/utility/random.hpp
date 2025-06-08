@@ -145,10 +145,10 @@ private:
     }
 
 public:
-    template <std::floating_point F>
+    template <utility::concepts::Arithmetic T>
     inline static auto seed(unsigned int seed_ = std::random_device{}()) noexcept -> void
     {
-        static_instance<F>().seed_engine(seed_);
+        static_instance<T>().seed_engine(seed_);
     }
 
     template <std::floating_point F>

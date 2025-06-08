@@ -27,7 +27,6 @@ class free_list_buffer_allocator
     // TODO: Maybe worry about fundamental and extended alignments
     static_assert(Block_Size >= decltype(Block_Size){ 1 });
     static_assert(utils::is_valid_alignment(Alignment));
-    static_assert(Alignment >= Block_Size);
 
 public:
     using size_type       = decltype(Block_Size);
@@ -42,9 +41,10 @@ public:
     using release_list_t = std::vector<std::pair<pointer, size_type>>;
 
 private:
-    static constexpr auto s_block_size           = Block_Size;
-    static constexpr auto s_alignment            = Alignment;
-    static constexpr auto s_block_alloc_size     = s_alignment;
+    static constexpr auto s_block_size = Block_Size;
+    static constexpr auto s_alignment  = Alignment;
+    static constexpr auto s_block_alloc_size =
+        (s_block_size + s_alignment - 1) / s_alignment * s_alignment;
     static constexpr auto s_default_initial_size = size_type{ 4 };
     static constexpr auto s_growth_factor        = 2.0;
 
