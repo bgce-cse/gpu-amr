@@ -1,17 +1,11 @@
 #ifndef AMR_INCLUDED_NDHIERARCHY
 #define AMR_INCLUDED_NDHIERARCHY
 
-#include "allocators/allocator_concepts.hpp"
-#include "allocators/free_list_buffer_allocator.hpp"
-#include "ndtree/ndutils.hpp"
-#include "utility/error_handling.hpp"
-#include <algorithm>
+#include "utility/constexpr_functions.hpp"
 #include <bitset>
 #include <climits>
 #include <concepts>
-#include <cstdint>
-#include <type_traits>
-#include <vector>
+#include <iostream>
 
 namespace amr::ndt::hierarchy
 {
@@ -41,27 +35,64 @@ public:
         return masks;
     }();
 
+    static constexpr std::array<mask_t, Depth> s_predecessor_masks = []() constexpr
+    {
+        std::array<mask_t, Depth> masks{};
+        for (auto i = 1; i != Depth; ++i)
+        {
+            masks[i] = masks[i - 1] ^ s_generation_masks[i];
+        }
+        return masks;
+    }();
+
 private:
+    constexpr hierarchy_id(depth_t generation, id_t id) noexcept
+        : m_generation{ generation }
+        , m_id{ id }
+    {
+        assert(m_generation < s_depth);
+    }
+
     constexpr hierarchy_id(depth_t generation, id_t id, mask_t fanout_id) noexcept
         : m_generation{ generation }
-        , m_id{ id.to_ullong() +
+        , m_id{ id.to_ullong() |
                 (fanout_id <<= ((s_depth - m_generation) * s_generation_bits)) }
     {
         assert(m_generation < s_depth);
     }
 
 public:
-    constexpr hierarchy_id(hierarchy_id parent_id, mask_t fanout_id) noexcept
-        : m_generation{ parent_id.generation() + 1 }
-        , m_id{ parent_id.id().to_ullong() +
-                (fanout_id <<= ((s_depth - m_generation) * s_generation_bits)) }
-    {
-        assert(m_generation < s_depth);
-    }
-
+    [[nodiscard]]
     static constexpr auto zeroth_generation() noexcept -> hierarchy_id
     {
         return hierarchy_id({}, {}, {});
+    }
+
+    [[nodiscard]]
+    static constexpr auto parent_of(hierarchy_id const& id) noexcept -> hierarchy_id
+    {
+        assert(id.m_generation > 0);
+        const auto p = hierarchy_id(
+            id.m_generation - 1, id.m_id & s_predecessor_masks[id.m_generation - 1]
+        );
+        std::cout << "Parent of " << id.m_id.to_string() << " is " << p.m_id.to_string()
+                  << '\n';
+        return p;
+    }
+
+    [[nodiscard]]
+    static constexpr auto child_of(const hierarchy_id id, const mask_t fanout_id) noexcept
+        -> hierarchy_id
+    {
+        assert(id.m_generation < s_depth);
+        const auto p = hierarchy_id{
+            id.m_generation + 1,
+            id.m_id.to_ullong() ^
+                (fanout_id << ((s_depth - (id.m_generation + 1)) * s_generation_bits))
+        };
+        std::cout << id.m_generation << ", Child " << fanout_id << " of "
+                  << id.m_id.to_string() << " is " << p.m_id.to_string() << '\n';
+        return p;
     }
 
     [[nodiscard]]
@@ -88,89 +119,6 @@ public:
 private:
     depth_t m_generation;
     id_t    m_id;
-};
-
-template <
-    typename T,
-    std::unsigned_integral auto Dim,
-    std::unsigned_integral auto Fanout,
-    std::unsigned_integral auto Max_Depth,
-    std::unsigned_integral      Index_Type = std::uint32_t>
-class ndhierarchy
-{
-    static_assert(Dim > 1);
-    static_assert(Fanout > 1);
-
-public:
-    using index_t       = Index_Type;
-    using size_type     = index_t;
-    using depth_t       = decltype(Max_Depth);
-    using value_type    = T;
-    using pointer       = value_type*;
-    using const_pointer = value_type const*;
-
-    static constexpr auto s_dim       = Dim;
-    static constexpr auto s_max_depth = Max_Depth;
-    static constexpr auto s_1d_fanout = Fanout;
-    static constexpr auto s_nd_fanout = utility::cx_functions::pow(s_1d_fanout, s_dim);
-    using hierarchy_id_t              = hierarchy_id<s_nd_fanout, s_max_depth>;
-    using mask_t                      = typename hierarchy_id_t::mask_t;
-
-    struct block_pointer
-    {
-        hierarchy_id_t id;
-        pointer        ptr;
-
-        auto operator<(block_pointer const& other) const -> bool
-        {
-            if (id.id().to_ullong() < other.id.id().to_ullong())
-                return true;
-            else if (id.id().to_ullong() > other.id.id().to_ullong())
-                return false;
-            else
-                return id.generation() < other.id.generation();
-        }
-    };
-
-    static constexpr auto s_block_size = sizeof(block_pointer);
-    using allocator_t =
-        allocator::free_list_buffer_allocator<s_block_size, alignof(block_pointer)>;
-    using container_t = std::vector<block_pointer>;
-
-public:
-    ndhierarchy() noexcept
-        : m_allocator()
-        , m_blocks()
-    {
-        auto  p    = (pointer)m_allocator.allocate_one();
-        auto* root = new (p) block_pointer(hierarchy_id_t::zeroth_generation(), p);
-        m_blocks.push_back(*root);
-    }
-
-    inline auto fragment(hierarchy_id_t const& parent_id, const mask_t fanout_id)
-        -> block_pointer
-    {
-        auto  p     = (pointer)m_allocator.allocate_one();
-        auto* block = new (p) block_pointer(hierarchy_id_t{ parent_id, fanout_id }, p);
-        m_blocks.push_back(*block);
-        return *block;
-    }
-
-    inline auto remove(hierarchy_id_t const& h) noexcept
-    {
-        auto parent =
-            std::ranges::remove_if(m_blocks, [h](auto const& e) { return e.id == h; });
-    }
-
-    [[nodiscard]]
-    inline auto members() const noexcept -> auto const&
-    {
-        return m_blocks;
-    }
-
-private:
-    allocator_t m_allocator;
-    container_t m_blocks;
 };
 
 } // namespace amr::ndt::hierarchy
