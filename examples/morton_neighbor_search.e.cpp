@@ -6,6 +6,18 @@
 
 int main() {
     // Set up dummy tree
+    // interior value refers to level of refinement
+    // always use bottom left cooridnates
+    //    4+---+---+---+---+
+    //     |       | 2 | 2 |
+    //     +   1   +---+---+
+    //     |       | 2 | 2 |
+    //    2+---+---+---+---+
+    //     |       |       |
+    //     +   1   +   1   +
+    //     |       |       |
+    //    0+---+---+---+---+
+    //     0       2       4
     uint32_t x, y;
     int temp_level; // Use an intermediate variable to read the input
     uint8_t level;
