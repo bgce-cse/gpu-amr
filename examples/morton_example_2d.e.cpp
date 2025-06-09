@@ -1,17 +1,23 @@
 #include <morton/morton.hpp>
 #include <iostream>
+#include <limits> // For debugging purposes
 
 int main() {
     // Take user input for 2D coordinates
     uint32_t x, y;
+    int temp_level; // Use an intermediate variable to read the input
     uint8_t level;
+
     std::cout << "Enter x coordinate: ";
     std::cin >> x;
     std::cout << "Enter y coordinate: ";
     std::cin >> y;
     std::cout << "Enter refinement level: ";
-    std::cin >> level;
-    std::cout << "Input coordinates: (" << x << ", " << y << ")" <<" level : " << level << std::endl;
+    std::cin >> temp_level;
+
+    // Explicitly cast the input to uint8_t
+    level = static_cast<uint8_t>(temp_level);
+    std::cout << "Input coordinates: (" << x << ", " << y << ") level: " << static_cast<int>(level) << std::endl;
 
     // Encode 2D coordinates into a Morton code
     uint64_t morton_code = morton::encode2D(x, y, level);
@@ -19,8 +25,8 @@ int main() {
 
     // Decode the Morton code back into coordinates
     auto decoded_id = morton::decode2D(morton_code);
-    std::cout << "Decoded 2D coordinates: (" << std::get<0>(decoded_id) << ", " << std::get<1>(decoded_id) << ")" << ", level : " << std::get<2>(decoded_id) << std::endl;
-
+    std::cout << "Decoded 2D coordinates: (" << std::get<0>(decoded_id) << ", " << std::get<1>(decoded_id) << ")"
+              << ", level: " << static_cast<int>(std::get<2>(decoded_id)) << std::endl;
 
     return 0;
 }
