@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.30)
 
-project(GPU_AMR CXX VERSION 0.1)
+project(GPU_AMR VERSION 0.1)
 
 # Set C++ Standard
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-# Set verbose output
 set(CMAKE_VERBOSE_MAKEFILE ON)
+set(CMAKE_BUILD_PARALLEL_LEVEL 8)
 
 # Build type configurations
 if(NOT CMAKE_BUILD_TYPE)
@@ -64,6 +64,9 @@ set(CXX_DEBUG_INFO
 set(DEBUG_CXX_FLAGS
 	-ffinite-math-only
 	-fmax-errors=15
+	-fno-eliminate-unused-debug-symbols
+	-fno-inline
+	-fno-default-inline
 	-march=native
 	-mavx
 	-O0
@@ -106,14 +109,12 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
       "${CXX_WARNINGS}"
       "${CXX_DIAGNOSTICS}"
   )
-  set(OUT_TAIL_DIR "debug")
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
   set(CXX_FLAGS
       "${RELEASE_CXX_FLAGS}"
       "${CXX_WARNINGS}"
       "${CXX_DIAGNOSTICS}"
   )
-  set(OUT_TAIL_DIR "profile")
 elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
   set(CXX_FLAGS
       "${REL_DEB_INFO_CXX_FLAGS}"
@@ -133,24 +134,10 @@ if(ENABLE_SANITIZERS)
     list(APPEND LINK_FLAGS ${SANITIZER_FLAGS})
 endif()
 
-file(GLOB files src/*.cpp)
-add_executable(gpu_amr ${files})
-
 # Output directories
+set(OUT_TAIL_DIR ${CMAKE_BUILD_TYPE})
 set(OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/${OUT_TAIL_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
-
-# Optional features
-if (NOT DEFINED ENABLE_SANITIZERS AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(default_enable_sanitizers ON)
-else()
-    set(default_enable_sanitizers OFF)
-endif()
-
-if(ENABLE_SANITIZERS)
-    list(APPEND CXX_FLAGS ${SANITIZER_FLAGS})
-    list(APPEND LINK_FLAGS ${SANITIZER_FLAGS})
-endif()
 
 set(EXAMPLES_DIR "./")
 find_package(TBB REQUIRED)
@@ -160,6 +147,7 @@ file(GLOB EXAMPLE_FILES "${EXAMPLES_DIR}/*.e.cpp")
 foreach(EXAMPLE_FILE ${EXAMPLE_FILES})
     get_filename_component(TARGET_NAME ${EXAMPLE_FILE} NAME_WE)
     add_executable(${TARGET_NAME} ${EXAMPLE_FILE})
+    target_include_directories(${TARGET_NAME} PUBLIC ../include ../lib/)
     target_compile_options(${TARGET_NAME} PRIVATE ${CXX_FLAGS})
     target_link_options(${TARGET_NAME} PRIVATE ${LINK_FLAGS})
     target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb)
