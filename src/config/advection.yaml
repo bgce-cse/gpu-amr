@@ -1,11 +1,11 @@
 simulation:
   end_time: 1.0
-  grid_elements: 100
+  grid_elements: 20
   grid_size: 1.0
   offset: [0.0, 0.0]
 
 solver:
-  order: 1
+  order: 2
   courant: 0.5
   timeintegrator: Euler
 

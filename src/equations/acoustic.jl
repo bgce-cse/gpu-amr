@@ -2,7 +2,7 @@ struct Acoustic <: Equation end
 @declare_dofs Acoustic [:u, :v, :pressure, :rho, :K]
 struct GaussianWave <: Scenario end
 
-function get_initial_values(eq::Acoustic, scenario::GaussianWave, global_position, t=0.0)
+function get_initial_values(eq::Acoustic, scenario::GaussianWave, global_position; t=0.0)
     t = t
     x, y = global_position
     

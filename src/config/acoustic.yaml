@@ -1,12 +1,12 @@
 simulation:
-  end_time: 1.0
+  end_time: 3
   grid_elements: 30
   grid_size: 1.0
   offset: [0.0, 0.0]
 
 
 solver:
-  order: 4
+  order: 2
   courant: 0.5
   timeintegrator: SSPRK2
 

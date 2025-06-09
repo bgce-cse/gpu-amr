@@ -243,14 +243,16 @@ quadrature nodes of the face.
 
 function face_projection_matrix(basis, face)
     face_quad = get_face_quadpoints(basis,face)
+    n = basis.order
     if face == left || face == right
         phi = [lagrange_1d(face_quad[2],j,face_quad[1]) for j in 1:length(basis.quadpoints)]
     else 
         phi = [lagrange_1d(face_quad[1],j,face_quad[2]) for j in 1:length(basis.quadpoints)]
     end
-    LinearAlgebra.kron(LinearAlgebra.I(basis.order),phi)'
+    LinearAlgebra.kron(I(n),phi)'
 
 end
+
 
 """
     evaluate_m_to_n_vandermonde_basis(basis) 
