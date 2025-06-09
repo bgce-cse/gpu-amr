@@ -8,6 +8,7 @@
 
 constexpr uint32_t MAX_COORD = (1u << 29); // 2^29
 constexpr uint8_t MAX_LEVEL = 64;
+constexpr uint8_t MAX_DEPTH = 8;
 
 
 namespace morton
@@ -59,8 +60,34 @@ std::tuple<uint32_t, uint32_t, uint32_t, uint8_t> decode3D(uint64_t id)
     );
 }
 
-// Get parent code at one level up
-uint64_t parent(uint64_t id, int level);
+
+uint64_t getParent2D(uint64_t morton) {
+    
+    auto [x_fine, y_fine, level] = morton::decode2D(morton);
+    assert(level > 0); // root has no parent
+    // Shift one level coarser
+
+    x_fine &= ~1;
+    y_fine &= ~1;
+
+    uint64_t parent_morton = morton::encode2D(x_fine, y_fine, level -1);
+    return parent_morton;
+}
+
+uint64_t getParent3D(uint64_t morton) {
+    
+    auto [x_fine, y_fine,z_fine, level] = morton::decode3D(morton);
+    assert(level > 0); // root has no parent
+    // Shift one level coarser
+
+    x_fine &= ~1;
+    y_fine &= ~1;
+    z_fine &= ~1;
+
+    uint64_t parent_morton = morton::encode3D(x_fine, y_fine,z_fine, level -1);
+    return parent_morton;
+}
+
 
 // Get neighbor Morton IDs (only direct neighbors)
 std::vector<uint64_t> neighbors2D(uint64_t id, int level);

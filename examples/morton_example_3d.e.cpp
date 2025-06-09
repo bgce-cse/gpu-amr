@@ -28,5 +28,27 @@ int main() {
               << std::get<1>(decoded_coords) << ", " << std::get<2>(decoded_coords) << "), level: "
               << static_cast<int>(std::get<3>(decoded_coords)) << std::endl;
 
+    
+              // Find parent Morton code
+    std::cout << "Find parent:" << std::endl;
+    std::cout << "Enter x coordinate: ";
+    std::cin >> x;
+    std::cout << "Enter y coordinate: ";
+    std::cin >> y;
+    std::cout << "Enter z coordinate: ";
+    std::cin >> z;
+    std::cout << "Enter refinement level: ";
+    std::cin >> temp_level;
+
+    // Explicitly cast the input to uint8_t
+    level = static_cast<uint8_t>(temp_level);
+    uint64_t morton_code_child = morton::encode3D(x, y, z, level);
+    uint64_t morton_parent = morton::getParent3D(morton_code_child);
+    auto decoded_parent_coords = morton::decode3D(morton_parent);
+    std::cout << "Decoded parent 3D coordinates: (" << std::get<0>(decoded_parent_coords) << ", "
+              << std::get<1>(decoded_parent_coords) << ", " << std::get<2>(decoded_parent_coords) << "), level: "
+              << static_cast<int>(std::get<3>(decoded_parent_coords)) << std::endl;
+
+
     return 0;
 }
