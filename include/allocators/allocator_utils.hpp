@@ -1,5 +1,5 @@
-#ifndef AMR_INCLUDED_AMR_ALLOCATOR_UTILS
-#define AMR_INCLUDED_AMR_ALLOCATOR_UTILS
+#ifndef AMR_INCLUDED_ALLOCATOR_UTILS
+#define AMR_INCLUDED_ALLOCATOR_UTILS
 
 #include <cassert>
 #include <concepts>
@@ -42,4 +42,4 @@ static auto fill_buffer(
 
 } // namespace amr::allocator::utils
 
-#endif // AMR_INCLUDED_AMR_ALLOCATOR_UTILS
+#endif // AMR_INCLUDED_ALLOCATOR_UTILS
