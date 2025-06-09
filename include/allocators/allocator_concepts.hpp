@@ -1,4 +1,5 @@
-#pragma once
+#ifndef AMR_INCLUDED_ALLOCATOR_CONCEPTS
+#define AMR_INCLUDED_ALLOCATOR_CONCEPTS
 
 #include <concepts>
 
@@ -23,3 +24,5 @@ concept BufferAllocator = requires(T t) {
 };
 
 } // namespace amr::allocator::concepts
+
+#endif // AMR_INCLUDED_ALLOCATOR_CONCEPTS
