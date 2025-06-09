@@ -85,10 +85,12 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
 
             @views cureigenval = evaluate_face_integral(eq, globals, buffers_face, cell, faces[i], du[:,:,cell.dataidx])
             maxeigenval = max(maxeigenval, cureigenval)
+
         end
         @views du[:,:,cell.dataidx] = inv_massmatrix * @views du[:,:,cell.dataidx] #
     end
     grid.maxeigenval = maxeigenval
+    
 end
 
 """
@@ -125,7 +127,8 @@ function main(configfile::String)
         if timestep > 0
             time_start = time()
             dt = 1/(config.order^2+1) * config.cellsize[1] * config.courant * 1/grid.maxeigenval
-            print("dt = %g, order = %d, cellsize[1] = %g, courant = %g, maxeigenval = %g\n", dt, config.order, config.cellsize[1], config.courant, grid.maxeigenval)######
+
+            #println("dt = $(dt), order = $(config.order), cellsize[1] = $(config.cellsize[1]), courant = $(config.courant), maxeigenval = $(grid.maxeigenval)")
 
             # Only step up to either end or next plotting
             dt = min(dt, next_plotted-grid.time, config.end_time - grid.time)
@@ -146,6 +149,7 @@ function main(configfile::String)
                 for normalidx=1:2
                     cureigenval = max_eigenval(eq, celldata, normalidx)
                     grid.maxeigenval = max(grid.maxeigenval, cureigenval)
+
                 end
             end
         end

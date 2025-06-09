@@ -46,14 +46,28 @@ function rusanov(eq, dofs, dofsneigh, flux, fluxneigh, dx, normalidx, normalsign
     maxeigenval_neigh = max_eigenval(eq, dofsneigh, normalidx)
     maxeigenval = max(maxeigenval_center, maxeigenval_neigh)
     
-    #where does normalisgn go (first/second term)?
-    #where does dx go?
+    basissize_1d = size(dofs, 1) 
 
-    first_term = 0.5 .* normalsign .* (flux[normalidx, :] .+ fluxneigh[normalidx, :])
+    local_flux_normal_component = nothing
+    local_fluxneigh_normal_component = nothing
+
+    # Extract the correct flux components based on normalidx
+    # Your `evaluate_flux` stacks fx and fy, so `flux` has Fx components first, then Fy components.
+    if normalidx == 1 # x-direction normal, use Fx components
+        local_flux_normal_component = flux[1:basissize_1d, :]
+        local_fluxneigh_normal_component = fluxneigh[1:basissize_1d, :]
+    elseif normalidx == 2 # y-direction normal, use Fy components
+        local_flux_normal_component = flux[basissize_1d+1:end, :]
+        local_fluxneigh_normal_component = fluxneigh[basissize_1d+1:end, :]
+    else
+        error("Invalid normalidx: $normalidx. Expected 1 or 2 for 2D simulation.")
+    end
+
+    first_term = 0.5 .* normalsign .* (local_flux_normal_component .+ local_fluxneigh_normal_component)
     second_term = 0.5 .* maxeigenval .* (dofs .- dofsneigh)
     
-    numericalflux .= dx .* (first_term' .+ second_term)
-
+    numericalflux .= dx .* (first_term .+ second_term)
+ 
     return maxeigenval
 end
 
@@ -68,7 +82,7 @@ Projection matrices are stored in `globals`.
 function project_to_faces(globals, dofs, flux, dofsface, fluxface, face)
     
     dofsface .= globals.project_dofs_to_face[face] * dofs
-    fluxface .= globals.project_flux_to_face[face] * flux # TODO fix this 
+    fluxface .= globals.project_flux_to_face[face] * flux
    
 end
 
@@ -87,9 +101,8 @@ function evaluate_face_integral(eq, globals, buffers, cell, face, celldu)
     buffers.numericalflux .= 0
     maxeigenval = rusanov(eq, buffers.dofsface, buffers.dofsfaceneigh, buffers.fluxface, buffers.fluxfaceneigh, cell.size[1], normalidx, normalsign, buffers.numericalflux)
 
-    # TODO Modify celldu with update from face integralù
 
-    celldu .-= globals.project_dofs_from_face[face] * (buffers.dofsface  - buffers.numericalflux)
+    celldu .-= globals.project_dofs_from_face[face] * buffers.numericalflux
 
     return maxeigenval
 
