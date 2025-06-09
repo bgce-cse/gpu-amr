@@ -65,6 +65,7 @@ function rusanov(eq, dofs, dofsneigh, flux, fluxneigh, dx, normalidx, normalsign
 
     first_term = 0.5 .* normalsign .* (local_flux_normal_component .+ local_fluxneigh_normal_component)
     second_term = 0.5 .* maxeigenval .* (dofs .- dofsneigh)
+    second_term[:,4:5] .= 0.0
     
     numericalflux .= dx .* (first_term .+ second_term)
  
