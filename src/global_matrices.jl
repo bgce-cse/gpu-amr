@@ -34,8 +34,16 @@ Initialize GlobalMatrices for `basis`, `filter` and `dimensions`.
 
         # TODO: Implement
         project_dofs_to_face = Dict(f => face_projection_matrix(basis, f) for f in faces)
+
         project_flux_to_face = Dict(f => kron(I(2),face_projection_matrix(basis, f)) for f in faces)
         project_dofs_from_face = Dict(f => face_projection_matrix(basis, f)' for f in faces)
+        eigvals_mass = eigvals(massmatrix(basis, 2))
+println("Mass matrix min eigenvalue: ", minimum(eigvals_mass))
+println("Mass matrix max eigenvalue: ", maximum(eigvals_mass))
+println("Mass matrix condition number: ", cond(massmatrix(basis, 2)))
+
+        # project_flux_to_face = Dict(f => ones(1,2) for f in faces)
+        # project_dofs_from_face = Dict(f => ones(1,1) for f in faces)
 
         # TODO: Implement
         basissize_1d = basis.order
@@ -53,6 +61,9 @@ Initialize GlobalMatrices for `basis`, `filter` and `dimensions`.
          reference_massmatrix_face,
          reference_massmatrix_cell, reference_derivative_matrix,
          filter_matrix)
+
+
+
      end
  end
 

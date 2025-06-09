@@ -33,20 +33,19 @@ Evaluates the volume term of our pde.
 - `volume`: n-dimensional volume of the cell. E.g., area of 2d-cell
 - `celldu`: update of dofs, return value is added to this
 """
-# function evaluate_volume(globals, buffers, flux_coeff, basis, inverse_jacobian, volume, celldu)
-#     quadweights = globals.quadweights_nd
-
-#     A = inverse_jacobian' * volume # This will be a diagonal matrix for rectangular grids
-
-#     buffers.chi .= kron(A, Diagonal(quadweights))
-
-#     celldu .= globals.reference_derivative_matrix * buffers.chi * flux_coeff
-
-
-# end
-
 function evaluate_volume(globals, buffers, flux_coeff, basis, inverse_jacobian, volume, celldu)
     quadweights = globals.quadweights_nd
 
-    # TODO Update celldu
+    A = inverse_jacobian' * volume 
+
+    buffers.chi .= kron(Diagonal(diag(A)), Diagonal(vec(quadweights)))
+    
+    celldu .+= globals.reference_derivative_matrix * buffers.chi * flux_coeff #TODO sum factorization possible
+    
 end
+
+# function evaluate_volume(globals, buffers, flux_coeff, basis, inverse_jacobian, volume, celldu)
+#     quadweights = globals.quadweights_nd
+
+#     # TODO Update celldu
+# end

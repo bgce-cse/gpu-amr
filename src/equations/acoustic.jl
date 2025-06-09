@@ -54,24 +54,21 @@ function max_eigenval(eq::Acoustic, celldata, normalidx)
 end
 
 
-# function evaluate_boundary(eq::Acoustic, scenario::GaussianWave, face,
-# normalidx, dofsface, dofsfaceneigh)
-# # dofsface and dofsfaceneigh have shape (num_2d_quadpoints, dofs)
-# # you need to set dofsfaceneigh
-# dofsfaceneigh .= dofsface
-# dofsfaceneigh[:, normalidx] .= -dofsface[:, normalidx]
+function evaluate_boundary(eq::Acoustic, scenario::GaussianWave, face, normalidx, dofsface, dofsfaceneigh)
+# dofsface and dofsfaceneigh have shape (num_2d_quadpoints, dofs)
+# you need to set dofsfaceneigh
+dofsfaceneigh .= dofsface
+dofsfaceneigh[:, normalidx] .= -dofsface[:, normalidx]
 
 
-# end
+end
 """
 is_periodic_boundary(eq::Acoustic, scenario::GaussianWave)
 The GaussianWave scenario does not require periodic boundary conditions.
 """
 function is_periodic_boundary(eq::Acoustic, scenario::GaussianWave)
-true
+false
 end
-
-
 
 
 

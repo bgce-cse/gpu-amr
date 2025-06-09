@@ -35,6 +35,7 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
     reference_massmatrix = massmatrix(grid.basis, grid.basis.dimensions)
     du .= 0.0
     maxeigenval = -Inf
+    print("diomerda: ",norm(du))
 
     ∇ = globals.reference_derivative_matrix
     for i in eachindex(grid.cells)
@@ -46,6 +47,7 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
         # Volume matrix is zero for FV/order=1
         if length(grid.basis.quadpoints) > 1
             @views evaluate_volume(globals, buffers_volume, flux, grid.basis, inverse_jacobian(cell), volume(cell), du[:,:,cell.dataidx])
+            #print("volume: ",norm(du))
         end
     end
     for i in eachindex(grid.cells)
@@ -85,9 +87,11 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
 
             @views cureigenval = evaluate_face_integral(eq, globals, buffers_face, cell, faces[i], du[:,:,cell.dataidx])
             maxeigenval = max(maxeigenval, cureigenval)
-
+            
+            #print("faces $(faces[i]): ",norm(du))
         end
-        @views du[:,:,cell.dataidx] = inv_massmatrix * @views du[:,:,cell.dataidx] #
+        @views du[:,:,cell.dataidx] = inv_massmatrix * @views du[:,:,cell.dataidx] 
+            #print("mass: ",norm(du))
     end
     grid.maxeigenval = maxeigenval
     

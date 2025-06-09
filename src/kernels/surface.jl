@@ -51,23 +51,30 @@ function rusanov(eq, dofs, dofsneigh, flux, fluxneigh, dx, normalidx, normalsign
     local_flux_normal_component = nothing
     local_fluxneigh_normal_component = nothing
 
+
+
     # Extract the correct flux components based on normalidx
     # Your `evaluate_flux` stacks fx and fy, so `flux` has Fx components first, then Fy components.
     if normalidx == 1 # x-direction normal, use Fx components
         local_flux_normal_component = flux[1:basissize_1d, :]
         local_fluxneigh_normal_component = fluxneigh[1:basissize_1d, :]
+
     elseif normalidx == 2 # y-direction normal, use Fy components
         local_flux_normal_component = flux[basissize_1d+1:end, :]
         local_fluxneigh_normal_component = fluxneigh[basissize_1d+1:end, :]
+
     else
         error("Invalid normalidx: $normalidx. Expected 1 or 2 for 2D simulation.")
     end
-
-    first_term = 0.5 .* normalsign .* (local_flux_normal_component .+ local_fluxneigh_normal_component)
-    second_term = 0.5 .* maxeigenval .* (dofs .- dofsneigh)
-    second_term[:,4:5] .= 0.0
     
-    numericalflux .= dx .* (first_term .+ second_term)
+
+    first_term = 0.5 .* normalsign .* (local_flux_normal_component + local_fluxneigh_normal_component)
+    second_term = 0.5 .* maxeigenval .* (dofs - dofsneigh)
+    if eq isa Acoustic
+    second_term[:, 4:5] .= 0.0
+    end
+    
+    numericalflux .= dx .* (first_term + second_term)
  
     return maxeigenval
 end
@@ -104,7 +111,6 @@ function evaluate_face_integral(eq, globals, buffers, cell, face, celldu)
 
 
     celldu .-= globals.project_dofs_from_face[face] * buffers.numericalflux
-
     return maxeigenval
 
 end

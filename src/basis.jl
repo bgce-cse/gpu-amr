@@ -123,6 +123,7 @@ function project_to_reference_basis(fun, basis::Basis, ndofs::Integer)
 
     M = zeros(n*n, ndofs)
 
+
     # Loop once over every (i,j) pair in natural column-major order:
     for (row, idx) in enumerate(CartesianIndices((n, n)))
         i, j = Tuple(idx)       
@@ -252,7 +253,7 @@ function face_projection_matrix(basis, face)
     else 
         phi = [lagrange_1d(face_quad[1],j,face_quad[2]) for j in 1:length(basis.quadpoints)]
     end
-    LinearAlgebra.kron(I(n),phi)'
+    LinearAlgebra.kron(I(n),phi')
 
 end
 
