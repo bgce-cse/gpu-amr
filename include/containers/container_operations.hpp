@@ -118,15 +118,16 @@ constexpr auto min(auto&& lhs, auto&& rhs) noexcept -> auto
     );
 }
 
-template <typename T1, typename T2>
 [[nodiscard]]
-constexpr auto operator_impl(T1&& lhs, T2&& rhs, auto&& binary_op) noexcept
-    -> detail::common_type_t<std::remove_cvref_t<T1>, std::remove_cvref_t<T2>>
+constexpr auto operator_impl(auto&& lhs, auto&& rhs, auto&& binary_op) noexcept
+    -> detail::common_type_t<
+        std::remove_cvref_t<decltype(lhs)>,
+        std::remove_cvref_t<decltype(rhs)>>
     requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
              detail::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
-    using a_type      = std::remove_cvref_t<T1>;
-    using b_type      = std::remove_cvref_t<T2>;
+    using a_type      = std::remove_cvref_t<decltype(lhs)>;
+    using b_type      = std::remove_cvref_t<decltype(rhs)>;
     using common_type = detail::common_type_t<a_type, b_type>;
 
     static_assert(std::is_trivially_constructible_v<common_type>);
