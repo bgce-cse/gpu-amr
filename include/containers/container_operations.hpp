@@ -1,18 +1,19 @@
 #ifndef AMR_INCLUDED_CONTAINER_OPERATIONS
 #define AMR_INCLUDED_CONTAINER_OPERATIONS
 
-#include "error_handling.hpp"
+#include "utility/error_handling.hpp"
 #include <concepts>
 #include <functional>
 #include <ranges>
 #include <type_traits>
 
-namespace amr::containers::vector_operations
+namespace amr::containers
 {
 
 namespace detail
 {
 
+// TODO: Too many containers meet this interface. ADL helps tho.
 template <typename V>
 concept Vector = requires(V v, typename V::size_type i) {
     typename V::value_type;
@@ -29,10 +30,31 @@ struct common_type<V, V>
     using type = V;
 };
 
+template <Vector V1, Vector V2>
+    requires(std::is_same_v<
+             typename V1::value_type,
+             std::common_type_t<typename V1::value_type, typename V2::value_type>>)
+struct common_type<V1, V2>
+{
+    using type = V1;
+};
+
+template <Vector V1, Vector V2>
+    requires(std::is_same_v<
+             typename V2::value_type,
+             std::common_type_t<typename V1::value_type, typename V2::value_type>>)
+struct common_type<V1, V2>
+{
+    using type = V2;
+};
+
 template <Vector V, typename T>
     requires std::is_arithmetic_v<T>
 struct common_type<V, T>
 {
+    static_assert(std::is_same_v<
+                  typename V::value_type,
+                  std::common_type_t<typename V::value_type, T>>);
     using type = V;
 };
 
@@ -40,6 +62,33 @@ template <typename T, Vector V>
     requires std::is_arithmetic_v<T>
 struct common_type<T, V>
 {
+    static_assert(std::is_same_v<
+                  typename V::value_type,
+                  std::common_type_t<typename V::value_type, T>>);
+    using type = V;
+};
+
+template <Vector V, std::ranges::range R>
+    requires(!Vector<R>)
+struct common_type<V, R>
+{
+    static_assert(
+        std::is_same_v<
+            typename V::value_type,
+            std::common_type_t<typename V::value_type, std::ranges::range_value_t<R>>>
+    );
+    using type = V;
+};
+
+template <std::ranges::range R, Vector V>
+    requires(!Vector<R>)
+struct common_type<R, V>
+{
+    static_assert(
+        std::is_same_v<
+            typename V::value_type,
+            std::common_type_t<std::ranges::range_value_t<R>, typename V::value_type>>
+    );
     using type = V;
 };
 
@@ -137,6 +186,7 @@ constexpr auto operator_impl(auto&& lhs, auto&& rhs, auto&& binary_op) noexcept
         [](auto&& v, std::integral auto idx) constexpr noexcept -> decltype(auto)
         requires(
             detail::Vector<std::remove_cvref_t<decltype(v)>> ||
+            std::ranges::range<std::remove_cvref_t<decltype(v)>> ||
             std::is_arithmetic_v<std::remove_cvref_t<decltype(v)>>
         )
     {
@@ -170,6 +220,6 @@ constexpr auto operator_impl(auto&& lhs, auto&& rhs, auto&& binary_op) noexcept
     return ret;
 }
 
-} // namespace amr::containers::vector_operations
+} // namespace amr::containers
 
 #endif // AMR_INCLUDED_CONTAINER_OPERATIONS
