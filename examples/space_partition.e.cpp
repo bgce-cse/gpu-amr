@@ -24,10 +24,10 @@ int main()
     constexpr auto N = 2u;
     using F          = float;
 
-    using rng = typename utility::random::srandom::srandom;
+    using rng = typename utility::random::srandom;
     rng::seed<unsigned long>();
 
-    using rngf = typename utility::random::srandom::srandom;
+    using rngf = typename utility::random::srandom;
     rng::seed<F>();
 
     using cell_t = cell<F, N>;
