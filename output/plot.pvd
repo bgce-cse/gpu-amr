@@ -8,9 +8,5 @@
     <DataSet timestep="0.4" part="0" file="plot_4.vtu"/>
     <DataSet timestep="0.5" part="0" file="plot_5.vtu"/>
     <DataSet timestep="0.6" part="0" file="plot_6.vtu"/>
-    <DataSet timestep="0.7" part="0" file="plot_7.vtu"/>
-    <DataSet timestep="0.7999999999999999" part="0" file="plot_8.vtu"/>
-    <DataSet timestep="0.8999999999999999" part="0" file="plot_9.vtu"/>
-    <DataSet timestep="0.9999999999999999" part="0" file="plot_10.vtu"/>
   </Collection>
 </VTKFile>

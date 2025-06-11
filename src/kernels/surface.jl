@@ -104,13 +104,14 @@ Result is stored in `celldu`.
 function evaluate_face_integral(eq, globals, buffers, cell, face, celldu)
     normalidx = globals.normalidxs[face]
     normalsign = globals.normalsigns[face]
-
+    
     # Compute Riemann solver (in normal)
     buffers.numericalflux .= 0
     maxeigenval = rusanov(eq, buffers.dofsface, buffers.dofsfaceneigh, buffers.fluxface, buffers.fluxfaceneigh, cell.size[1], normalidx, normalsign, buffers.numericalflux)
 
+    celldu .-=globals.project_dofs_from_face[face] *  (globals.face_scaling[face] .*  buffers.numericalflux )
 
-    celldu .-= globals.project_dofs_from_face[face] * buffers.numericalflux
+
     return maxeigenval
 
 end

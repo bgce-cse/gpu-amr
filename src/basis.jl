@@ -141,7 +141,7 @@ Return the mass-matrix for a `dimensions`-dimensional
 tensor-product basis built up from the 1d-basis `basis`.
 """
 #for the referece element the volume is multiplied afterwards
-function massmatrix(basis, dimensions)
+function massmatrix(basis::Basis, dimensions)
 
     M1 = Diagonal(basis.quadweights)
 
@@ -197,65 +197,42 @@ function get_face_quadpoints(basis::Basis, face)
     end
 end
 
-"""
-    face_projection_matrix(basis, face)
-
-Return the face projection matrix for `basis` and `face`.
-Multiplying it with coefficient vector for the right basis
-returns the coefficients of the solution evaluated at the 
-quadrature nodes of the face.
-"""
-# function face_projection_matrix(basis, face)
-#     n = length(basis.quadpoints)
-#     n2d = n^2
-    
-#     # Create face projection matrix
-#     P = zeros(n, n2d)
-    
-#     # Get quadrature points on the face
-#     face_points = get_face_quadpoints(basis, face)
-
-
-    
-#     # Fill the projection matrix
-#     for i in 1:n  # Row index (face point index)
-#         x, y = face_points[i]
-        
-#         for j in 1:n  # Column indices (volume basis functions)
-#             for k in 1:n
-#                 idx = (k-1)*n + j  # Linear index for 2D basis
-                
-#                 # Evaluate basis function at face point
-#                 if face == left || face == right
-#                     # For left/right faces, y varies along the face
-#                     P[i, idx] = lagrange_1d(basis.quadpoints, j, x) * 
-#                                 lagrange_1d(basis.quadpoints, k, y)
-#                 else  # top or bottom
-#                     # For top/bottom faces, x varies along the face
-#                     P[i, idx] = lagrange_1d(basis.quadpoints, j, x) * 
-#                                 lagrange_1d(basis.quadpoints, k, y)
-#                 end
-#             end
-#         end
-#     end
-    
-#     return P
-# end
 
 
 
 
-function face_projection_matrix(basis, face)
-    face_quad = get_face_quadpoints(basis,face)
+
+function face_projection_matrix(basis::Basis, face)
     n = basis.order
     if face == left || face == right
-        phi = [lagrange_1d(face_quad[2],j,face_quad[1]) for j in 1:length(basis.quadpoints)]
+        # For vertical faces (x=0 or x=1), project along x-dimension
+        # The 1D basis functions are evaluated at the fixed x-coordinate of the face
+        x_face_coord = get_face_quadpoints(basis, face)[1]
+        phi_x_at_face = [lagrange_1d(basis.quadpoints, i, x_face_coord) for i in 1:n]
+        return kron(phi_x_at_face', I(n))
     else 
-        phi = [lagrange_1d(face_quad[1],j,face_quad[2]) for j in 1:length(basis.quadpoints)]
+        # For horizontal faces (y=0 or y=1), project along y-dimension
+        # The 1D basis functions are evaluated at the fixed y-coordinate of the face
+        y_face_coord = get_face_quadpoints(basis, face)[2]
+        phi_y_at_face = [lagrange_1d(basis.quadpoints, j, y_face_coord) for j in 1:n]
+        return kron(I(n), phi_y_at_face')
     end
-    LinearAlgebra.kron(I(n),phi')
-
 end
+
+function scaling(basis::Basis, face)
+    n = basis.order
+    if face == left || face == right
+        # For vertical faces (x=0 or x=1), the scaling is related to the x-basis functions evaluated at the face
+        x_face_coord = get_face_quadpoints(basis, face)[1]
+        return [lagrange_1d(basis.quadpoints, i, x_face_coord) for i in 1:n]
+    else 
+        # For horizontal faces (y=0 or y=1), the scaling is related to the y-basis functions evaluated at the face
+        y_face_coord = get_face_quadpoints(basis, face)[2]
+        return [lagrange_1d(basis.quadpoints, j, y_face_coord) for j in 1:n]
+    end
+end
+    
+
 
 
 """

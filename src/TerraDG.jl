@@ -35,7 +35,7 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
     reference_massmatrix = massmatrix(grid.basis, grid.basis.dimensions)
     du .= 0.0
     maxeigenval = -Inf
-    print("diomerda: ",norm(du))
+
 
     ∇ = globals.reference_derivative_matrix
     for i in eachindex(grid.cells)
@@ -92,6 +92,7 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
         end
         @views du[:,:,cell.dataidx] = inv_massmatrix * @views du[:,:,cell.dataidx] 
             #print("mass: ",norm(du))
+        
     end
     grid.maxeigenval = maxeigenval
     
