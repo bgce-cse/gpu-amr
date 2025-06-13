@@ -41,7 +41,7 @@ The sign of the outer normal of the face is given by `normalsign`.
 The numerical flux is stored in `numericalflux`.
 Method also returns the maximal eigenvalue.
 """
-function rusanov(eq, dofs, dofsneigh, flux, fluxneigh, dx, normalidx, normalsign, numericalflux)
+function rusanov(eq, dofs, dofsneigh, flux, fluxneigh, dx, normalidx, normalsign, numericalflux)#TODO can be simplified 
     maxeigenval_center = max_eigenval(eq, dofs, normalidx)
     maxeigenval_neigh = max_eigenval(eq, dofsneigh, normalidx)
     maxeigenval = max(maxeigenval_center, maxeigenval_neigh)

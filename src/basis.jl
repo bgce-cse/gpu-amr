@@ -100,7 +100,7 @@ end
 Evaluate the `basis` with coefficients
 `coeffs` at point `x`.
 """
-function evaluate_basis(basis::Basis, coeffs, x)
+function evaluate_basis(basis::Basis, coeffs, x)#TODO can be vectorized with kron
     n = basis.order
     φ = [lagrange_1d(basis.quadpoints, i, x[1]) for i in 1:n]
     ψ = [lagrange_1d(basis.quadpoints, j, x[2]) for j in 1:n]
