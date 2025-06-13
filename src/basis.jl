@@ -101,12 +101,20 @@ Evaluate the `basis` with coefficients
 `coeffs` at point `x`.
 """
 function evaluate_basis(basis::Basis, coeffs, x)
+    n = basis.order
+    φ = [lagrange_1d(basis.quadpoints, i, x[1]) for i in 1:n]
+    ψ = [lagrange_1d(basis.quadpoints, j, x[2]) for j in 1:n]
 
-    C = reshape(coeffs,size(basis,1),size(basis,2))
-    sum([C[i,j]*lagrange_1d(basis.quadpoints,i,x[1])*lagrange_1d(basis.quadpoints,j,x[2]) for i in 1:size(basis,1) for j in 1:size(basis,2)])
-    
-
+    s = 0.0
+    for j in 1:n
+        for i in 1:n
+            index = i + (j - 1) * n
+            s += coeffs[index] * φ[i] * ψ[j]
+        end
+    end
+    return s
 end
+
 
 """
     project_to_reference_basis(fun, basis::Basis, ndofs)
@@ -118,21 +126,22 @@ and returns a vector with size `ndofs`.
 The corresponding coefficients are returned.
 """
 function project_to_reference_basis(fun, basis::Basis, ndofs::Integer)
-    n   = basis.order
+    n = basis.order
     pts = basis.quadpoints
 
-    M = zeros(n*n, ndofs)
+    M = zeros(n * n, ndofs)
 
-
-    # Loop once over every (i,j) pair in natural column-major order:
-    for (row, idx) in enumerate(CartesianIndices((n, n)))
-        i, j = Tuple(idx)       
-        x, y = pts[i], pts[j]   
-        M[row, :] = fun(x, y)        
+    for j in 1:n
+        for i in 1:n
+            x, y = pts[i], pts[j]
+            row = i + (j - 1) * n  # column-major layout
+            M[row, :] = fun(x, y)
+        end
     end
 
     return M
-end#return order*order *3
+end
+
 
 """
     massmatrix(basis, dimensions)
@@ -214,22 +223,6 @@ function face_projection_matrix(basis::Basis, face)
         return kron(phi_y_at_face', I(n))
     end
 end
-
-function scaling(basis::Basis, face)
-    n = basis.order
-    if face == left || face == right
-        # For vertical faces (x=0 or x=1), the scaling is related to the x-basis functions evaluated at the face
-        x_face_coord = get_face_quadpoints(basis, face)[1]
-        return [lagrange_1d(basis.quadpoints, i, x_face_coord) for i in 1:n]
-    else 
-        # For horizontal faces (y=0 or y=1), the scaling is related to the y-basis functions evaluated at the face
-        y_face_coord = get_face_quadpoints(basis, face)[2]
-        return [lagrange_1d(basis.quadpoints, j, y_face_coord) for j in 1:n]
-    end
-end
-    
-
-
 
 """
     evaluate_m_to_n_vandermonde_basis(basis) 

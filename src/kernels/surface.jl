@@ -51,15 +51,11 @@ function rusanov(eq, dofs, dofsneigh, flux, fluxneigh, dx, normalidx, normalsign
     local_flux_normal_component = nothing
     local_fluxneigh_normal_component = nothing
 
-
-
-    # Extract the correct flux components based on normalidx
-    # Your `evaluate_flux` stacks fx and fy, so `flux` has Fx components first, then Fy components.
-    if normalidx == 1 # x-direction normal, use Fx components
+    if normalidx == 1 
         local_flux_normal_component = flux[1:basissize_1d, :]
         local_fluxneigh_normal_component = fluxneigh[1:basissize_1d, :]
 
-    elseif normalidx == 2 # y-direction normal, use Fy components
+    elseif normalidx == 2 
         local_flux_normal_component = flux[basissize_1d+1:end, :]
         local_fluxneigh_normal_component = fluxneigh[basissize_1d+1:end, :]
 
@@ -109,7 +105,8 @@ function evaluate_face_integral(eq, globals, buffers, cell, face, celldu)
     buffers.numericalflux .= 0
     maxeigenval = rusanov(eq, buffers.dofsface, buffers.dofsfaceneigh, buffers.fluxface, buffers.fluxfaceneigh, cell.size[1], normalidx, normalsign, buffers.numericalflux)
 
-    celldu .-=globals.project_dofs_from_face[face] *  (globals.face_scaling[face] .*  buffers.numericalflux )
+    celldu .-= globals.project_dofs_from_face[face] * (buffers.numericalflux' * globals.reference_massmatrix_face)'
+
 
 
     return maxeigenval

@@ -5,7 +5,7 @@ simulation:
   offset: [0.0, 0.0]
 
 solver:
-  order: 3
+  order: 2
   courant: 0.5
   timeintegrator: Euler
 
