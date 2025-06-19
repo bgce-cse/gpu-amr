@@ -131,13 +131,13 @@ function main(configfile::String)
     timestep = 0
     next_plotted = config.plot_start
 
-    buffers_limiter = BuffersLimiter(get_ndofs(eq))
+    limiter = Limiter(get_ndofs(eq))
      
     while grid.time < config.end_time
         if timestep > 0
             time_start = time()
             dt = 1/(config.order^2+1) * config.cellsize[1] * config.courant * 1/grid.maxeigenval
-            limit(grid, globals, buffers_limiter)
+            limit(grid, globals, limiter)
 
 
             # Only step up to either end or next plotting
@@ -169,6 +169,7 @@ function main(configfile::String)
             plot(plotter)
             next_plotted = grid.time + config.plot_step
 
+            limit(grid, globals, limiter)
             #TODO delete if want to solve sibson for time
             if config.equation_name == "sibson" 
                 break

@@ -1,11 +1,11 @@
 
-struct BuffersLimiter
+struct Limiter
     average::Array{Float64, 1}
     averages_neigh::Dict{Face, Array{Float64, 1}}
     own_slopes::Array{Float64, 2}
     slopes_neigh::Array{Float64, 2}
 
-    function BuffersLimiter(ndofs)
+    function Limiter(ndofs)
         faces = instances(TerraDG.Face)
 
         average = zeros(ndofs)
@@ -21,9 +21,9 @@ function project_to_basis(globals, proj, dofs; f = x -> 1, c=1.0)
     proj .= c * sum(i -> globals.quadweights_nd[i] * f(globals.quadpoints_nd[i]) * dofs[i,:], eachindex(globals.quadweights_nd))
 end
 
-function minmod(s₁, s₂, s₃)
-    if sign(s₁) == sign(s₂) == sign(s₃)
-        sign(s₁) * min(abs(s₁), abs(s₂), abs(s₃))
+function minmod(s1, s2, s3)
+    if sign(s1) == sign(s2) == sign(s3)
+        sign(s1) * min(abs(s1), abs(s2), abs(s3))
     else
         0
     end 
@@ -76,7 +76,7 @@ function limit(grid, globals, buffers)
         for (i, neigh) in enumerate(cell.neighbors)
             # ensures slope = 0 at boundary
             if cell.facetypes[i] == boundary
-                buffers.averages_neigh[faces[i]] .= buffers.average
+                buffers.averages_neigh[faces[i]] .= 0
             else
                 project_to_basis(globals, buffers.averages_neigh[faces[i]], grid.dofs[:,:,neigh.dataidx])
             end

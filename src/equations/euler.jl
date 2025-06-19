@@ -40,32 +40,29 @@ function is_analytical_solution(equation::Euler, scenario::ShockTube)
     true
 end
 
-function evaluate_flux(eq::Euler, celldofs, cellflux; gamma=1.4)
-    rhou = celldofs[:, 1]
-    rhov = celldofs[:, 2]
-    rho  = celldofs[:, 3]
-    rhoE = celldofs[:, 4]
+function evaluate_pressure(eq::Euler, rho, E, imx, imy)
+    #0.4 for γ=1.4
+    0.4 * (E - 0.5 / rho * (imx^2 + imy^2))
+end
 
-    u = rhou ./ rho
-    v = rhov ./ rho
+function evaluate_flux(eq::Euler, celldofs, cellflux)
+    s = EulerShortcuts()
+    x_range = 1:size(celldofs, 1)
+    y_range = x_range .+ size(celldofs, 1)
+    eval_pressure = (rho, rhoE, rhou, rhov) -> evaluate_pressure(eq, rho, rhoE, rhou, rhov)
 
-    kinetic_energy = 0.5 * (rhou.^2 + rhov.^2) ./ rho
-    p = (gamma - 1) .* (rhoE .- kinetic_energy)
+    # TODO compare performance between calculating this each time it is required vs allocating here
+    p = eval_pressure.(celldofs[:,s.rho], celldofs[:,s.rhoE], celldofs[:,s.rhou], celldofs[:,s.rhov])
 
-    fx1 = (rhou .* rhov) .* rho .+ p
-    fx2 = (rhou .* rhov) .* rho
-    fx3 = rhou
-    fx4 = u .* (rhoE .+ p)
-
-    fy1 = (rhou .* rhov) .* rho
-    fy2 = (rhou .* rhov) .* rho .+ p
-    fy3 = rhov
-    fy4 = v .* (rhoE .+ p)
-
-    fx = hcat(fx1, fx2, fx3, fx4)
-    fy = hcat(fy1, fy2, fy3, fy4)
-
-    cellflux .= vcat(fx, fy)
+    cellflux[x_range, s.rhou] .= celldofs[:,s.rhou] .* celldofs[:,s.rhou] ./ celldofs[:,s.rho] .+ p
+    cellflux[x_range, s.rhov] .= celldofs[:,s.rhou] .* celldofs[:,s.rhov] ./ celldofs[:,s.rho]
+    cellflux[x_range, s.rho] .= celldofs[:,s.rhou]
+    cellflux[x_range, s.rhoE] .= celldofs[:,s.rhou] .* (celldofs[:,s.rhoE] .+ p) ./ celldofs[:,s.rho]
+    
+    cellflux[y_range, s.rhou] .= celldofs[:,s.rhou] .* celldofs[:,s.rhov] ./ celldofs[:,s.rho]
+    cellflux[y_range, s.rhov] .= celldofs[:,s.rhov] .* celldofs[:,s.rhov] ./ celldofs[:,s.rho] .+ p
+    cellflux[y_range, s.rho] .= celldofs[:,s.rhov]
+    cellflux[y_range, s.rhoE] .= celldofs[:,s.rhov] .* (celldofs[:, s.rhoE] .+ p) ./ celldofs[:,s.rho]
 end
 
 
