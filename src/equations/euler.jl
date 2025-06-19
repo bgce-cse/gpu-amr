@@ -51,18 +51,17 @@ function evaluate_flux(eq::Euler, celldofs, cellflux)
     y_range = x_range .+ size(celldofs, 1)
     eval_pressure = (rho, rhoE, rhou, rhov) -> evaluate_pressure(eq, rho, rhoE, rhou, rhov)
 
-    # TODO compare performance between calculating this each time it is required vs allocating here
-    p = eval_pressure.(celldofs[:,s.rho], celldofs[:,s.rhoE], celldofs[:,s.rhou], celldofs[:,s.rhov])
+    p = eval_pressure.(celldofs[:,1], celldofs[:,4], celldofs[:,1], celldofs[:,2])
 
-    cellflux[x_range, s.rhou] .= celldofs[:,s.rhou] .* celldofs[:,s.rhou] ./ celldofs[:,s.rho] .+ p
-    cellflux[x_range, s.rhov] .= celldofs[:,s.rhou] .* celldofs[:,s.rhov] ./ celldofs[:,s.rho]
-    cellflux[x_range, s.rho] .= celldofs[:,s.rhou]
-    cellflux[x_range, s.rhoE] .= celldofs[:,s.rhou] .* (celldofs[:,s.rhoE] .+ p) ./ celldofs[:,s.rho]
+    cellflux[x_range, 1] .= celldofs[:,1] .* celldofs[:,1] ./ celldofs[:,1] .+ p
+    cellflux[x_range, 2] .= celldofs[:,1] .* celldofs[:,2] ./ celldofs[:,1]
+    cellflux[x_range, 1] .= celldofs[:,1]
+    cellflux[x_range, 4] .= celldofs[:,1] .* (celldofs[:,4] .+ p) ./ celldofs[:,1]
     
-    cellflux[y_range, s.rhou] .= celldofs[:,s.rhou] .* celldofs[:,s.rhov] ./ celldofs[:,s.rho]
-    cellflux[y_range, s.rhov] .= celldofs[:,s.rhov] .* celldofs[:,s.rhov] ./ celldofs[:,s.rho] .+ p
-    cellflux[y_range, s.rho] .= celldofs[:,s.rhov]
-    cellflux[y_range, s.rhoE] .= celldofs[:,s.rhov] .* (celldofs[:, s.rhoE] .+ p) ./ celldofs[:,s.rho]
+    cellflux[y_range, 1] .= celldofs[:,1] .* celldofs[:,2] ./ celldofs[:,1]
+    cellflux[y_range, 2] .= celldofs[:,2] .* celldofs[:,2] ./ celldofs[:,1] .+ p
+    cellflux[y_range, 1] .= celldofs[:,2]
+    cellflux[y_range, 4] .= celldofs[:,2] .* (celldofs[:, 4] .+ p) ./ celldofs[:,1]
 end
 
 
