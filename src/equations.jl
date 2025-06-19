@@ -190,6 +190,7 @@ end
 include("equations/advection.jl")
 include("equations/sibson.jl")
 include("equations/acoustic.jl")
+include("equations/euler.jl")
 
 """
     make_equation(config::Configuration)
@@ -204,6 +205,8 @@ function make_equation(config::Configuration)
         return Sibson()
     elseif config.equation_name == "acoustic"
         return Acoustic()
+    elseif config.equation_name == "euler"
+        return Euler()
     else
         error(string("Unknown equation name: ", config.equation_name))
     end
@@ -222,7 +225,12 @@ function make_scenario(config::Configuration)
         return ConcentricWaves()
     elseif config.scenario_name == "gaussian_wave"
         return GaussianWave()
+    elseif config.scenario_name == "shock_tube"
+        return ShockTube()
     else
+
         error(string("Unknown scenario name: ", scenario_name))
     end
 end
+
+

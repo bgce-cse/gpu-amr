@@ -6,7 +6,7 @@ simulation:
 
 
 solver:
-  order: 4
+  order: 3
   courant: 0.5
   timeintegrator: SSPRK2
 

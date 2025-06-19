@@ -6,9 +6,8 @@ struct GlobalMatrices
     project_flux_to_face::Dict{Face,Array{Float64,2}}
     project_dofs_from_face::Dict{Face,Array{Float64,2}}
 
-
-
     quadweights_nd::Array{Float64, 1}
+    quadpoints_nd::Array{Tuple{Float64, Float64}, 1}
     reference_massmatrix_face::Array{Float64,2}
     reference_massmatrix_cell::Array{Float64,2}
     reference_derivative_matrix::Array{Float64,2}
@@ -28,6 +27,18 @@ struct GlobalMatrices
 
         quadweights_nd = kron(basis.quadweights, basis.quadweights)
 
+
+        nq = length(basis.quadpoints)
+        quadpoints_nd = Vector{Tuple{Float64, Float64}}(undef, nq*nq)
+        k = 1
+        for j in 1:nq 
+            for i in 1:nq 
+                quadpoints_nd[k] = (basis.quadpoints[i], basis.quadpoints[j])
+                k += 1
+            end
+        end
+
+
         reference_massmatrix_cell = massmatrix(basis, dimensions)
         reference_massmatrix_face = massmatrix(basis, dimensions - 1)
         reference_derivative_matrix = derivativematrix(basis)
@@ -36,6 +47,7 @@ struct GlobalMatrices
         new(normalsigns, normalidxs, oppositefaces,
             project_dofs_to_face, project_flux_to_face, project_dofs_from_face,
             quadweights_nd,
+            quadpoints_nd,
             reference_massmatrix_face, reference_massmatrix_cell,
             reference_derivative_matrix, filter_matrix)
     end

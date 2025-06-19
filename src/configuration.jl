@@ -11,7 +11,7 @@ struct Configuration
     order::Int64
     timeintegrator_name::String
     courant::Float64
-
+    limiter_name::String
     filter_name::String
     filter_order::Int64
     plot_start::Float64
@@ -31,7 +31,7 @@ struct Configuration
         order = config["solver"]["order"]
         timeintegrator_name = config["solver"]["timeintegrator"]
         courant = config["solver"]["courant"]
-
+        limiter_name = get(config["solver"], "limiter", "none")
         filter_name = get(config["solver"], "filter", "identity")
         filter_order = get(config["solver"], "filter_order", order)
         plot_start = config["output"]["start"]
@@ -50,6 +50,7 @@ struct Configuration
             order,
             timeintegrator_name,
             courant,
+            limiter_name,
             filter_name,
             filter_order,
             plot_start,

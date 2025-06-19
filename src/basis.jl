@@ -149,7 +149,7 @@ end
 Return the mass-matrix for a `dimensions`-dimensional
 tensor-product basis built up from the 1d-basis `basis`.
 """
-#for the referece element the volume is multiplied afterwards
+#for the referece element the volume is multiplied afterwards TODO can also be a vector
 function massmatrix(basis::Basis, dimensions)
 
     M1 = Diagonal(basis.quadweights)

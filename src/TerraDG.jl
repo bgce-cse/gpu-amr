@@ -13,9 +13,11 @@ include("kernels/surface.jl")
 include("kernels/volume.jl")
 include("kernels/filtering.jl")
 include("kernels/time.jl")
+include("kernels/limiting.jl")
 include("plotters.jl")
 include("error_writer.jl")
 include("global_matrices.jl")
+
 
 """
     evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
@@ -108,6 +110,7 @@ function main(configfile::String)
     filter = make_filter(config)
     eq = make_equation(config)
     scenario = make_scenario(config)
+
     grid = make_grid(config, eq, scenario)
     integrator = make_timeintegrator(config, grid)
 
@@ -127,13 +130,15 @@ function main(configfile::String)
     grid.time = 0
     timestep = 0
     next_plotted = config.plot_start
+
+    buffers_limiter = BuffersLimiter(get_ndofs(eq))
      
     while grid.time < config.end_time
         if timestep > 0
             time_start = time()
             dt = 1/(config.order^2+1) * config.cellsize[1] * config.courant * 1/grid.maxeigenval
+            limit(grid, globals, buffers_limiter)
 
-            #println("dt = $(dt), order = $(config.order), cellsize[1] = $(config.cellsize[1]), courant = $(config.courant), maxeigenval = $(grid.maxeigenval)")
 
             # Only step up to either end or next plotting
             dt = min(dt, next_plotted-grid.time, config.end_time - grid.time)
