@@ -1,11 +1,11 @@
 #ifndef GPU_AMR_NDBOX
 #define GPU_AMR_NDBOX
 
-#include "constexpr_functions.hpp"
 #include "error_handling.hpp"
 #include "logging.hpp"
 #include "ndboundary.hpp"
 #include "ndt_concepts.hpp"
+#include "utility/constexpr_functions.hpp"
 #include <cmath>
 #include <cstddef>
 #include <vector>
