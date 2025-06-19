@@ -1,30 +1,37 @@
 #ifndef AMR_INCLUDED_STATIC_VECTOR
 #define AMR_INCLUDED_STATIC_VECTOR
 
-#include "casts.hpp"
+#include "utility/casts.hpp"
 #include <array>
 #include <concepts>
+#include <iomanip>
+#include <ios>
 #include <iterator>
 #include <ostream>
 #include <type_traits>
 
+#ifndef NDEBUG
+#    define AMR_CONTANERS_CHECKBOUNDS
+#endif
+
 namespace amr::containers
 {
 
-template <auto N, typename Value_Type>
-    requires(std::integral<decltype(N)>)
+template <typename T, std::integral auto N>
 struct static_vector
 {
-    using value_type     = Value_Type;
-    using size_type      = decltype(N);
-    using const_iterator = value_type const*;
-    using iterator       = value_type*;
+    using value_type      = T;
+    using size_type       = std::size_t;
+    using const_iterator  = value_type const*;
+    using iterator        = value_type*;
+    using const_reference = value_type const&;
+    using reference       = value_type&;
 
     // TODO: Alignment
     static constexpr auto s_size = N;
 
-    static_assert(std::is_trivially_copyable_v<static_vector>);
-    static_assert(std::is_standard_layout_v<static_vector>);
+    static_assert(std::is_trivially_copyable_v<T>);
+    static_assert(std::is_standard_layout_v<T>);
 
     [[nodiscard]]
     constexpr static auto size() noexcept -> size_type
@@ -35,14 +42,18 @@ struct static_vector
     [[nodiscard]]
     constexpr auto operator[](size_type const idx) const noexcept -> value_type const&
     {
+#ifdef AMR_CONTANERS_CHECKBOUNDS
         assert_in_bounds(idx);
+#endif
         return value_[idx];
     }
 
     [[nodiscard]]
     constexpr auto operator[](size_type const idx) noexcept -> value_type&
     {
+#ifdef AMR_CONTANERS_CHECKBOUNDS
         assert_in_bounds(idx);
+#endif
         return value_[idx];
     }
 
@@ -82,8 +93,8 @@ struct static_vector
         return std::end(value_);
     }
 
-    constexpr auto assert_in_bounds([[maybe_unused]] size_type const idx) const noexcept
-        -> void
+#ifdef AMR_CONTANERS_CHECKBOUNDS
+    constexpr auto assert_in_bounds(size_type const idx) const noexcept -> void
     {
         assert(idx < s_size);
         if constexpr (std::is_signed_v<size_type>)
@@ -91,6 +102,7 @@ struct static_vector
             assert(idx >= size_type{});
         }
     }
+#endif
 
     constexpr auto operator<=>(static_vector const&) const noexcept = default;
 
@@ -98,11 +110,16 @@ public:
     value_type value_[s_size];
 };
 
-template <auto N, typename Value_Type>
-    requires(std::integral<decltype(N)>)
-auto operator<<(std::ostream& os, static_vector<N, Value_Type> const& v) noexcept
+template <typename Value_Type, std::integral auto N>
+auto operator<<(std::ostream& os, static_vector<Value_Type, N> const& v) noexcept
     -> std::ostream&
 {
+    using vector_t = static_vector<Value_Type, N>;
+    if (std::is_floating_point_v<typename vector_t::value_type>)
+    {
+        os << std::fixed;
+        os << std::setprecision(4);
+    }
     os << "{ ";
     std::size_t n{ 0 };
     for (auto const& e : v)
@@ -110,6 +127,10 @@ auto operator<<(std::ostream& os, static_vector<N, Value_Type> const& v) noexcep
         os << e << (++n != N ? ", " : " ");
     }
     os << '}';
+    if (std::is_floating_point_v<typename vector_t::value_type>)
+    {
+        os << std::defaultfloat;
+    }
     return os;
 }
 

@@ -1,45 +1,88 @@
 #ifndef AMR_INCLUDED_CONTAINER_OPERATIONS
 #define AMR_INCLUDED_CONTAINER_OPERATIONS
 
-#include "error_handling.hpp"
+#include "container_concepts.hpp"
+#include "utility/error_handling.hpp"
 #include <concepts>
 #include <functional>
 #include <ranges>
 #include <type_traits>
 
-namespace amr::containers::vector_operations
+namespace amr::containers
 {
 
 namespace detail
 {
 
-template <typename V>
-concept Vector = requires(V v, typename V::size_type i) {
-    typename V::value_type;
-    v[i];
-} && std::ranges::sized_range<V> && std::is_trivially_constructible_v<V>;
-
 template <typename T1, typename T2>
-    requires Vector<T1> || Vector<T2>
+    requires concepts::Vector<T1> || concepts::Vector<T2>
 struct common_type;
 
-template <Vector V>
+template <concepts::Vector V>
 struct common_type<V, V>
 {
     using type = V;
 };
 
-template <Vector V, typename T>
+template <concepts::Vector V1, concepts::Vector V2>
+    requires(std::is_same_v<
+             typename V1::value_type,
+             std::common_type_t<typename V1::value_type, typename V2::value_type>>)
+struct common_type<V1, V2>
+{
+    using type = V1;
+};
+
+template <concepts::Vector V1, concepts::Vector V2>
+    requires(std::is_same_v<
+             typename V2::value_type,
+             std::common_type_t<typename V1::value_type, typename V2::value_type>>)
+struct common_type<V1, V2>
+{
+    using type = V2;
+};
+
+template <concepts::Vector V, typename T>
     requires std::is_arithmetic_v<T>
 struct common_type<V, T>
 {
+    static_assert(std::is_same_v<
+                  typename V::value_type,
+                  std::common_type_t<typename V::value_type, T>>);
     using type = V;
 };
 
-template <typename T, Vector V>
+template <typename T, concepts::Vector V>
     requires std::is_arithmetic_v<T>
 struct common_type<T, V>
 {
+    static_assert(std::is_same_v<
+                  typename V::value_type,
+                  std::common_type_t<typename V::value_type, T>>);
+    using type = V;
+};
+
+template <concepts::Vector V, std::ranges::range R>
+    requires(!concepts::Vector<R>)
+struct common_type<V, R>
+{
+    static_assert(
+        std::is_same_v<
+            typename V::value_type,
+            std::common_type_t<typename V::value_type, std::ranges::range_value_t<R>>>
+    );
+    using type = V;
+};
+
+template <std::ranges::range R, concepts::Vector V>
+    requires(!concepts::Vector<R>)
+struct common_type<R, V>
+{
+    static_assert(
+        std::is_same_v<
+            typename V::value_type,
+            std::common_type_t<std::ranges::range_value_t<R>, typename V::value_type>>
+    );
     using type = V;
 };
 
@@ -49,8 +92,8 @@ using common_type_t = typename common_type<T1, T2>::type;
 } // namespace detail
 
 constexpr auto operator+(auto&& lhs, auto&& rhs) noexcept -> auto
-    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
+    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
     return operator_impl(
         std::forward<decltype(lhs)>(lhs), std::forward<decltype(rhs)>(rhs), std::plus{}
@@ -58,8 +101,8 @@ constexpr auto operator+(auto&& lhs, auto&& rhs) noexcept -> auto
 }
 
 constexpr auto operator-(auto&& lhs, auto&& rhs) noexcept -> auto
-    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
+    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
     return operator_impl(
         std::forward<decltype(lhs)>(lhs), std::forward<decltype(rhs)>(rhs), std::minus{}
@@ -67,8 +110,8 @@ constexpr auto operator-(auto&& lhs, auto&& rhs) noexcept -> auto
 }
 
 constexpr auto operator*(auto&& lhs, auto&& rhs) noexcept -> auto
-    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
+    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
     return operator_impl(
         std::forward<decltype(lhs)>(lhs),
@@ -78,8 +121,8 @@ constexpr auto operator*(auto&& lhs, auto&& rhs) noexcept -> auto
 }
 
 constexpr auto operator/(auto&& lhs, auto&& rhs) noexcept -> auto
-    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
+    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
     return operator_impl(
         std::forward<decltype(lhs)>(lhs), std::forward<decltype(rhs)>(rhs), std::divides{}
@@ -87,8 +130,8 @@ constexpr auto operator/(auto&& lhs, auto&& rhs) noexcept -> auto
 }
 
 constexpr auto max(auto&& lhs, auto&& rhs) noexcept -> auto
-    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
+    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
     return operator_impl(
         std::forward<decltype(lhs)>(lhs),
@@ -103,8 +146,8 @@ constexpr auto max(auto&& lhs, auto&& rhs) noexcept -> auto
 }
 
 constexpr auto min(auto&& lhs, auto&& rhs) noexcept -> auto
-    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
+    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
     return operator_impl(
         std::forward<decltype(lhs)>(lhs),
@@ -118,15 +161,16 @@ constexpr auto min(auto&& lhs, auto&& rhs) noexcept -> auto
     );
 }
 
-template <typename T1, typename T2>
 [[nodiscard]]
-constexpr auto operator_impl(T1&& lhs, T2&& rhs, auto&& binary_op) noexcept
-    -> detail::common_type_t<std::remove_cvref_t<T1>, std::remove_cvref_t<T2>>
-    requires detail::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             detail::Vector<std::remove_cvref_t<decltype(rhs)>>
+constexpr auto operator_impl(auto&& lhs, auto&& rhs, auto&& binary_op) noexcept
+    -> detail::common_type_t<
+        std::remove_cvref_t<decltype(lhs)>,
+        std::remove_cvref_t<decltype(rhs)>>
+    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
+             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
 {
-    using a_type      = std::remove_cvref_t<T1>;
-    using b_type      = std::remove_cvref_t<T2>;
+    using a_type      = std::remove_cvref_t<decltype(lhs)>;
+    using b_type      = std::remove_cvref_t<decltype(rhs)>;
     using common_type = detail::common_type_t<a_type, b_type>;
 
     static_assert(std::is_trivially_constructible_v<common_type>);
@@ -135,7 +179,8 @@ constexpr auto operator_impl(T1&& lhs, T2&& rhs, auto&& binary_op) noexcept
     constexpr auto at_idx =
         [](auto&& v, std::integral auto idx) constexpr noexcept -> decltype(auto)
         requires(
-            detail::Vector<std::remove_cvref_t<decltype(v)>> ||
+            concepts::Vector<std::remove_cvref_t<decltype(v)>> ||
+            std::ranges::range<std::remove_cvref_t<decltype(v)>> ||
             std::is_arithmetic_v<std::remove_cvref_t<decltype(v)>>
         )
     {
@@ -144,7 +189,7 @@ constexpr auto operator_impl(T1&& lhs, T2&& rhs, auto&& binary_op) noexcept
         {
             return v;
         }
-        else if constexpr (detail::Vector<v_type>)
+        else if constexpr (concepts::Vector<v_type>)
         {
             return v[idx];
         }
@@ -169,6 +214,6 @@ constexpr auto operator_impl(T1&& lhs, T2&& rhs, auto&& binary_op) noexcept
     return ret;
 }
 
-} // namespace amr::containers::vector_operations
+} // namespace amr::containers
 
 #endif // AMR_INCLUDED_CONTAINER_OPERATIONS
