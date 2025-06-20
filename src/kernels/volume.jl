@@ -39,8 +39,9 @@ function evaluate_volume(globals, buffers, flux_coeff, basis, inverse_jacobian, 
     A = inverse_jacobian' * volume 
 
     buffers.chi .= kron(Diagonal(diag(A)), Diagonal(vec(quadweights)))
+
     
-    celldu .+= globals.reference_derivative_matrix * buffers.chi * flux_coeff #TODO sum factorization possible
+    celldu .+= globals.reference_derivative_matrix * (diag(buffers.chi) .* flux_coeff) #TODO sum factorization possible
     
 end
 

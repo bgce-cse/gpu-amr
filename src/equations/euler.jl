@@ -5,6 +5,20 @@ struct Euler <: Equation end
 
 struct ShockTube <: Scenario end
 
+function is_periodic_boundary(eq::Euler, scenario::GaussianWave)
+true
+end
+function is_periodic_boundary(eq::Euler, scenario::ShockTube)
+false
+end
+
+function is_analytical_solution(equation::Euler, scenario::GaussianWave)
+    true
+end
+function is_analytical_solution(equation::Euler, scenario::ShockTube)
+    true
+end
+
 function evaluate_energy(eq::Euler, rhou, rhov, rho, p, gamma = 1.4)
     p/(gamma - 1) + 1/(2*rho)*(rhou^2+rhov^2)
 end
@@ -32,61 +46,45 @@ function get_initial_values(eq::Euler, scenario::ShockTube, global_position; t=0
     [0.0, 0.0, rho, rhoE]
 end
 
-
-function is_analytical_solution(equation::Euler, scenario::GaussianWave)
-    true
-end
-function is_analytical_solution(equation::Euler, scenario::ShockTube)
-    true
-end
-
 function evaluate_pressure(eq::Euler, rho, E, imx, imy)
-    #0.4 for γ=1.4
-    0.4 * (E - 0.5 / rho * (imx^2 + imy^2))
+    0.4 .* (E .- 0.5 .* (imx.^2 .+ imy.^2) ./ rho)
 end
 
 function evaluate_flux(eq::Euler, celldofs, cellflux)
-    s = EulerShortcuts()
-    x_range = 1:size(celldofs, 1)
-    y_range = x_range .+ size(celldofs, 1)
-    eval_pressure = (rho, rhoE, rhou, rhov) -> evaluate_pressure(eq, rho, rhoE, rhou, rhov)
-
-    p = eval_pressure.(celldofs[:,1], celldofs[:,4], celldofs[:,1], celldofs[:,2])
-
-    cellflux[x_range, 1] .= celldofs[:,1] .* celldofs[:,1] ./ celldofs[:,1] .+ p
-    cellflux[x_range, 2] .= celldofs[:,1] .* celldofs[:,2] ./ celldofs[:,1]
-    cellflux[x_range, 1] .= celldofs[:,1]
-    cellflux[x_range, 4] .= celldofs[:,1] .* (celldofs[:,4] .+ p) ./ celldofs[:,1]
+    x_coord = 1:size(celldofs, 1)
+    ycoord = x_coord .+ size(celldofs, 1)
     
-    cellflux[y_range, 1] .= celldofs[:,1] .* celldofs[:,2] ./ celldofs[:,1]
-    cellflux[y_range, 2] .= celldofs[:,2] .* celldofs[:,2] ./ celldofs[:,1] .+ p
-    cellflux[y_range, 1] .= celldofs[:,2]
-    cellflux[y_range, 4] .= celldofs[:,2] .* (celldofs[:, 4] .+ p) ./ celldofs[:,1]
+        p = evaluate_pressure(eq,
+                          celldofs[:, 3],  # rho
+                          celldofs[:, 4],  # E
+                          celldofs[:, 1],  # rhou
+                          celldofs[:, 2])  # rhov
+
+    cellflux[x_coord, 1] .= celldofs[:,1] .* celldofs[:,1] ./ celldofs[:,3] .+ p
+    cellflux[x_coord, 2] .= celldofs[:,1] .* celldofs[:,2] ./ celldofs[:,3]
+    cellflux[x_coord, 3] .= celldofs[:,1]
+    cellflux[x_coord, 4] .= celldofs[:,1] .* (celldofs[:,4] .+ p) ./ celldofs[:,3]
+    
+    cellflux[ycoord, 1] .= celldofs[:,1] .* celldofs[:,2] ./ celldofs[:,3]
+    cellflux[ycoord, 2] .= celldofs[:,2] .* celldofs[:,2] ./ celldofs[:,3] .+ p
+    cellflux[ycoord, 3] .= celldofs[:,2]
+    cellflux[ycoord, 4] .= celldofs[:,2] .* (celldofs[:, 4] .+ p) ./ celldofs[:,3]
 end
 
-
 function max_eigenval(eq::Euler, celldata, normalidx; gamma=1.4)
-    rhou = celldata[:, 1]
-    rhov = celldata[:, 2]
-    rho  = celldata[:, 3]
-    rhoE = celldata[:, 4]
+    u = celldata[:, 1] ./ celldata[:, 3]
+    v = celldata[:, 2] ./ celldata[:, 3]
 
-    u = rhou ./ rho
-    v = rhov ./ rho
+    # compute pressure using evaluate_pressure, passing vectors directly
+    p = evaluate_pressure(eq, celldata[:, 3], celldata[:, 4], celldata[:, 1], celldata[:, 2])
 
-    kinetic_energy = 0.5 * (rhou.^2 + rhov.^2) ./ rho
-    p = (gamma - 1) .* (rhoE .- kinetic_energy)
+    c = sqrt.(gamma .* p ./ celldata[:, 3])
 
-    c = sqrt.(gamma * p ./ rho)
-
-    if normalidx == 1
-        vn = u
-    else
-        vn = v
-    end
+    vn = (normalidx == 1) ? u : v
 
     return maximum(abs.(vn) .+ c)
 end
+
 
 
 
@@ -99,12 +97,7 @@ dofsfaceneigh[:, normalidx] .= -dofsface[:, normalidx]
 
 end
 
-function is_periodic_boundary(eq::Euler, scenario::GaussianWave)
-true
-end
-function is_periodic_boundary(eq::Euler, scenario::ShockTube)
-false
-end
+
 
 
 

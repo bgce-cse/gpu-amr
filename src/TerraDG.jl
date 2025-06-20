@@ -131,7 +131,7 @@ function main(configfile::String)
     timestep = 0
     next_plotted = config.plot_start
 
-    limiter = Limiter(get_ndofs(eq))
+    limiter = make_limiter(config,get_ndofs(eq))
      
     while grid.time < config.end_time
         if timestep > 0
@@ -165,11 +165,12 @@ function main(configfile::String)
         end
 
         if abs(grid.time - next_plotted) < 1e-10
+            limit(grid, globals, limiter)
             @info "Writing output" grid.time
             plot(plotter)
             next_plotted = grid.time + config.plot_step
 
-            limit(grid, globals, limiter)
+            
             #TODO delete if want to solve sibson for time
             if config.equation_name == "sibson" 
                 break
