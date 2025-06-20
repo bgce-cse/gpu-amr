@@ -10,7 +10,7 @@
 
 constexpr uint32_t MAX_COORD = (1u << 29); // 2^29
 constexpr uint8_t MAX_LEVEL = 64;
-constexpr uint8_t MAX_DEPTH = 2;
+
 
 
 enum  direction
@@ -24,6 +24,14 @@ enum  direction
 
 namespace morton2d
 {
+    inline uint8_t MAX_DEPTH = 0; // Declaration in header
+    
+    // Initialize this in your main or initialization function
+    void initialize(uint8_t max_depth) {
+        MAX_DEPTH = max_depth;
+    }
+
+    
 bool isvalid_coord(uint32_t x, uint32_t y, uint8_t level) {
     uint32_t grid_size = 1u << (MAX_DEPTH - level);
     uint32_t max_coord = 1u << MAX_DEPTH;
@@ -33,7 +41,10 @@ bool isvalid_coord(uint32_t x, uint32_t y, uint8_t level) {
 // Encode 2D coordinates into a Morton code
 uint64_t encode2D(uint32_t x, uint32_t y, uint8_t level)
 {
-    assert(isvalid_coord(x,y,level) && "invalid combination of coordinates and level. Coordinates need to be multiple of 2^(max depth (harcoded to 2 rn for testing) - level )");
+    if (!isvalid_coord(x, y, level)) {
+        std::cerr << "Invalid coordinates: x=" << x << ", y=" << y << ", level=" << static_cast<int>(level) << std::endl;
+        std::cerr << "Required grid size: " << (1u << (MAX_DEPTH - level)) << ", MAX_DEPTH: " << static_cast<int>(MAX_DEPTH) << std::endl;
+    }
     assert(x < MAX_COORD && "coordinate values exceed 29-bit limit");
     assert(y < MAX_COORD && "coordinate values exceed 29-bit limit");
     assert(level < MAX_LEVEL && "refinement level exceeds 6-bit limit");

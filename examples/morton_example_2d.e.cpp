@@ -3,6 +3,7 @@
 #include <limits> // For debugging purposes
 
 int main() {
+    morton2d::initialize(2);
     // Take user input for 2D coordinates
     uint32_t x, y;
     int temp_level; // Use an intermediate variable to read the input

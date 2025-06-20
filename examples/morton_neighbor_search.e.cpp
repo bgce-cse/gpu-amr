@@ -7,7 +7,7 @@
 int main() {
     // Set up dummy tree
     // interior value refers to level of refinement
-    // always use bottom left cooridnates
+    // always use bottom left coordinates
     //    4+---+---+---+---+
     //     |       | 2 | 2 |
     //     +   1   +---+---+
@@ -18,6 +18,7 @@ int main() {
     //     |       |       |
     //    0+---+---+---+---+
     //     0       2       4
+    morton2d::initialize(2);
     uint32_t x, y;
     int temp_level; // Use an intermediate variable to read the input
     uint8_t level;
