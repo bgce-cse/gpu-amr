@@ -36,10 +36,31 @@ public:
     static constexpr auto s_depth = Depth;
     static constexpr auto s_dim   = 2u;
 
-    static constexpr offset_t offset_i(id_t id){
-        id_t morton_id = id >> 6;
-        return morton_id & 0x3;
+    static constexpr offset_t offset_of(id_t id){
+        auto [coords, level] = decode(id);
+        uint32_t delta_x_y = 1u << (s_depth - level + 1 );
+        offset_t x_offset = coords[0] % delta_x_y == 0 ? 0:1;
+        offset_t y_offset = coords[1] % delta_x_y == 0 ? 0:2;
+        return x_offset + y_offset;
+
     }
+    static constexpr id_t offset(id_t id, offset_t offset){
+    // Assume offset in {0, 1, 2, 3}
+    // Assume id corresponds to zero sibling (bits 6-7 are 0)
+    assert(offset_of(id) == 0 && "This function assumes it is called for zero sibling");
+    assert(offset <= 3 && "Offset must be 0, 1, 2, or 3");
+    auto [coords, level] = decode(id);
+    uint32_t delta_x_y = 1u << (s_depth - level);
+    offset_t x_offset = offset % 2;
+    offset_t y_offset = offset > 1 ? 1 : 0;
+    
+    coords[0] += x_offset * delta_x_y;
+    coords[1] += y_offset * delta_x_y;
+
+    auto sibling_id = encode(coords, level) ;
+    
+    return sibling_id;
+}
 
     static constexpr id_t zeroth_generation(){
         return 0;
@@ -150,10 +171,35 @@ public:
     static constexpr auto s_depth = Depth;
     static constexpr auto s_dim   = 3u;
 
-    static constexpr offset_t offset_i(id_t id){
-        id_t morton_id = id >> 6;
-        return morton_id & 0x7;  // 3 bits for 8 children in 3D
+    static constexpr offset_t offset_of(id_t id){
+        auto [coords, level] = decode(id);
+        uint32_t delta_x_y_z = 1u << (s_depth - level + 1 );
+        offset_t x_offset = coords[0] % delta_x_y_z == 0 ? 0:1;
+        offset_t y_offset = coords[1] % delta_x_y_z == 0 ? 0:2;
+        offset_t z_offset = coords[2] % delta_x_y_z == 0 ? 0:4;
+        return x_offset + y_offset + z_offset;
+
     }
+    static constexpr id_t offset(id_t id, offset_t offset){
+    // Assume offset in {0, 1, ..., 7}
+    // Assume id corresponds to zero sibling (bits 6-7 are 0)
+    assert(offset_of(id) == 0 && "This function assumes it is called for zero sibling");
+    assert(offset <= 7 && "Offset must be 0, 1, ..., or 7");
+    auto [coords, level] = decode(id);
+    uint32_t delta_x_y = 1u << (s_depth - level);
+    offset_t x_offset = offset % 2;
+    offset_t z_offset = offset > 3 ? 1 : 0;
+    offset_t y_offset = offset - z_offset > 1 ? 1 : 0;
+    
+    
+    coords[0] += x_offset * delta_x_y;
+    coords[1] += y_offset * delta_x_y;
+    coords[1] += z_offset * delta_x_y;
+
+    auto sibling_id = encode(coords, level) ;
+
+    return sibling_id;
+}
 
     static constexpr id_t zeroth_generation(){
         return 0;

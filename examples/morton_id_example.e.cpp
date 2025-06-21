@@ -111,6 +111,51 @@ int main() {
               << cell_size << "x" << cell_size << std::endl;
     std::cout << "Cells per dimension at this level: " 
               << (grid_size / cell_size) << std::endl;
+
+    //test offset function
+    std::cout << "\n=== OFFSET FUNCTIONS ===\n";
+    uint32_t current_offset = Morton2D::offset_of(morton_id);
+    std::cout << "Current offset: " << (int)current_offset << std::endl;
+
+    if (current_offset == 0)
+    {
+        std::cout << "This is a zero sibling, computing other siblings:\n";
+        
+        // Return all ids of siblings 1, 2 and 3
+        auto sibling_1 = Morton2D::offset(morton_id, 1);
+        auto sibling_2 = Morton2D::offset(morton_id, 2);
+        auto sibling_3 = Morton2D::offset(morton_id, 3);  // Fixed variable name
+        
+        // Decode and print each sibling
+        auto [coords_1, level_1] = Morton2D::decode(sibling_1);
+        auto [coords_2, level_2] = Morton2D::decode(sibling_2);
+        auto [coords_3, level_3] = Morton2D::decode(sibling_3);
+        
+        std::cout << "Sibling 1 (offset=1): (" << coords_1[0] << ", " << coords_1[1] 
+                  << ") at level " << (int)level_1 << " (ID: " << sibling_1 << ")" << std::endl;
+        std::cout << "Sibling 2 (offset=2): (" << coords_2[0] << ", " << coords_2[1] 
+                  << ") at level " << (int)level_2 << " (ID: " << sibling_2 << ")" << std::endl;
+        std::cout << "Sibling 3 (offset=3): (" << coords_3[0] << ", " << coords_3[1] 
+                  << ") at level " << (int)level_3 << " (ID: " << sibling_3 << ")" << std::endl;
+        
+        // Verify the offset extraction works
+        std::cout << "\nVerifying offset extraction:\n";
+        std::cout << "Original (offset=0): " << Morton2D::offset_of(morton_id) << std::endl;
+        std::cout << "Sibling 1 offset: " << Morton2D::offset_of(sibling_1) << std::endl;
+        std::cout << "Sibling 2 offset: " << Morton2D::offset_of(sibling_2) << std::endl;
+        std::cout << "Sibling 3 offset: " << Morton2D::offset_of(sibling_3) << std::endl;
+    }
+    else
+    {
+        std::cout << "This is not a zero sibling (offset=" << (int)current_offset 
+                  << "), cannot compute other siblings from this ID." << std::endl;
+        
+        // You could compute the zero sibling and then get others:
+        auto zero_sibling = morton_id - (current_offset << 6);  // Remove current offset
+        std::cout << "Zero sibling would be: " << zero_sibling << std::endl;
+    }
+    
+
     
     return 0;
 }
