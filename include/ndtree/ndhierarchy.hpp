@@ -10,24 +10,41 @@
 namespace amr::ndt::hierarchy
 {
 
-template <std::unsigned_integral auto Fanout, std::unsigned_integral auto Depth>
-class hierarchy_id
+template <
+    std::unsigned_integral auto Dim,
+    std::unsigned_integral auto Fanout,
+    std::unsigned_integral auto Depth>
+class hierarchical_prefix_id
 {
+    static_assert(Dim > 1);
+    static_assert(Fanout > 1);
+
 public:
-    using depth_t                           = decltype(Depth);
-    using mask_t                            = unsigned long long;
-    static constexpr auto s_fanout          = Fanout;
-    static constexpr auto s_depth           = Depth;
-    static constexpr auto s_generation_bits = utility::cx_functions::bits_for(s_fanout);
-    static constexpr auto s_hierarchy_bits  = s_generation_bits * s_depth;
+    using size_type   = std::uint32_t;
+    using mask_t      = unsigned long long;
+    using offset_t    = mask_t;
+    using direction_t = int; // TODO: Make an enum
+
+private:
+    static constexpr size_type s_dim       = Dim;
+    static constexpr size_type s_1d_fanout = Fanout;
+    static constexpr size_type s_nd_fanout =
+        utility::cx_functions::pow(s_1d_fanout, s_dim);
+    static constexpr auto s_max_depth = Depth;
+
+    static constexpr auto s_generation_bits =
+        utility::cx_functions::bits_for(s_nd_fanout);
+    static constexpr auto s_hierarchy_bits = s_generation_bits * s_max_depth;
     static_assert(s_hierarchy_bits <= sizeof(mask_t) * CHAR_BIT);
     using id_t = std::bitset<s_hierarchy_bits>;
 
-    static constexpr std::array<mask_t, Depth + 1> s_generation_masks = []() constexpr
+public:
+    static constexpr std::array<mask_t, s_max_depth + 1> s_generation_masks =
+        []() constexpr
     {
-        auto                          mask = ~(~0ull << s_generation_bits);
-        std::array<mask_t, Depth + 1> masks{};
-        for (auto i = s_depth; i != 0; --i)
+        auto                                mask = ~(~0ull << s_generation_bits);
+        std::array<mask_t, s_max_depth + 1> masks{};
+        for (auto i = s_max_depth; i != 0; --i)
         {
             masks[i] = mask;
             mask <<= s_generation_bits;
@@ -35,7 +52,7 @@ public:
         return masks;
     }();
 
-    static constexpr std::array<mask_t, Depth> s_predecessor_masks = []() constexpr
+    static constexpr std::array<mask_t, s_max_depth> s_predecessor_masks = []() constexpr
     {
         std::array<mask_t, Depth> masks{};
         for (auto i = 1; i != Depth; ++i)
@@ -46,34 +63,64 @@ public:
     }();
 
 private:
-    constexpr hierarchy_id(depth_t generation, id_t id) noexcept
+    constexpr hierarchical_prefix_id(size_type generation, id_t id) noexcept
         : m_generation{ generation }
         , m_id{ id }
     {
-        assert(m_generation < s_depth);
+        assert(m_generation < s_max_depth);
     }
 
-    constexpr hierarchy_id(depth_t generation, id_t id, mask_t fanout_id) noexcept
+    constexpr hierarchical_prefix_id(
+        size_type generation,
+        id_t      id,
+        mask_t    fanout_id
+    ) noexcept
         : m_generation{ generation }
         , m_id{ id.to_ullong() |
-                (fanout_id <<= ((s_depth - m_generation) * s_generation_bits)) }
+                (fanout_id << ((s_max_depth - m_generation) * s_generation_bits)) }
     {
-        assert(m_generation < s_depth);
+        assert(m_generation < s_max_depth);
     }
 
 public:
     [[nodiscard]]
-    static constexpr auto zeroth_generation() noexcept -> hierarchy_id
+    static constexpr auto dimension() noexcept -> size_type
     {
-        return hierarchy_id({}, {}, {});
+        return s_dim;
     }
 
     [[nodiscard]]
-    static constexpr auto parent_of(hierarchy_id const& id) noexcept -> hierarchy_id
+    static constexpr auto fanout() noexcept -> size_type
+    {
+        return s_1d_fanout;
+    }
+
+    [[nodiscard]]
+    static constexpr auto nd_fanout() noexcept -> size_type
+    {
+        return s_nd_fanout;
+    }
+
+    [[nodiscard]]
+    static constexpr auto max_depth() noexcept -> size_type
+    {
+        return s_max_depth;
+    }
+
+    [[nodiscard]]
+    static constexpr auto zeroth_generation() noexcept -> hierarchical_prefix_id
+    {
+        return hierarchical_prefix_id({}, {}, {});
+    }
+
+    [[nodiscard]]
+    static constexpr auto parent_of(hierarchical_prefix_id const& id) noexcept
+        -> hierarchical_prefix_id
     {
         assert(id.m_generation > 0);
-        const auto p = hierarchy_id(
-            id.m_generation - 1, id.m_id & s_predecessor_masks[id.m_generation - 1]
+        const auto p = hierarchical_prefix_id(
+            id.m_generation - 1,
+            id.m_id.to_ullong() & s_predecessor_masks[id.m_generation - 1]
         );
         std::cout << "Parent of " << id.m_id.to_string() << " is " << p.m_id.to_string()
                   << '\n';
@@ -81,18 +128,46 @@ public:
     }
 
     [[nodiscard]]
-    static constexpr auto child_of(const hierarchy_id id, const mask_t fanout_id) noexcept
-        -> hierarchy_id
+    static constexpr auto child_of(const hierarchical_prefix_id id) noexcept
+        -> hierarchical_prefix_id
     {
-        assert(id.m_generation < s_depth);
-        const auto p = hierarchy_id{
-            id.m_generation + 1,
-            id.m_id.to_ullong() ^
-                (fanout_id << ((s_depth - (id.m_generation + 1)) * s_generation_bits))
-        };
-        std::cout << id.m_generation << ", Child " << fanout_id << " of "
-                  << id.m_id.to_string() << " is " << p.m_id.to_string() << '\n';
+        assert(id.m_generation < s_max_depth);
+        const auto p = hierarchical_prefix_id{ id.m_generation + 1, id.m_id.to_ullong() };
+        std::cout << "Gen: " << id.m_generation << ", Child 0 of " << id.m_id.to_string()
+                  << " is " << p.m_id.to_string() << '\n';
         return p;
+    }
+
+    [[nodiscard]]
+    static constexpr auto
+        neighbour_at(hierarchical_prefix_id const& id, direction_t d) noexcept
+        -> hierarchical_prefix_id
+    {
+        std::cout << "Not implemented yet, i dont know how to find neighbour" << d
+                  << '\n';
+        return id;
+    }
+
+    [[nodiscard]]
+    static constexpr auto offset_of(hierarchical_prefix_id const& id) noexcept -> offset_t
+    {
+        return (
+            (id.m_id.to_ullong() & s_generation_masks[id.m_generation]) >>
+            ((s_max_depth - id.m_generation) * s_generation_bits)
+        );
+    }
+
+    [[nodiscard]]
+    static constexpr auto
+        offset(const hierarchical_prefix_id first_sibling, const offset_t offset) noexcept
+        -> hierarchical_prefix_id
+    {
+        const auto sibling = hierarchical_prefix_id(
+            first_sibling.m_generation, first_sibling.m_id, offset
+        );
+        std::cout << "Sibling " << offset << " of " << first_sibling.m_id.to_string()
+                  << " is " << sibling.m_id.to_string() << '\n';
+        return sibling;
     }
 
     [[nodiscard]]
@@ -102,24 +177,35 @@ public:
     }
 
     [[nodiscard]]
-    constexpr auto generation() const noexcept -> depth_t
+    constexpr auto generation() const noexcept -> size_type
     {
         return m_generation;
     }
 
     [[nodiscard]]
-    constexpr auto generation_id() const noexcept -> mask_t
-    {
-        return (
-            (m_id.to_ullong() & s_generation_masks[m_generation]) >>
-            ((s_depth - m_generation) * s_generation_bits)
-        );
-    }
+    auto operator==(hierarchical_prefix_id const&) const noexcept -> bool = default;
 
 private:
-    depth_t m_generation;
-    id_t    m_id;
+    size_type m_generation;
+    id_t      m_id;
 };
+
+template <
+    std::unsigned_integral auto Dim,
+    std::unsigned_integral auto Fanout,
+    std::unsigned_integral auto Depth>
+auto operator<(
+    hierarchical_prefix_id<Dim, Fanout, Depth> const& idx_a,
+    hierarchical_prefix_id<Dim, Fanout, Depth> const& idx_b
+) noexcept
+{
+    if (idx_a.id().to_ullong() < idx_b.id().to_ullong())
+        return true;
+    else if (idx_a.id().to_ullong() > idx_b.id().to_ullong())
+        return false;
+    else
+        return idx_a.generation() < idx_b.generation();
+}
 
 } // namespace amr::ndt::hierarchy
 
