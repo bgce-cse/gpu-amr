@@ -66,8 +66,8 @@ public:
         assert(level > 0 && "Root has no parent");
         uint32_t offset = 1u << (s_depth - level);
         coords[0] &= ~offset;
-        coords[0] &= ~offset;
-        assert(isvalid_coord(coords, level) && "invalid parent coordiantes");
+        coords[1] &= ~offset;
+        assert(isvalid_coord(coords, level - 1) && "invalid parent coordiantes");
 
         return encode(coords, level - 1);
     }
@@ -88,6 +88,8 @@ public:
 
     static constexpr id_t encode(coord_array const& coords, uint8_t level)
     {
+        assert(isvalid_coord(coords, level) && "invalid coordiantes and level combination");
+
         uint64_t morton_id = libmorton::morton2D_64_encode(coords[0], coords[1]);
         return (morton_id << 6) | (level & 0x3F);
     }
