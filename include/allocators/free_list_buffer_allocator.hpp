@@ -92,6 +92,7 @@ public:
             grow();
         }
         const auto p = m_free_list.back();
+        assert(p);
 #if ALLOCATOR_DEBUG_INITIALIZE
         utils::fill_buffer(p, s_block_alloc_size, ALLOCATOR_DEBUG_ALLOC_VALUE);
 #endif

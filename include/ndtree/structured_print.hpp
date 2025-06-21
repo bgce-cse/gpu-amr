@@ -23,11 +23,11 @@ public:
         std::ranges::sort(
             cpy, [](auto const& a, auto const& b) { return a.operator<(b); }
         );
-        for (auto const& [h, p] : cpy)
+        for ([[maybe_unused]] auto const& [h, _, p] : cpy)
         {
             print_header(m_os, h.generation())
-                << "h: " << h.id().to_string() << ", gen id: " << h.generation_id()
-                << ", ptr: " << p << '\n';
+                << "h: " << h.id().to_string()
+                << ", offset: " << decltype(h)::offset_of(h) << ", ptr: " << p << '\n';
             for (int i = 0; i != std::remove_cvref_t<decltype(tree)>::s_nd_fanout; ++i)
             {
                 print_header(m_os, h.generation()) << "@" << i << ": " << p[i] << '\n';

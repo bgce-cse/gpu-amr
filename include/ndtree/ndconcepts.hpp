@@ -1,38 +1,36 @@
 #ifndef AMR_INCLUDED_NDCONCEPTS
 #define AMR_INCLUDED_NDCONCEPTS
 
+#include <concepts>
+#include <functional>
 #include <iterator>
 #include <optional>
 #include <type_traits>
 
-namespace amr::tree::concepts
+namespace amr::ndt::concepts
 {
 
-template <typename T>
-concept Point = requires(T t) {
-    typename T::value_type;
-    T::s_dimension;
-    t[std::declval<int>()];
-    std::begin(t);
-    std::end(t);
-};
+template <typename I>
+concept NodeIndex =
+    requires(
+        const I                       i,
+        const typename I::direction_t d,
+        const typename I::offset_t    offset
+    ) {
+        { I::dimension() } -> std::same_as<typename I::size_type>;
+        { I::fanout() } -> std::same_as<typename I::size_type>;
+        { I::nd_fanout() } -> std::same_as<typename I::size_type>;
+        { I::max_depth() } -> std::integral;
+        { I::zeroth_generation() } -> std::same_as<I>;
+        { I::parent_of(i) } -> std::same_as<I>;
+        { I::child_of(i) } -> std::same_as<I>;
+        { I::neighbour_at(i, d) } -> std::same_as<I>;
+        { I::offset_of(i) } -> std::same_as<typename I::offset_t>;
+        { I::offset(i, offset) } -> std::same_as<I>;
+        { std::less{}(i, i) } -> std::convertible_to<bool>;
+    } &&
+    std::integral<typename I::size_type> && std::equality_comparable<I>;
 
-template <typename T>
-concept Boundary = requires(T t) {
-    t.min();
-    t.max();
-    t.mid(0);
-};
-
-template <typename T>
-concept Cell = requires(T t) {
-    typename T::value_type;
-    T::s_dimension;
-    { t.position() } -> std::convertible_to<typename T::position_t>;
-    t.properties();
-    { merge(std::array{ t, t }) } -> std::same_as<std::optional<T>>;
-} && std::is_destructible_v<T>;
-
-} // namespace amr::tree::concepts
+} // namespace amr::ndt::concepts
 
 #endif // AMR_INCLUDED_NDT_CONCEPTS
