@@ -1,130 +1,179 @@
 #ifndef AMR_INCLUDED_MORTON
 #define AMR_INCLUDED_MORTON
+
 #include <array>
-#include <cstdint>
-#include <libmorton/morton.h>
-#include <vector>
 #include <cassert>
+#include <cstdint>
 #include <iostream>
-#include <optional>
+#include <libmorton/morton.h>
+#include <utility>
 
-constexpr uint32_t MAX_COORD = (1u << 29); // 2^29
-constexpr uint8_t MAX_LEVEL = 64;
-
-
-
-enum  direction
+namespace amr::ndt::morton
 {
-    left,
-    right,
-    top,
-    bottom
+
+// Base template - not implemented to force specialization
+template <std::unsigned_integral auto Depth, std::unsigned_integral auto Dimension>
+class morton_id;
+
+// 2D Specialization
+template <std::unsigned_integral auto Depth>
+class morton_id<Depth, 2u>
+{
+public:
+    enum direction
+    {
+        left,
+        right,
+        top,
+        bottom
+    };
+
+    using depth_t     = decltype(Depth);
+    using id_t        = uint64_t;
+    using coord_array = std::array<uint32_t, 2>;
+    using offset_t = uint32_t;
+
+    static constexpr auto s_depth = Depth;
+    static constexpr auto s_dim   = 2u;
+
+    static constexpr offset_t offset_i(id_t id){
+        id_t morton_id = id >> 6;
+        return morton_id & 0x3;
+    }
+
+    static constexpr id_t zeroth_generation(){
+        return 0;
+    } 
+    static constexpr bool less(id_t lhs, id_t rhs) noexcept
+    {
+        return lhs < rhs; 
+    }
+    static constexpr bool equal(id_t lhs, id_t rhs) noexcept
+    {
+        return lhs == rhs;
+    }
+    static constexpr bool isvalid_coord(coord_array coordinates, uint8_t level)
+    {
+        uint32_t grid_size = 1u << (s_depth - level);
+        uint32_t max_coord = 1u << s_depth;
+        return (coordinates[0] % grid_size == 0) && (coordinates[1] % grid_size == 0) &&
+               (coordinates[0] < max_coord) && (coordinates[1] < max_coord);
+    }
+
+    static constexpr id_t parent_of(id_t morton_code)
+    {
+        auto [coords, level] = decode(morton_code);
+        assert(level > 0 && "Root has no parent");
+        uint32_t offset = 1u << (s_depth - level);
+        coords[0] &= ~offset;
+        coords[0] &= ~offset;
+        assert(isvalid_coord(coords, level) && "invalid parent coordiantes");
+
+        return encode(coords, level - 1);
+    }
+
+    static constexpr std::pair<coord_array, uint8_t> decode(id_t id)
+    {
+        uint8_t  level     = id & 0x3F;
+        uint64_t morton_id = id >> 6;
+
+        uint_fast32_t x, y;
+        libmorton::morton2D_64_decode(morton_id, x, y);
+
+        return {
+            { static_cast<uint32_t>(x), static_cast<uint32_t>(y) },
+            level
+        };
+    }
+
+    static constexpr id_t encode(coord_array const& coords, uint8_t level)
+    {
+        uint64_t morton_id = libmorton::morton2D_64_encode(coords[0], coords[1]);
+        return (morton_id << 6) | (level & 0x3F);
+    }
+
+    static constexpr id_t child_of(id_t parent_id)
+    {
+        auto [coords, level] = decode(parent_id); 
+        assert(level < s_depth && "Cell already at max level");  
+
+        return parent_id + 1;  
+    }
+
+    static constexpr id_t getNeighbor(id_t morton, direction dir) 
+    {
+        auto [coords, level] = decode(morton);  
+        uint32_t x_coord = coords[0];           
+        uint32_t y_coord = coords[1];           
+        uint32_t offset = 1u << (s_depth - level);  
+
+        switch (dir)
+        {
+            case direction::left:   x_coord -= offset; break;
+            case direction::right:  x_coord += offset; break;
+            case direction::bottom: y_coord += offset; break;
+            case direction::top:    y_coord -= offset; break;
+            default: assert(false); break;
+        }
+
+        if (!isvalid_coord({x_coord, y_coord}, level))  
+        {
+            return 0;  
+        }
+
+        return encode({x_coord, y_coord}, level);  
+    }
 };
 
+// 3D Specialization
+// template <std::unsigned_integral auto Depth>
+// class morton_id<Depth, 3>
+// {
+// public:
+//     using depth_t     = decltype(Depth);
+//     using id_t        = uint64_t;
+//     using coord_array = std::array<uint32_t, 3>;
 
-namespace morton2d
-{
-    inline uint8_t MAX_DEPTH = 0; 
-    
-    void initialize(uint8_t max_depth) {
-        MAX_DEPTH = max_depth;
-    }
+//     static constexpr auto s_depth = Depth;
+//     static constexpr auto s_dim   = 3u;
 
-    
-bool isvalid_coord(uint32_t x, uint32_t y, uint8_t level) {
-    uint32_t grid_size = 1u << (MAX_DEPTH - level);
-    uint32_t max_coord = 1u << MAX_DEPTH;
-    return (x % grid_size == 0) && (y % grid_size == 0) && (x < max_coord ) && (y < max_coord );
-}
+//     static constexpr id_t parent_of(id_t morton_code)
+//     {
+//         auto [coords, level] = decode(morton_code);
+//         assert(level > 0 && "Root has no parent");
 
-// Encode 2D coordinates into a Morton code
-uint64_t encode2D(uint32_t x, uint32_t y, uint8_t level)
-{
-    if (!isvalid_coord(x, y, level)) {
-        std::cerr << "Invalid coordinates: x=" << x << ", y=" << y << ", level=" << static_cast<int>(level) << std::endl;
-        std::cerr << "Required grid size: " << (1u << (MAX_DEPTH - level)) << ", MAX_DEPTH: " << static_cast<int>(MAX_DEPTH) << std::endl;
-    }
-    assert(x < MAX_COORD && "coordinate values exceed 29-bit limit");
-    assert(y < MAX_COORD && "coordinate values exceed 29-bit limit");
-    assert(level < MAX_LEVEL && "refinement level exceeds 6-bit limit");
-    uint64_t morton_id = libmorton::morton2D_64_encode(x, y);
-    return (morton_id << 6) | (level & 0x3F);
-}
+//         // Shift coordinates to parent level
+//         coords[0] >>= 1;
+//         coords[1] >>= 1;
+//         coords[2] >>= 1;
 
-// Decode a 2D Morton code into coordinates
-std::tuple<uint32_t, uint32_t, uint8_t> decode2D(uint64_t id)
-{
-    uint8_t level = id & 0x3F; 
-    uint64_t morton_id = id >> 6;
-    uint_fast32_t x, y;
-    libmorton::morton2D_64_decode(morton_id, x, y); // Decode into uint_fast32_t
-    return std::make_tuple(static_cast<uint32_t>(x), static_cast<uint32_t>(y), level);
-}
+//         return encode(coords, level - 1);
+//     }
 
+//     static constexpr std::pair<coord_array, uint8_t> decode(id_t id)
+//     {
+//         uint8_t  level     = id & 0x3F;
+//         uint64_t morton_id = id >> 6;
 
-uint64_t getParent2D(uint64_t morton) {
-    
-    auto [x_fine, y_fine, level] = morton2d::decode2D(morton);
-    assert(level > 0); // root has no parent
-    // Shift one level coarser
-    uint32_t offset = 1u << (MAX_DEPTH - level);
-    x_fine &= ~offset;
-    y_fine &= ~offset;
-    // std::cout << "x_parent " << x_fine << "y parent" << y_fine << std::endl; 
+//         uint_fast32_t x, y, z;
+//         libmorton::morton3D_64_decode(morton_id, x, y, z);
 
-    uint64_t parent_morton = morton2d::encode2D(x_fine, y_fine, level -1);
-    return parent_morton;
-}
+//         return {
+//             { static_cast<uint32_t>(x),
+//              static_cast<uint32_t>(y),
+//              static_cast<uint32_t>(z) },
+//             level
+//         };
+//     }
 
-bool isSibling(uint64_t morton1, uint64_t morton2 ){
-    return morton2d::getParent2D(morton1) == morton2d::getParent2D(morton2); 
-}
+//     static constexpr id_t encode(coord_array const& coords, uint8_t level)
+//     {
+//         uint64_t morton_id =
+//             libmorton::morton3D_64_encode(coords[0], coords[1], coords[2]);
+//         return (morton_id << 6) | (level & 0x3F);
+//     }
+// };
 
-
-std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> getChild2D(uint64_t morton) {
-    auto decoded_id = morton2d::decode2D(morton);
-    uint32_t x_coord = std::get<0>(decoded_id);
-    uint32_t y_coord = std::get<1>(decoded_id);
-    uint8_t level = std::get<2>(decoded_id);
-
-    assert(level < MAX_DEPTH && "Cell already at max level - no more child possible");
-
-    // Calculate the offset for child cells at the next refinement level
-    uint32_t offset = 1u << (MAX_DEPTH - level - 1);
-
-    // Encode child Morton codes
-    uint64_t morton1 = morton2d::encode2D(x_coord, y_coord, level + 1);
-    uint64_t morton2 = morton2d::encode2D(x_coord + offset, y_coord, level + 1);
-    uint64_t morton3 = morton2d::encode2D(x_coord, y_coord + offset, level + 1);
-    uint64_t morton4 = morton2d::encode2D(x_coord + offset, y_coord + offset, level + 1);
-
-    return {morton1, morton2, morton3, morton4};
-}
-
-std::optional<uint64_t> getNeighbor(uint64_t morton, direction dir) {
-    auto decoded_id = morton2d::decode2D(morton);
-    uint32_t x_coord = std::get<0>(decoded_id);
-    uint32_t y_coord = std::get<1>(decoded_id);
-    uint8_t level = std::get<2>(decoded_id);
-    uint32_t offset = 1u << (MAX_DEPTH - level);
-
-    switch (dir) {
-        case direction::left: x_coord -= offset; break;
-        case direction::right: x_coord += offset; break;
-        case direction::top: y_coord += offset; break;
-        case direction::bottom: y_coord -= offset; break;
-        default: assert(false); break;
-    }
-
-    // std::cout << "neighbor coordinates on same level :" << x_coord<< ", " << y_coord << std::endl;
-    if (!morton2d::isvalid_coord(x_coord, y_coord, level)) {
-        return std::nullopt; // No neighbor exists
-    }
-
-    return morton2d::encode2D(x_coord, y_coord, level);
-}
-
-
-} // namespace morton
+} // namespace amr::ndt::morton
 
 #endif // AMR_INCLUDED_MORTON
