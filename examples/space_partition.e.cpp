@@ -53,7 +53,7 @@ int main()
         );
         for (auto j = 0; j != tree_t::s_nd_fanout; ++j)
         {
-            auto _ = new (&ptr[j]) cell_t{
+            [[maybe_unused]]auto _ = new (&ptr[j]) cell_t{
                 .v = { rngf::randnormal(F(0), F(1)), rngf::randnormal(F(0), F(1)) }
             };
         }
