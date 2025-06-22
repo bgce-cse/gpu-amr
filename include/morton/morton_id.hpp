@@ -29,16 +29,17 @@ public:
     };
 
     using depth_t     = decltype(Depth);
-    using id_t        = uint64_t;
+    using mask_t        = uint64_t;
     using coord_array = std::array<uint32_t, 2>;
     using offset_t    = uint32_t;
     using size_type   = uint32_t;
     using direction_t = direction;
+    using level_t     = uint8_t;
 
     static constexpr size_type s_depth = Depth;
     static constexpr size_type s_dim   = 2u;
 
-    constexpr morton_id(id_t id) 
+    constexpr morton_id(mask_t id) 
         : m_id{ id }
     {
     }
@@ -70,19 +71,19 @@ public:
     return morton_id(sibling_id);
 }
 
-    static constexpr morton_id zeroth_generation() 
+    static constexpr morton_id root() 
     {
         return morton_id(0);
     } 
-    // static constexpr bool less(id_t lhs, id_t rhs) noexcept
+    // static constexpr bool less(mask_t lhs, mask_t rhs) noexcept
     // {
     //     return lhs < rhs; 
     // }
-    // static constexpr bool equal(id_t lhs, id_t rhs) noexcept
+    // static constexpr bool equal(mask_t lhs, mask_t rhs) noexcept
     // {
     //     return lhs == rhs;
     // }
-    static constexpr bool isvalid_coord(coord_array coordinates, uint8_t level)
+    static constexpr bool isvalid_coord(coord_array coordinates, level_t level)
     {
         uint32_t grid_size = 1u << (s_depth - level);
         uint32_t max_coord = 1u << s_depth;
@@ -102,10 +103,10 @@ public:
         return morton_id( encode(coords, level - 1) );
     }
 
-    static constexpr std::pair<coord_array, uint8_t> decode(id_t id)
+    static constexpr std::pair<coord_array, level_t> decode(mask_t id)
     {
-        uint8_t  level     = id & 0x3F;
-        uint64_t morton_id = id >> 6;
+        level_t level     = id & 0x3F;
+        mask_t morton_id = id >> 6;
 
         uint_fast32_t x, y;
         libmorton::morton2D_64_decode(morton_id, x, y);
@@ -116,7 +117,7 @@ public:
         };
     }
 
-    static constexpr id_t encode(coord_array const& coords, uint8_t level)
+    static constexpr mask_t encode(coord_array const& coords, level_t level)
     {
         assert(isvalid_coord(coords, level) && "invalid coordiantes and level combination");
 
@@ -133,6 +134,12 @@ public:
 
         return sibling;  
     }
+    static constexpr auto level(morton_id id) 
+    {
+        auto [_, level] = decode(id.id());  
+        return level;
+    }
+
 
     static constexpr morton_id neighbour_at(morton_id morton, direction dir) 
     {
@@ -186,7 +193,7 @@ public:
     // auto operator<(morton_id const&) const noexcept -> bool = default;
 
     private:
-    id_t      m_id;
+    mask_t      m_id;
 
 };
 
@@ -218,14 +225,15 @@ public:
     };
 
     using depth_t     = decltype(Depth);
-    using id_t        = uint64_t;
+    using mask_t        = uint64_t;
     using coord_array = std::array<uint32_t, 3>;
     using offset_t    = uint32_t;
+    using level_t     = uint8_t;
 
     static constexpr auto s_depth = Depth;
     static constexpr auto s_dim   = 3u;
 
-    static constexpr offset_t offset_of(id_t id){
+    static constexpr offset_t offset_of(mask_t id){
         auto [coords, level] = decode(id);
         uint32_t delta_x_y_z = 1u << (s_depth - level + 1 );
         offset_t x_offset = coords[0] % delta_x_y_z == 0 ? 0:1;
@@ -234,7 +242,7 @@ public:
         return x_offset + y_offset + z_offset;
 
     }
-    static constexpr id_t offset(id_t id, offset_t offset){
+    static constexpr mask_t offset(mask_t id, offset_t offset){
     // Assume offset in {0, 1, ..., 7}
     // Assume id corresponds to zero sibling (bits 6-7 are 0)
     assert(offset_of(id) == 0 && "This function assumes it is called for zero sibling");
@@ -255,21 +263,21 @@ public:
     return sibling_id;
 }
 
-    static constexpr id_t zeroth_generation(){
+    static constexpr mask_t root(){
         return 0;
     } 
 
-    static constexpr bool less(id_t lhs, id_t rhs)
+    static constexpr bool less(mask_t lhs, mask_t rhs)
     {
         return lhs < rhs; 
     }
 
-    static constexpr bool equal(id_t lhs, id_t rhs) 
+    static constexpr bool equal(mask_t lhs, mask_t rhs) 
     {
         return lhs == rhs;
     }
 
-    static constexpr bool isvalid_coord(coord_array coordinates, uint8_t level)
+    static constexpr bool isvalid_coord(coord_array coordinates, level_t level)
     {
         uint32_t grid_size = 1u << (s_depth - level);
         uint32_t max_coord = 1u << s_depth;
@@ -281,7 +289,7 @@ public:
                (coordinates[2] < max_coord);
     }
 
-    static constexpr id_t parent_of(id_t morton_code)
+    static constexpr mask_t parent_of(mask_t morton_code)
     {
         auto [coords, level] = decode(morton_code);
         assert(level > 0 && "Root has no parent");
@@ -294,9 +302,9 @@ public:
         return encode(coords, level - 1);
     }
 
-    static constexpr std::pair<coord_array, uint8_t> decode(id_t id)
+    static constexpr std::pair<coord_array, level_t> decode(mask_t id)
     {
-        uint8_t  level     = id & 0x3F;
+        level_t  level     = id & 0x3F;
         uint64_t morton_id = id >> 6;
 
         uint_fast32_t x, y, z;
@@ -308,7 +316,7 @@ public:
         };
     }
 
-    static constexpr id_t encode(coord_array const& coords, uint8_t level)
+    static constexpr mask_t encode(coord_array const& coords, level_t level)
     {
         assert(isvalid_coord(coords, level) && "invalid coordinates and level combination");
 
@@ -316,7 +324,7 @@ public:
         return (morton_id << 6) | (level & 0x3F);
     }
 
-    static constexpr id_t child_of(id_t parent_id)
+    static constexpr mask_t child_of(mask_t parent_id)
     {
         auto [coords, level] = decode(parent_id); 
         assert(level < s_depth && "Cell already at max level");  
@@ -324,7 +332,7 @@ public:
         return parent_id + 1;  
     }
 
-    static constexpr id_t getNeighbor(id_t morton, direction dir) 
+    static constexpr mask_t getNeighbor(mask_t morton, direction dir) 
     {
         auto [coords, level] = decode(morton);  
         uint32_t x_coord = coords[0];           
@@ -352,6 +360,6 @@ public:
     }
 };
 
-} // namespace amr::ndt::morton
+}// namespace amr::ndt::morton
 
 #endif // AMR_INCLUDED_MORTON
