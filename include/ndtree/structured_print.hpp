@@ -23,7 +23,7 @@ public:
         std::ranges::sort(
             cpy, [](auto const& a, auto const& b) { return a.operator<(b); }
         );
-        for ([[maybe_unused]] auto const& [h, _, p] : cpy)
+        for ([[maybe_unused]] auto const& [h, p, _] : cpy)
         {
             print_header(m_os, h.generation())
                 << "h: " << h.id().to_string()

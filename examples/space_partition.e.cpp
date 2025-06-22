@@ -51,7 +51,7 @@ int main()
     }
 
     typename index_t::offset_t offset = rng::randrange(0u, 3u);
-    auto                       bp     = h.blocks()[0];
+    auto                       bp     = h.get_block(index_t::zeroth_generation()).value();
     for (auto j = 0; j != index_t::nd_fanout(); ++j)
     {
         [[maybe_unused]]
@@ -82,6 +82,24 @@ int main()
             }
         }
     }
+
+    printer.print(h);
+
+    std::cout << "------------------------------\nRefinement:\n";
+
+    while (true)
+    {
+        bp     = h.blocks()[rng::randrange(0uz, h.blocks().size() - 1)];
+        offset = rng::randrange(0u, 3u);
+        if (bp.alive_all())
+        {
+            break;
+        }
+    }
+    auto new_cell = h.recombine(bp.id);
+    auto _        = new (&new_cell.ptr) cell_t{
+               .v = { -1, -1 }
+    };
 
     printer.print(h);
 
