@@ -40,6 +40,7 @@ public:
         struct metadata
         {
             bool alive;
+            int refine_flag; // 1 for refine, 2 for coarsen
         };
 
         pointer  ptr;
@@ -74,7 +75,7 @@ public:
         constexpr block_pointer(node_index_t i, pointer p) noexcept
             : id(i)
             , ptr{ p }
-            , metadata(cell_metadata{ true })
+            , metadata(cell_metadata{ true, 0 })
         {
         }
 
@@ -131,6 +132,13 @@ public:
                 metadata.cell_data, [](auto const& e) { return e.alive; }
             );
         }
+        [[nodiscard]]
+        constexpr auto coarsen_all() const noexcept -> bool
+        {
+            return std::ranges::all_of(
+                metadata.cell_data, [](auto const& e) { return e.refine_flag == 2; }
+            );
+        }
 
     private:
 #ifdef AMR_NDTREE_CHECKBOUNDS
@@ -181,6 +189,49 @@ public:
         const auto new_bp = block_pointer(node_id, p);
         m_blocks.emplace_back(new_bp);
         return new_bp;
+    }
+
+    [[nodiscard]]
+    auto apply_refine_coarsen()
+    {
+        std::cout << "Total blocks before refinement: " << m_blocks.size() << std::endl;
+
+        for (size_t idx = 0; idx < m_blocks.size(); ++idx) {
+            auto& block = m_blocks[idx];
+            std::cout << "Block " << idx << " id: " << std::hex << block.id.id() << std::dec << std::endl;
+
+            auto [coords, level] = node_index_t::decode(block.id.id());
+            std::cout << "Block " << idx << " level: " << (int)level << " coords: " << coords[0] << "," << coords[1] << std::endl;
+
+            if (level >= node_index_t::max_depth()) {
+                std::cout << "ERROR: Block at invalid level!" << std::endl;
+                continue;
+            }
+
+            for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i) {
+
+                block = m_blocks[idx];
+
+                if(block.metadata.cell_data[i].refine_flag == 1 && block.metadata.cell_data[i].alive) {
+                    auto child_id = node_index_t::child_of(block.id, i);
+                    std::cout << "About to fragment child at level " << (int)level + 1 << std::endl;
+                    [[maybe_unused]] auto _ = fragment(child_id);
+                }
+            }
+        }
+    }
+
+    template <typename Lambda>
+    auto compute_refine_flag(Lambda&& condition) {
+        for (auto& block : m_blocks) {
+            for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i) {
+                if ( block.metadata.cell_data[i].alive)
+                {
+                    auto child_id = node_index_t::child_of(block.id, i);
+                    block.metadata.cell_data[i].refine_flag = condition(child_id);
+                }
+            }
+        }
     }
 
     [[nodiscard]]
