@@ -37,7 +37,7 @@ int main()
     using tree_t  = amr::ndt::tree::ndtree<cell_t, index_t>;
     tree_t h;
 
-    ndt::print::vtk_print printer("output");
+    ndt::print::structured_print printer(std::cout);
 
     // std::cout << "d: x "
     //           << std::bitset<7 * 2 + 3>(tree_t::node_index_t::s_depth_mask).to_string()
@@ -83,8 +83,8 @@ int main()
                 break;
             }
         }
-        std::string file_extension = std::to_string(i) + ".vtk";
-        printer.print(h,file_extension);
+        // std::string file_extension = std::to_string(i) + ".vtk";
+        printer.print(h);
     }
 
     
@@ -107,7 +107,7 @@ int main()
     };
 
     std::string file_extension = std::to_string(i) + ".vtk";
-    printer.print(h,file_extension);
+    printer.print(h);
 
     }
     

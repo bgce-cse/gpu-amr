@@ -75,14 +75,9 @@ public:
     {
         return morton_id(0);
     } 
-    // static constexpr bool less(mask_t lhs, mask_t rhs) noexcept
-    // {
-    //     return lhs < rhs; 
-    // }
-    // static constexpr bool equal(mask_t lhs, mask_t rhs) noexcept
-    // {
-    //     return lhs == rhs;
-    // }
+    static constexpr size_t bits(){
+        return sizeof(mask_t) * CHAR_BIT;
+    }
     static constexpr bool isvalid_coord(coord_array coordinates, level_t level)
     {
         uint32_t grid_size = 1u << (s_depth - level);
