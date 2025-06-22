@@ -93,11 +93,6 @@ public:
             return cell_pointer{ ptr + i, metadata.cell_data[i] };
         }
 
-        constexpr auto operator<(block_pointer const& other) const -> bool
-        {
-            return id < other.id;
-        }
-
     public:
         constexpr auto kill_cell(std::integral auto const i) noexcept -> void
         {
@@ -138,6 +133,18 @@ public:
             return std::ranges::all_of(
                 metadata.cell_data, [](auto const& e) { return e.refine_flag == 2; }
             );
+        }
+
+        [[nodiscard]]
+        static constexpr auto size() noexcept -> decltype(s_nd_fanout)
+        {
+            return s_nd_fanout;
+        }
+
+        [[nodiscard]]
+        constexpr auto operator<(block_pointer const& other) const -> bool
+        {
+            return id < other.id;
         }
 
     private:

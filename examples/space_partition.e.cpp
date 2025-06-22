@@ -1,9 +1,9 @@
 #include "containers/static_vector.hpp"
+#include "morton/morton_id.hpp"
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/structured_print.hpp"
 #include "utility/random.hpp"
-#include "morton/morton_id.hpp"
 #include <cstddef>
 #include <iostream>
 
@@ -45,16 +45,18 @@ int main()
     //           << '\n';
     // for (int i = 0; auto const& m : tree_t::node_index_t::s_level_masks)
     // {
-    //     std::cout << "g: " << i++ << ' ' << std::bitset<7 * 2 + 3>(m).to_string() << '\n';
+    //     std::cout << "g: " << i++ << ' ' << std::bitset<7 * 2 + 3>(m).to_string() <<
+    //     '\n';
     // }
     // for (int i = 0; auto const& m : tree_t::node_index_t::s_predecessor_masks)
     // {
-    //     std::cout << "p: " << i++ << ' ' << std::bitset<7 * 2 + 3>(m).to_string() << '\n';
+    //     std::cout << "p: " << i++ << ' ' << std::bitset<7 * 2 + 3>(m).to_string() <<
+    //     '\n';
     // }
 
     typename index_t::offset_t offset = rng::randrange(0u, 3u);
     auto                       bp     = h.get_block(index_t::root()).value();
-    for (auto j = 0; j != index_t::nd_fanout(); ++j)
+    for (auto j = 0u; j != decltype(bp)::size(); ++j)
     {
         [[maybe_unused]]
         auto _ = new (&bp.ptr[j]) cell_t{
@@ -67,7 +69,7 @@ int main()
         auto fragment_id = index_t::child_of(bp.id, offset);
         bp               = h.fragment(fragment_id);
 
-        for (auto j = 0; j != index_t::nd_fanout(); ++j)
+        for (auto j = 0u; j != decltype(bp)::size(); ++j)
         {
             [[maybe_unused]]
             auto _ = new (&bp.ptr[j]) cell_t{
@@ -89,31 +91,29 @@ int main()
         vtk_printer.print(h,file_extension);
     }
 
-    
-
     std::cout << "------------------------------\nRefinement:\n";
-    for (; i <15 ; i++)
+    for (; i < 15; i++)
     {
         while (true)
-    {
-        bp     = h.blocks()[rng::randrange(0uz, h.blocks().size() - 1)];
-        offset = rng::randrange(0u, 3u);
-        if (bp.alive_all())
         {
-            break;
+            bp     = h.blocks()[rng::randrange(0uz, h.blocks().size() - 1)];
+            offset = rng::randrange(0u, 3u);
+            if (bp.alive_all())
+            {
+                break;
+            }
         }
-    }
-    auto new_cell = h.recombine(bp.id);
-    [[maybe_unused]]  auto  _        = new (&new_cell.ptr) cell_t{
-               .v = { -1, -1 }
-    };
+        auto new_cell = h.recombine(bp.id);
+        [[maybe_unused]]
+        auto _ = new (&new_cell.ptr) cell_t{
+            .v = { -1, -1 }
+        };
 
     std::string file_extension = std::to_string(i) + ".vtk";
     structured_printer.print(h);
     vtk_printer.print(h,file_extension);
 
     }
-    
-    
+
     return EXIT_SUCCESS;
 }
