@@ -123,9 +123,9 @@ public:
     static constexpr morton_id child_of( morton_id parent_id, offset_t off)
     {
 
-        auto [coords, level] = decode(parent_id.m_id); 
+        auto [coords, level] = decode(parent_id.id()); 
         assert(level < s_depth && "Cell already at max level");  
-        auto sibling = offset(parent_id.m_id + 1, off);
+        auto sibling = offset(parent_id.id() + 1, off);
 
         return sibling;  
     }
@@ -200,8 +200,6 @@ auto operator<(
 {
     return idx_a.id() < idx_b.id();
 }
-
-
 
 
 // 3D Specialization
