@@ -37,7 +37,7 @@ int main()
     using tree_t  = amr::ndt::tree::ndtree<cell_t, index_t>;
     tree_t h;
 
-    ndt::print::structured_print printer(std::cout);
+    ndt::print::vtk_print printer("output");
 
     // std::cout << "d: x "
     //           << std::bitset<7 * 2 + 3>(tree_t::node_index_t::s_depth_mask).to_string()
@@ -60,7 +60,8 @@ int main()
             .v = { rngf::randnormal(F(0), F(1)), rngf::randnormal(F(0), F(1)) }
         };
     }
-    for (auto i = 0; i != 10; ++i)
+    int i = 0;
+    for (; i != 10; ++i)
     {
         auto fragment_id = index_t::child_of(bp.id, offset);
         bp               = h.fragment(fragment_id);
@@ -82,13 +83,16 @@ int main()
                 break;
             }
         }
+        std::string file_extension = std::to_string(i) + ".vtk";
+        printer.print(h,file_extension);
     }
 
-    printer.print(h);
+    
 
     std::cout << "------------------------------\nRefinement:\n";
-
-    while (true)
+    for (; i <15 ; i++)
+    {
+        while (true)
     {
         bp     = h.blocks()[rng::randrange(0uz, h.blocks().size() - 1)];
         offset = rng::randrange(0u, 3u);
@@ -98,11 +102,15 @@ int main()
         }
     }
     auto new_cell = h.recombine(bp.id);
-    auto _        = new (&new_cell.ptr) cell_t{
+    [[maybe_unused]]  auto  _        = new (&new_cell.ptr) cell_t{
                .v = { -1, -1 }
     };
 
-    printer.print(h);
+    std::string file_extension = std::to_string(i) + ".vtk";
+    printer.print(h,file_extension);
 
+    }
+    
+    
     return EXIT_SUCCESS;
 }
