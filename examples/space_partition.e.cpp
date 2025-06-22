@@ -3,6 +3,7 @@
 #include "ndtree/ndtree.hpp"
 #include "ndtree/structured_print.hpp"
 #include "utility/random.hpp"
+#include "morton/morton_id.hpp"
 #include <cstddef>
 #include <iostream>
 
@@ -32,7 +33,7 @@ int main()
     rngf::seed<F>();
 
     using cell_t  = cell<F, N>;
-    using index_t = amr::ndt::hierarchy::hierarchical_prefix_id<N, 2u, 7u>;
+    using index_t = amr::ndt::morton::morton_id<2u, 7u>;
     using tree_t  = amr::ndt::tree::ndtree<cell_t, index_t>;
     tree_t h;
 

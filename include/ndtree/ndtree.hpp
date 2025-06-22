@@ -102,7 +102,7 @@ public:
         [[nodiscard]]
         auto alive_any() const noexcept -> bool
         {
-            std::ranges::any_of(metadata.alive_cells, std::identity{});
+            return std::ranges::any_of(metadata.alive_cells, std::identity{});
         }
 
     private:

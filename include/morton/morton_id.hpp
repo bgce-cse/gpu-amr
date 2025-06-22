@@ -115,15 +115,16 @@ public:
         return (morton_id << 6) | (level & 0x3F);
     }
 
-    static constexpr id_t child_of(id_t parent_id)
+    static constexpr morton_id child_of( morton_id parent_id)
     {
-        auto [coords, level] = decode(parent_id); 
+
+        auto [coords, level] = decode(parent_id.m_id); 
         assert(level < s_depth && "Cell already at max level");  
 
         return parent_id + 1;  
     }
 
-    static constexpr id_t getNeighbor(id_t morton, direction dir) 
+    static constexpr id_t neighbour_at(id_t morton, direction dir) 
     {
         auto [coords, level] = decode(morton);  
         uint32_t x_coord = coords[0];           
@@ -146,6 +147,9 @@ public:
 
         return encode({x_coord, y_coord}, level);  
     }
+    private:
+    id_t      m_id;
+
 };
 
 // 3D Specialization
