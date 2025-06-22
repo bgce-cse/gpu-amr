@@ -20,19 +20,22 @@ public:
 
     auto print(auto const& tree) const -> void
     {
+        using tree_t    = std::remove_cvref_t<decltype(tree)>;
         std::vector cpy = auto(tree.blocks());
         std::ranges::sort(
             cpy, [](auto const& a, auto const& b) { return a.operator<(b); }
         );
-        for ([[maybe_unused]] auto const& [h, p, _] : cpy)
+        for ([[maybe_unused]] auto const& [h, p, md] : cpy)
         {
             using index_t = decltype(h);
             print_header(m_os, index_t::level(h))
                 << "h: " << std::bitset<index_t::bits()>(h.id()).to_string()
                 << ", offset: " << decltype(h)::offset_of(h) << ", ptr: " << p << '\n';
-            for (int i = 0; i != std::remove_cvref_t<decltype(tree)>::s_nd_fanout; ++i)
+            for (auto i = decltype(tree_t::s_nd_fanout){}; i != tree_t::s_nd_fanout; ++i)
             {
-                print_header(m_os, index_t::level(h)) << "@" << i << ": " << p[i] << '\n';
+                print_header(m_os, index_t::level(h))
+                    << "@" << i << ": " << p[i] << " ("
+                    << (md[i].alive ? "alive" : "dead") << ")" << '\n';
             }
         }
     }

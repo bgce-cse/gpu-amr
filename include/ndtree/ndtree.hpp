@@ -52,16 +52,26 @@ public:
 
         struct block_metadata
         {
-            block_metadata(cell_metadata const& init) noexcept
+            constexpr block_metadata(cell_metadata const& init) noexcept
                 : cell_data{ utility::compile_time_utility::
                                  array_factory<cell_metadata, s_nd_fanout>(init) }
             {
             }
 
+            [[nodiscard]]
+            constexpr auto operator[](std::integral auto const i) const noexcept
+                -> cell_metadata
+            {
+#ifdef AMR_NDTREE_CHECKBOUNDS
+                assert_in_bounds(i);
+#endif
+                return cell_data[i];
+            }
+
             std::array<cell_metadata, s_nd_fanout> cell_data;
         };
 
-        block_pointer(node_index_t i, pointer p) noexcept
+        constexpr block_pointer(node_index_t i, pointer p) noexcept
             : id(i)
             , ptr{ p }
             , metadata(cell_metadata{ true })
@@ -73,7 +83,8 @@ public:
         block_metadata metadata;
 
         [[nodiscard]]
-        auto operator[](std::integral auto const i) const noexcept -> cell_pointer
+        constexpr auto operator[](std::integral auto const i) const noexcept
+            -> cell_pointer
         {
 #ifdef AMR_NDTREE_CHECKBOUNDS
             assert_in_bounds(i);
@@ -81,13 +92,13 @@ public:
             return cell_pointer{ ptr + i, metadata.cell_data[i] };
         }
 
-        auto operator<(block_pointer const& other) const -> bool
+        constexpr auto operator<(block_pointer const& other) const -> bool
         {
             return id < other.id;
         }
 
     public:
-        auto kill_cell(std::integral auto const i) noexcept -> void
+        constexpr auto kill_cell(std::integral auto const i) noexcept -> void
         {
 #ifdef AMR_NDTREE_CHECKBOUNDS
             assert_in_bounds(i);
@@ -96,7 +107,7 @@ public:
             metadata.cell_data[i].alive = false;
         }
 
-        auto revive_cell(std::integral auto const i) noexcept -> void
+        constexpr auto revive_cell(std::integral auto const i) noexcept -> void
         {
 #ifdef AMR_NDTREE_CHECKBOUNDS
             assert_in_bounds(i);
@@ -106,7 +117,7 @@ public:
         }
 
         [[nodiscard]]
-        auto alive_any() const noexcept -> bool
+        constexpr auto alive_any() const noexcept -> bool
         {
             return std::ranges::any_of(
                 metadata.cell_data, [](auto const& e) { return e.alive; }
@@ -114,7 +125,7 @@ public:
         }
 
         [[nodiscard]]
-        auto alive_all() const noexcept -> bool
+        constexpr auto alive_all() const noexcept -> bool
         {
             return std::ranges::all_of(
                 metadata.cell_data, [](auto const& e) { return e.alive; }
