@@ -31,25 +31,33 @@ public:
     using depth_t     = decltype(Depth);
     using id_t        = uint64_t;
     using coord_array = std::array<uint32_t, 2>;
-    using offset_t = uint32_t;
+    using offset_t    = uint32_t;
+    using size_type   = uint32_t;
+    using direction_t = direction;
 
-    static constexpr auto s_depth = Depth;
-    static constexpr auto s_dim   = 2u;
+    static constexpr size_type s_depth = Depth;
+    static constexpr size_type s_dim   = 2u;
 
-    static constexpr offset_t offset_of(id_t id){
-        auto [coords, level] = decode(id);
+    constexpr morton_id(id_t id) 
+        : m_id{ id }
+    {
+    }
+
+
+    static constexpr offset_t offset_of(morton_id id){
+        auto [coords, level] = decode(id.m_id);
         uint32_t delta_x_y = 1u << (s_depth - level + 1 );
         offset_t x_offset = coords[0] % delta_x_y == 0 ? 0:1;
         offset_t y_offset = coords[1] % delta_x_y == 0 ? 0:2;
         return x_offset + y_offset;
 
     }
-    static constexpr id_t offset(id_t id, offset_t offset){
+    static constexpr morton_id offset(morton_id id, offset_t offset){
     // Assume offset in {0, 1, 2, 3}
     // Assume id corresponds to zero sibling (bits 6-7 are 0)
     assert(offset_of(id) == 0 && "This function assumes it is called for zero sibling");
     assert(offset <= 3 && "Offset must be 0, 1, 2, or 3");
-    auto [coords, level] = decode(id);
+    auto [coords, level] = decode(id.m_id);
     uint32_t delta_x_y = 1u << (s_depth - level);
     offset_t x_offset = offset % 2;
     offset_t y_offset = offset > 1 ? 1 : 0;
@@ -59,20 +67,21 @@ public:
 
     auto sibling_id = encode(coords, level) ;
     
-    return sibling_id;
+    return morton_id(sibling_id);
 }
 
-    static constexpr id_t zeroth_generation(){
-        return 0;
+    static constexpr morton_id zeroth_generation() 
+    {
+        return morton_id(0);
     } 
-    static constexpr bool less(id_t lhs, id_t rhs) noexcept
-    {
-        return lhs < rhs; 
-    }
-    static constexpr bool equal(id_t lhs, id_t rhs) noexcept
-    {
-        return lhs == rhs;
-    }
+    // static constexpr bool less(id_t lhs, id_t rhs) noexcept
+    // {
+    //     return lhs < rhs; 
+    // }
+    // static constexpr bool equal(id_t lhs, id_t rhs) noexcept
+    // {
+    //     return lhs == rhs;
+    // }
     static constexpr bool isvalid_coord(coord_array coordinates, uint8_t level)
     {
         uint32_t grid_size = 1u << (s_depth - level);
@@ -81,16 +90,16 @@ public:
                (coordinates[0] < max_coord) && (coordinates[1] < max_coord);
     }
 
-    static constexpr id_t parent_of(id_t morton_code)
+    static constexpr morton_id parent_of(morton_id morton_code)
     {
-        auto [coords, level] = decode(morton_code);
+        auto [coords, level] = decode(morton_code.id());
         assert(level > 0 && "Root has no parent");
         uint32_t offset = 1u << (s_depth - level);
         coords[0] &= ~offset;
         coords[1] &= ~offset;
         assert(isvalid_coord(coords, level - 1) && "invalid parent coordiantes");
 
-        return encode(coords, level - 1);
+        return morton_id( encode(coords, level - 1) );
     }
 
     static constexpr std::pair<coord_array, uint8_t> decode(id_t id)
@@ -115,18 +124,19 @@ public:
         return (morton_id << 6) | (level & 0x3F);
     }
 
-    static constexpr morton_id child_of( morton_id parent_id)
+    static constexpr morton_id child_of( morton_id parent_id, offset_t off)
     {
 
         auto [coords, level] = decode(parent_id.m_id); 
         assert(level < s_depth && "Cell already at max level");  
+        auto sibling = offset(parent_id.m_id + 1, off);
 
-        return parent_id + 1;  
+        return sibling;  
     }
 
-    static constexpr id_t neighbour_at(id_t morton, direction dir) 
+    static constexpr morton_id neighbour_at(morton_id morton, direction dir) 
     {
-        auto [coords, level] = decode(morton);  
+        auto [coords, level] = decode(morton.id());  
         uint32_t x_coord = coords[0];           
         uint32_t y_coord = coords[1];           
         uint32_t offset = 1u << (s_depth - level);  
@@ -145,12 +155,52 @@ public:
             return 0;  
         }
 
-        return encode({x_coord, y_coord}, level);  
+        return morton_id( encode({x_coord, y_coord}, level) );  
     }
+    constexpr auto id() const noexcept 
+    {
+        return m_id;
+    }
+    constexpr auto level() const noexcept 
+    {
+        auto [_, level] = decode(m_id);  
+        return level;
+    }
+    static constexpr auto dimension() 
+    {
+        return s_dim;
+    }
+    static constexpr size_type nd_fanout() 
+    {
+        return 4;
+    }
+    static constexpr size_type fanout() 
+    {
+        return 2;
+    }
+    static constexpr size_type max_depth() 
+    {
+        return s_depth;
+    }
+    auto operator==(morton_id const&) const noexcept -> bool = default;
+    // auto operator<(morton_id const&) const noexcept -> bool = default;
+
     private:
     id_t      m_id;
 
 };
+
+template < std::unsigned_integral auto Depth>
+auto operator<(
+    morton_id< Depth, 2u> const& idx_a,
+    morton_id<Depth, 2u> const& idx_b
+) noexcept
+{
+    return idx_a.id() < idx_b.id();
+}
+
+
+
 
 // 3D Specialization
 template <std::unsigned_integral auto Depth>
@@ -209,12 +259,12 @@ public:
         return 0;
     } 
 
-    static constexpr bool less(id_t lhs, id_t rhs) noexcept
+    static constexpr bool less(id_t lhs, id_t rhs)
     {
         return lhs < rhs; 
     }
 
-    static constexpr bool equal(id_t lhs, id_t rhs) noexcept
+    static constexpr bool equal(id_t lhs, id_t rhs) 
     {
         return lhs == rhs;
     }
