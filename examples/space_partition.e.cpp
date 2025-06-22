@@ -33,23 +33,23 @@ int main()
     rngf::seed<F>();
 
     using cell_t  = cell<F, N>;
-    using index_t = amr::ndt::morton::morton_id<2u, 7u>;
+    using index_t = amr::ndt::morton::morton_id<7u, 2u>;
     using tree_t  = amr::ndt::tree::ndtree<cell_t, index_t>;
     tree_t h;
 
     ndt::print::structured_print printer(std::cout);
 
-    std::cout << "d: x "
-              << std::bitset<7 * 2 + 3>(tree_t::node_index_t::s_depth_mask).to_string()
-              << '\n';
-    for (int i = 0; auto const& m : tree_t::node_index_t::s_level_masks)
-    {
-        std::cout << "g: " << i++ << ' ' << std::bitset<7 * 2 + 3>(m).to_string() << '\n';
-    }
-    for (int i = 0; auto const& m : tree_t::node_index_t::s_predecessor_masks)
-    {
-        std::cout << "p: " << i++ << ' ' << std::bitset<7 * 2 + 3>(m).to_string() << '\n';
-    }
+    // std::cout << "d: x "
+    //           << std::bitset<7 * 2 + 3>(tree_t::node_index_t::s_depth_mask).to_string()
+    //           << '\n';
+    // for (int i = 0; auto const& m : tree_t::node_index_t::s_level_masks)
+    // {
+    //     std::cout << "g: " << i++ << ' ' << std::bitset<7 * 2 + 3>(m).to_string() << '\n';
+    // }
+    // for (int i = 0; auto const& m : tree_t::node_index_t::s_predecessor_masks)
+    // {
+    //     std::cout << "p: " << i++ << ' ' << std::bitset<7 * 2 + 3>(m).to_string() << '\n';
+    // }
 
     typename index_t::offset_t offset = rng::randrange(0u, 3u);
     auto                       bp     = h.get_block(index_t::root()).value();
