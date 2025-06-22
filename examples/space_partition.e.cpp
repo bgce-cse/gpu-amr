@@ -76,7 +76,7 @@ int main()
         {
             bp     = h.blocks()[rng::randrange(0uz, h.blocks().size() - 1)];
             offset = rng::randrange(0u, 3u);
-            if (bp[offset].alive)
+            if (bp[offset].data.alive)
             {
                 break;
             }

@@ -20,9 +20,18 @@ class hierarchical_prefix_id
     static_assert(Fanout > 1);
 
 public:
-    using size_type   = std::uint32_t;
-    using mask_t      = unsigned long long;
-    using offset_t    = mask_t;
+    using size_type = std::uint32_t;
+    using mask_t    = unsigned long long;
+    using offset_t  = mask_t;
+
+    enum struct Direction
+    {
+        N,
+        E,
+        W,
+        S,
+    };
+
     using direction_t = int; // TODO: Make an enum
 
 private:

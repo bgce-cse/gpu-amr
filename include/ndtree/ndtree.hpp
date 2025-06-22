@@ -35,29 +35,35 @@ public:
     using allocator_t =
         allocator::free_list_buffer_allocator<s_block_size, alignof(value_type)>;
 
+    struct cell_pointer
+    {
+        struct metadata
+        {
+            bool alive;
+        };
+
+        pointer  ptr;
+        metadata data;
+    };
+
     struct block_pointer
     {
-        struct cell_pointer
-        {
-            pointer ptr;
-            bool    alive;
-        };
+        using cell_metadata = typename cell_pointer::metadata;
 
         struct block_metadata
         {
-            block_metadata(bool init) noexcept
-                : alive_cells{
-                    utility::compile_time_utility::array_factory<bool, s_nd_fanout>(init)
-                }
+            block_metadata(cell_metadata const& init) noexcept
+                : cell_data{ utility::compile_time_utility::
+                                 array_factory<cell_metadata, s_nd_fanout>(init) }
             {
             }
 
-            std::array<bool, s_nd_fanout> alive_cells;
+            std::array<cell_metadata, s_nd_fanout> cell_data;
         };
 
         block_pointer(node_index_t i, pointer p) noexcept
             : id(i)
-            , metadata(true)
+            , metadata(cell_metadata{ true })
             , ptr{ p }
         {
         }
@@ -72,7 +78,7 @@ public:
 #ifdef AMR_NDTREE_CHECKBOUNDS
             assert_in_bounds(i);
 #endif
-            return cell_pointer{ ptr + i, metadata.alive_cells[i] };
+            return cell_pointer{ ptr + i, metadata.cell_data[i] };
         }
 
         auto operator<(block_pointer const& other) const -> bool
@@ -86,8 +92,8 @@ public:
 #ifdef AMR_NDTREE_CHECKBOUNDS
             assert_in_bounds(i);
 #endif
-            assert(metadata.alive_cells[i] == true);
-            metadata.alive_cells[i] = false;
+            assert(metadata.cell_data[i].alive);
+            metadata.cell_data[i].alive = false;
         }
 
         auto revive_cell(std::integral auto const i) noexcept -> void
@@ -95,14 +101,16 @@ public:
 #ifdef AMR_NDTREE_CHECKBOUNDS
             assert_in_bounds(i);
 #endif
-            assert(metadata.alive_cells[i] == false);
+            assert(!metadata.cell_data[i].alive);
             metadata.alive_cells[i] = true;
         }
 
         [[nodiscard]]
         auto alive_any() const noexcept -> bool
         {
-            std::ranges::any_of(metadata.alive_cells, std::identity{});
+            std::ranges::any_of(
+                metadata.cell_data, [](auto const& e) { return e.alive; }
+            );
         }
 
     private:
@@ -157,7 +165,7 @@ public:
     }
 
     [[nodiscard]]
-    auto recombine(node_index_t const& node_id) -> block_pointer
+    auto recombine(node_index_t const& node_id) -> cell_pointer
     {
         auto bp = find_block(node_id);
         assert(bp.has_value());
