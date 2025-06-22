@@ -44,7 +44,7 @@ int main()
     int i = 0;
     std::string file_extension = std::to_string(i) + ".vtk";
     vtk_printer.print(h,file_extension);
-    for (; i != 5; ++i)
+    for (; i != 8; ++i)
     {
         h.compute_refine_flag([](const index_t& idx){
             auto [coords, level] = index_t::decode(idx.id());
@@ -60,6 +60,31 @@ int main()
             // Only refine if not at max level!
             if (level < idx.max_depth() && dist2 < 0.3 / idx.level() * max_size*  max_size ) {
                 return 1;
+            }
+            return 0;
+            });
+        h.apply_refine_coarsen();
+        
+        file_extension = std::to_string(i+1) + ".vtk";
+        vtk_printer.print(h,file_extension);
+        structured_printer.print(h);
+    }
+    for (; i != 16; ++i)
+    {
+        h.compute_refine_flag([](const index_t& idx){
+            auto [coords, level] = index_t::decode(idx.id());
+            auto max_size = 1u << idx.max_depth();
+            auto cell_size = 1u << (idx.max_depth() - level);
+
+            double mid_x = coords[0] + 0.5 * cell_size;
+            double mid_y = coords[1] + 0.5 * cell_size;
+            double center = 0.5 * max_size;
+            double dist2 = (mid_x - center) * (mid_x - center) +
+                           (mid_y - center) * (mid_y - center);
+
+            // Only refine if not at max level!
+            if (level < idx.max_depth() && dist2 < 0.3 / idx.level() * max_size*  max_size ) {
+                return 2;
             }
             return 0;
             });

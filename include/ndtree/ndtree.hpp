@@ -201,17 +201,24 @@ public:
     [[nodiscard]]
     auto apply_refine_coarsen()
     {
-        std::cout << "Total blocks before refinement: " << m_blocks.size() << std::endl;
-
+        // std::cout << "Total blocks before refinement: " << m_blocks.size() << std::endl;
+        std::vector<node_index_t> to_coarsen;
         for (size_t idx = 0; idx < m_blocks.size(); ++idx) {
             auto& block = m_blocks[idx];
-            std::cout << "Block " << idx << " id: " << std::hex << block.id.id() << std::dec << std::endl;
+            if (block.coarsen_all() && block.alive_all())
+            {
+                // std::cout << "Servus aus der coarseing if " << std::endl;
+                to_coarsen.push_back(block.id);
+                // [[maybe_unused]] auto _ = recombine(block.id);
+            }
+            
+            // std::cout << "Block " << idx << " id: " <<  block.id.id() << std::endl;
 
             auto [coords, level] = node_index_t::decode(block.id.id());
-            std::cout << "Block " << idx << " level: " << (int)level << " coords: " << coords[0] << "," << coords[1] << std::endl;
+            // std::cout << "Block " << idx << " level: " << (int)level << " coords: " << coords[0] << "," << coords[1] << std::endl;
 
             if (level >= node_index_t::max_depth()) {
-                std::cout << "ERROR: Block at invalid level!" << std::endl;
+                // std::cout << "ERROR: Block at invalid level!" << std::endl;
                 continue;
             }
 
@@ -221,10 +228,15 @@ public:
 
                 if(block.metadata.cell_data[i].refine_flag == 1 && block.metadata.cell_data[i].alive) {
                     auto child_id = node_index_t::child_of(block.id, i);
-                    std::cout << "About to fragment child at level " << (int)level + 1 << std::endl;
+                    // std::cout << "About to fragment child at level " << (int)level + 1 << std::endl;
                     [[maybe_unused]] auto _ = fragment(child_id);
                 }
             }
+        }
+        // Erase from highest to lowest to avoid shifting issues
+        for (auto idx = to_coarsen.size(); idx-- > 0; ) {
+            // std::cout << "calling recombine for " << to_coarsen[idx].id() << std::endl;
+            [[maybe_unused]] auto _ = recombine(to_coarsen[idx]);
         }
     }
 
@@ -252,6 +264,7 @@ public:
 
         release(bp.value());
         const auto  offset = node_index_t::offset_of(node_id);
+        // std::cout << "offset of parent cell " << static_cast<int>(offset) << std::endl;
         auto const& it     = pbp.value();
         it->revive_cell(offset);
         return it->operator[](offset);
