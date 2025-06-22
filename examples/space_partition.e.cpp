@@ -39,13 +39,16 @@ int main()
 
     ndt::print::structured_print printer(std::cout);
 
+    std::cout << "d: x "
+              << std::bitset<7 * 2 + 3>(tree_t::node_index_t::s_depth_mask).to_string()
+              << '\n';
     for (int i = 0; auto const& m : tree_t::node_index_t::s_generation_masks)
     {
-        std::cout << "i: " << i++ << ' ' << std::bitset<7 * 2>(m).to_string() << '\n';
+        std::cout << "g: " << i++ << ' ' << std::bitset<7 * 2 + 3>(m).to_string() << '\n';
     }
     for (int i = 0; auto const& m : tree_t::node_index_t::s_predecessor_masks)
     {
-        std::cout << "i: " << i++ << ' ' << std::bitset<7 * 2>(m).to_string() << '\n';
+        std::cout << "p: " << i++ << ' ' << std::bitset<7 * 2 + 3>(m).to_string() << '\n';
     }
 
     typename index_t::offset_t offset = rng::randrange(0u, 3u);
@@ -59,8 +62,7 @@ int main()
     }
     for (auto i = 0; i != 10; ++i)
     {
-        auto child0      = index_t::child_of(bp.id);
-        auto fragment_id = index_t::offset(child0, offset);
+        auto fragment_id = index_t::child_of(bp.id, offset);
         bp               = h.fragment(fragment_id);
 
         for (auto j = 0; j != index_t::nd_fanout(); ++j)
