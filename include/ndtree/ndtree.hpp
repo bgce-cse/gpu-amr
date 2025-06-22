@@ -144,7 +144,7 @@ public:
         , m_blocks()
     {
         const auto p = (pointer)m_allocator.allocate_one();
-        m_blocks.emplace_back(node_index_t::zeroth_generation(), p);
+        m_blocks.emplace_back(node_index_t::root(), p);
     }
 
     [[nodiscard]]

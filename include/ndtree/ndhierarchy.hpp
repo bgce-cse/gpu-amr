@@ -23,6 +23,7 @@ public:
     using size_type = std::uint32_t;
     using mask_t    = unsigned long long;
     using offset_t  = mask_t;
+    using level_t   = decltype(Depth);
 
     enum struct Direction
     {
@@ -41,24 +42,23 @@ private:
         utility::cx_functions::pow(s_1d_fanout, s_dim);
     static constexpr auto s_max_depth = Depth;
 
-    static constexpr auto s_generation_bits =
-        utility::cx_functions::bits_for(s_nd_fanout);
-    static constexpr auto s_hierarchy_bits = s_generation_bits * s_max_depth;
+    static constexpr auto s_level_bits     = utility::cx_functions::bits_for(s_nd_fanout);
+    static constexpr auto s_hierarchy_bits = s_level_bits * s_max_depth;
     static constexpr auto s_depth_bits     = utility::cx_functions::bits_for(s_max_depth);
     static_assert(s_hierarchy_bits <= sizeof(mask_t) * CHAR_BIT);
-    using id_t = std::bitset<s_hierarchy_bits + s_depth_bits>;
+    static constexpr auto s_bits = s_hierarchy_bits + s_depth_bits;
+    using id_t                   = std::bitset<s_bits>;
 
 public:
     static constexpr mask_t s_depth_mask = ~(~0ull << s_depth_bits);
-    static constexpr std::array<mask_t, s_max_depth + 1> s_generation_masks =
-        []() constexpr
+    static constexpr std::array<mask_t, s_max_depth + 1> s_level_masks = []() constexpr
     {
-        auto mask = ~(~0ull << (s_generation_bits)) << s_depth_bits;
+        auto mask = ~(~0ull << (s_level_bits)) << s_depth_bits;
         std::array<mask_t, s_max_depth + 1> masks{};
         for (auto i = s_max_depth; i != 0; --i)
         {
             masks[i] = mask;
-            mask <<= s_generation_bits;
+            mask <<= s_level_bits;
         }
         return masks;
     }();
@@ -68,7 +68,7 @@ public:
         std::array<mask_t, Depth> masks{};
         for (auto i = 1; i != Depth; ++i)
         {
-            masks[i] = (masks[i - 1] ^ s_generation_masks[i]) | s_depth_mask;
+            masks[i] = (masks[i - 1] ^ s_level_masks[i]) | s_depth_mask;
         }
         return masks;
     }();
@@ -77,19 +77,23 @@ private:
     constexpr hierarchical_prefix_id(id_t id) noexcept
         : m_id{ id.to_ullong() }
     {
-        assert(generation() < s_max_depth);
+        assert(level(*this) < s_max_depth);
     }
 
     constexpr hierarchical_prefix_id(id_t id, mask_t offset) noexcept
-        : m_id{ id.to_ullong() | (offset
-                                  << (((s_max_depth - generation_of(id)) *
-                                       s_generation_bits) +
-                                      s_depth_bits)) }
+        : m_id{ id.to_ullong() |
+                (offset << (((s_max_depth - level(id)) * s_level_bits) + s_depth_bits)) }
     {
-        assert(generation() < s_max_depth);
+        assert(level(*this) < s_max_depth);
     }
 
 public:
+    [[nodiscard]]
+    static constexpr auto bits() noexcept -> size_type
+    {
+        return s_bits;
+    }
+
     [[nodiscard]]
     static constexpr auto dimension() noexcept -> size_type
     {
@@ -115,7 +119,7 @@ public:
     }
 
     [[nodiscard]]
-    static constexpr auto zeroth_generation() noexcept -> hierarchical_prefix_id
+    static constexpr auto root() noexcept -> hierarchical_prefix_id
     {
         return hierarchical_prefix_id({});
     }
@@ -124,9 +128,9 @@ public:
     static constexpr auto parent_of(hierarchical_prefix_id const& id) noexcept
         -> hierarchical_prefix_id
     {
-        assert(id.generation() > 0);
+        assert(level(id) > 0);
         const auto p = hierarchical_prefix_id(
-            ((id.m_id.to_ullong() - 1) & s_predecessor_masks[id.generation() - 1])
+            ((id.m_id.to_ullong() - 1) & s_predecessor_masks[level(id) - 1])
         );
         std::cout << "Parent of " << id.m_id.to_string() << " is " << p.m_id.to_string()
                   << '\n';
@@ -138,7 +142,7 @@ public:
         child_of(const hierarchical_prefix_id id, const offset_t offset) noexcept
         -> hierarchical_prefix_id
     {
-        assert(id.generation() < s_max_depth);
+        assert(level(id) < s_max_depth);
         const auto p = hierarchical_prefix_id(id.m_id.to_ullong() + 1, offset);
         std::cout << "Child " << offset << " of " << id.m_id.to_string() << " is "
                   << p.m_id.to_string() << '\n';
@@ -159,8 +163,8 @@ public:
     static constexpr auto offset_of(hierarchical_prefix_id const& id) noexcept -> offset_t
     {
         return (
-            (id.m_id.to_ullong() & s_generation_masks[id.generation()]) >>
-            ((s_max_depth - id.generation()) * s_generation_bits + s_depth_bits)
+            (id.m_id.to_ullong() & s_level_masks[level(id)]) >>
+            ((s_max_depth - level(id)) * s_level_bits + s_depth_bits)
         );
     }
 
@@ -176,22 +180,15 @@ public:
     }
 
     [[nodiscard]]
-    constexpr auto id() const noexcept -> id_t const&
-    {
-        return m_id;
-    }
-
-    [[nodiscard]]
-    constexpr auto generation() const noexcept -> mask_t
-    {
-        return generation_of(*this);
-    }
-
-    [[nodiscard]]
-    static constexpr auto generation_of(hierarchical_prefix_id const& id) noexcept
-        -> mask_t
+    static constexpr auto level(hierarchical_prefix_id const& id) noexcept -> level_t
     {
         return id.m_id.to_ullong() & s_depth_mask;
+    }
+
+    [[nodiscard]]
+    constexpr auto id() const noexcept -> mask_t
+    {
+        return m_id.to_ullong();
     }
 
     [[nodiscard]]
@@ -210,12 +207,7 @@ auto operator<(
     hierarchical_prefix_id<Dim, Fanout, Depth> const& idx_b
 ) noexcept
 {
-    if (idx_a.id().to_ullong() < idx_b.id().to_ullong())
-        return true;
-    else if (idx_a.id().to_ullong() > idx_b.id().to_ullong())
-        return false;
-    else
-        return idx_a.generation() < idx_b.generation();
+    return idx_a.id() < idx_b.id();
 }
 
 } // namespace amr::ndt::hierarchy

@@ -3,6 +3,7 @@
 
 #include "ndtree.hpp"
 #include <algorithm>
+#include <bitset>
 #include <ostream>
 #include <ranges>
 
@@ -25,12 +26,13 @@ public:
         );
         for ([[maybe_unused]] auto const& [h, p, _] : cpy)
         {
-            print_header(m_os, h.generation())
-                << "h: " << h.id().to_string()
+            using index_t = decltype(h);
+            print_header(m_os, index_t::level(h))
+                << "h: " << std::bitset<index_t::bits()>(h.id()).to_string()
                 << ", offset: " << decltype(h)::offset_of(h) << ", ptr: " << p << '\n';
             for (int i = 0; i != std::remove_cvref_t<decltype(tree)>::s_nd_fanout; ++i)
             {
-                print_header(m_os, h.generation()) << "@" << i << ": " << p[i] << '\n';
+                print_header(m_os, index_t::level(h)) << "@" << i << ": " << p[i] << '\n';
             }
         }
     }

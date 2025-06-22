@@ -21,15 +21,18 @@ concept NodeIndex =
         { I::fanout() } -> std::same_as<typename I::size_type>;
         { I::nd_fanout() } -> std::same_as<typename I::size_type>;
         { I::max_depth() } -> std::integral;
-        { I::zeroth_generation() } -> std::same_as<I>;
+        { I::root() } -> std::same_as<I>;
         { I::parent_of(i) } -> std::same_as<I>;
         { I::child_of(i, offset) } -> std::same_as<I>;
         { I::neighbour_at(i, d) } -> std::same_as<I>;
         { I::offset_of(i) } -> std::same_as<typename I::offset_t>;
         { I::offset(i, offset) } -> std::same_as<I>; // TODO: Rethink
+        { I::level(i) } -> std::same_as<typename I::level_t>;
+        { i.id() } -> std::same_as<typename I::mask_t>;
         { std::less{}(i, i) } -> std::convertible_to<bool>;
     } &&
-    std::integral<typename I::size_type> && std::equality_comparable<I>;
+    std::integral<typename I::size_type> && std::unsigned_integral<typename I::mask_t> &&
+    std::equality_comparable<I>;
 
 } // namespace amr::ndt::concepts
 
