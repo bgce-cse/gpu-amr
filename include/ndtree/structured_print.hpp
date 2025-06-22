@@ -4,6 +4,7 @@
 #include "ndtree.hpp"
 #include <algorithm>
 #include <fstream>
+#include <bitset>
 #include <ostream>
 #include <ranges>
 #include "morton/morton_id.hpp"
@@ -21,18 +22,22 @@ public:
 
     auto print(auto const& tree) const -> void
     {
+        using tree_t    = std::remove_cvref_t<decltype(tree)>;
         std::vector cpy = auto(tree.blocks());
         std::ranges::sort(
             cpy, [](auto const& a, auto const& b) { return a.operator<(b); }
         );
-        for ([[maybe_unused]] auto const& [h, _, p] : cpy)
+        for ([[maybe_unused]] auto const& [h, p, md] : cpy)
         {
-            print_header(m_os, h.level())
-                << "h: " << h.id()
+            using index_t = decltype(h);
+            print_header(m_os, index_t::level(h))
+                << "h: " << std::bitset<index_t::bits()>(h.id()).to_string()
                 << ", offset: " << decltype(h)::offset_of(h) << ", ptr: " << p << '\n';
-            for (int i = 0; i != std::remove_cvref_t<decltype(tree)>::s_nd_fanout; ++i)
+            for (auto i = decltype(tree_t::s_nd_fanout){}; i != tree_t::s_nd_fanout; ++i)
             {
-                print_header(m_os, h.level()) << "@" << i << ": " << p[i] << '\n';
+                print_header(m_os, index_t::level(h))
+                    << "@" << i << ": " << p[i] << " ("
+                    << (md[i].alive ? "alive" : "dead") << ")" << '\n';
             }
         }
     }

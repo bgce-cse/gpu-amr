@@ -35,74 +35,101 @@ public:
     using allocator_t =
         allocator::free_list_buffer_allocator<s_block_size, alignof(value_type)>;
 
+    struct cell_pointer
+    {
+        struct metadata
+        {
+            bool alive;
+        };
+
+        pointer  ptr;
+        metadata data;
+    };
+
     struct block_pointer
     {
-        struct cell_pointer
-        {
-            pointer ptr;
-            bool    alive;
-        };
+        using cell_metadata = typename cell_pointer::metadata;
 
         struct block_metadata
         {
-            block_metadata(bool init) noexcept
-                : alive_cells{
-                    utility::compile_time_utility::array_factory<bool, s_nd_fanout>(init)
-                }
+            constexpr block_metadata(cell_metadata const& init) noexcept
+                : cell_data{ utility::compile_time_utility::
+                                 array_factory<cell_metadata, s_nd_fanout>(init) }
             {
             }
 
-            std::array<bool, s_nd_fanout> alive_cells;
+            [[nodiscard]]
+            constexpr auto operator[](std::integral auto const i) const noexcept
+                -> cell_metadata
+            {
+#ifdef AMR_NDTREE_CHECKBOUNDS
+                assert_in_bounds(i);
+#endif
+                return cell_data[i];
+            }
+
+            std::array<cell_metadata, s_nd_fanout> cell_data;
         };
 
-        block_pointer(node_index_t i, pointer p) noexcept
+        constexpr block_pointer(node_index_t i, pointer p) noexcept
             : id(i)
-            , metadata(true)
             , ptr{ p }
+            , metadata(cell_metadata{ true })
         {
         }
 
         node_index_t   id;
-        block_metadata metadata;
         pointer        ptr;
+        block_metadata metadata;
 
         [[nodiscard]]
-        auto operator[](std::integral auto const i) const noexcept -> cell_pointer
+        constexpr auto operator[](std::integral auto const i) const noexcept
+            -> cell_pointer
         {
 #ifdef AMR_NDTREE_CHECKBOUNDS
             assert_in_bounds(i);
 #endif
-            return cell_pointer{ ptr + i, metadata.alive_cells[i] };
+            return cell_pointer{ ptr + i, metadata.cell_data[i] };
         }
 
-        auto operator<(block_pointer const& other) const -> bool
+        constexpr auto operator<(block_pointer const& other) const -> bool
         {
             return id < other.id;
         }
 
     public:
-        auto kill_cell(std::integral auto const i) noexcept -> void
+        constexpr auto kill_cell(std::integral auto const i) noexcept -> void
         {
 #ifdef AMR_NDTREE_CHECKBOUNDS
             assert_in_bounds(i);
 #endif
-            assert(metadata.alive_cells[i] == true);
-            metadata.alive_cells[i] = false;
+            assert(metadata.cell_data[i].alive);
+            metadata.cell_data[i].alive = false;
         }
 
-        auto revive_cell(std::integral auto const i) noexcept -> void
+        constexpr auto revive_cell(std::integral auto const i) noexcept -> void
         {
 #ifdef AMR_NDTREE_CHECKBOUNDS
             assert_in_bounds(i);
 #endif
-            assert(metadata.alive_cells[i] == false);
-            metadata.alive_cells[i] = true;
+            assert(!metadata.cell_data[i].alive);
+            metadata.cell_data[i].alive = true;
         }
 
         [[nodiscard]]
-        auto alive_any() const noexcept -> bool
+        constexpr auto alive_any() const noexcept -> bool
         {
-            return std::ranges::any_of(metadata.alive_cells, std::identity{});
+            return std::ranges::any_of(
+                metadata.cell_data, [](auto const& e) { return e.alive; }
+            );
+        }
+
+        [[nodiscard]]
+        constexpr auto alive_all() const noexcept -> bool
+        {
+            return std::ranges::all_of(
+                metadata.cell_data, [](auto const& e) { return e.alive; }
+            );
         }
 
     private:
@@ -128,7 +155,7 @@ public:
         , m_blocks()
     {
         const auto p = (pointer)m_allocator.allocate_one();
-        m_blocks.emplace_back(node_index_t::zeroth_generation(), p);
+        m_blocks.emplace_back(node_index_t::root(), p);
     }
 
     [[nodiscard]]
@@ -150,14 +177,14 @@ public:
 
         }
           */
-        const auto p      = (pointer)m_allocator.allocate_one();
+        const auto p      = reinterpret_cast<pointer>(m_allocator.allocate_one());
         const auto new_bp = block_pointer(node_id, p);
         m_blocks.emplace_back(new_bp);
         return new_bp;
     }
 
     [[nodiscard]]
-    auto recombine(node_index_t const& node_id) -> block_pointer
+    auto recombine(node_index_t const& node_id) -> cell_pointer
     {
         auto bp = find_block(node_id);
         assert(bp.has_value());
@@ -173,6 +200,26 @@ public:
     }
 
     [[nodiscard]]
+    auto get_block(node_index_t const& node_id) const noexcept
+        -> std::optional<block_pointer>
+    {
+        auto bp = find_block(node_id);
+        if (!bp.has_value()) return std::nullopt;
+        return *bp.value();
+    }
+
+    [[nodiscard]]
+    auto get_cell(node_index_t const& node_id) const noexcept
+        -> std::optional<block_pointer>
+    {
+        const auto parent = node_index_t::parent_of(node_id);
+        const auto offset = node_index_t::offset_of(node_id);
+        auto       bp     = find_block(parent);
+        if (!bp.has_value()) return std::nullopt;
+        return bp.value()->operator[](offset);
+    }
+
+    [[nodiscard]]
     auto blocks() const noexcept -> container_t const&
     {
         return m_blocks;
@@ -180,22 +227,33 @@ public:
 
 private:
     [[nodiscard]]
+    auto find_block(node_index_t const& node_id) const noexcept
+        -> std::optional<container_const_iterator_t>
+    {
+        auto it = std::ranges::find_if(
+            m_blocks, [&id = node_id](auto const& e) { return e.id == id; }
+        );
+        return it == m_blocks.end() ? std::nullopt : std::optional{ it };
+    }
+
+    [[nodiscard]]
     auto find_block(node_index_t const& node_id) noexcept
         -> std::optional<container_iterator_t>
     {
-        auto bp = std::ranges::find_if(
+        auto it = std::ranges::find_if(
             m_blocks, [&id = node_id](auto const& e) { return e.id == id; }
         );
-        if (bp == std::end(m_blocks))
-        {
-            return std::nullopt;
-        }
-        return bp;
+        return it == m_blocks.end() ? std::nullopt : std::optional{ it };
     }
 
     auto release(container_iterator_t const& bp) noexcept -> void
     {
-        m_allocator.deallocate_one(bp->ptr);
+        auto p = bp->ptr;
+        for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
+        {
+            //(p[i]).~();
+        }
+        m_allocator.deallocate_one(reinterpret_cast<std::byte*>(p));
         m_blocks.erase(bp);
     }
 
