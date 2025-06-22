@@ -8,7 +8,7 @@
 #include <ostream>
 #include <ranges>
 #include "morton/morton_id.hpp"
-
+#include <filesystem> 
 namespace ndt::print
 {
 
@@ -59,15 +59,21 @@ private:
 struct vtk_print
 {
 public:
-    vtk_print(std::string filename) : m_filename(std::move(filename)) {}
-    
+    vtk_print(std::string base_filename)
+        : m_base_filename(std::move(base_filename))
+    {
+        // Ensure output directory exists
+        std::filesystem::create_directory("vtk_output");
+    }
+
     void print(auto const& tree, std::string filename_extension) const
     {
-        std::ofstream file(m_filename + filename_extension);
+        // Compose full path: ./vtk_output/base_filename + extension
+        std::string full_filename = "vtk_output/" + m_base_filename + filename_extension;
+        std::ofstream file(full_filename);
         if (!file.is_open()) {
-            throw std::runtime_error("Cannot open file: " + m_filename);
+            throw std::runtime_error("Cannot open file: " + full_filename);
         }
-        
         write_header(file);
         write_points(file, tree);
     }
@@ -140,7 +146,7 @@ private:
         }
     }
     
-    std::string m_filename;
+    std::string m_base_filename;
 };
 
 
