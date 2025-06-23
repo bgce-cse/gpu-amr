@@ -198,6 +198,57 @@ public:
         return new_bp;
     }
 
+    auto get_neighbors(node_index_t const& node_id, node_index_directon_t dir)
+        -> std::optional<std::pair<node_index_t, std::vector<typename node_index_t::offset_t>>>
+    {
+        // I assume this is called for a alive cell.
+        
+        std::vector<typename node_index_t::offset_t> index_vector;
+        auto direct_neighbor = node_index_t::neighbour_at(node_id, dir);
+
+        if (direct_neighbor == std::nullopt)
+        {
+            // no neighbor even exists
+            return std::nullopt;
+        }
+        auto d_neighbor = find_block(direct_neighbor.value());
+
+        if (d_neighbor.has_value())
+        {
+            typename node_index_t::offset_t offset0;
+            typename node_index_t::offset_t offset1;
+
+            switch (dir)
+            {
+                case node_index_directon_t::left:   offset0 = 1; offset1 = 3; break;
+                case node_index_directon_t::right:  offset0 = 0; offset1 = 2; break;
+                case node_index_directon_t::bottom: offset0 = 0; offset1 = 1; break;
+                case node_index_directon_t::top:    offset0 = 2; offset1 = 3; break;
+                default: break;
+            }
+            index_vector.push_back(offset0);
+            index_vector.push_back(offset1);
+            return std::make_optional(std::make_pair(direct_neighbor.value(), index_vector));
+        }
+        auto neighbor_parent = node_index_t::parent_of(direct_neighbor.value());
+        auto p_neighbor = find_block(neighbor_parent);
+        if (p_neighbor.has_value()) // parent of direct neighbor found
+        {
+            index_vector.push_back(node_index_t::offset_of(direct_neighbor.value()));
+            return std::make_optional(std::make_pair(neighbor_parent, index_vector));
+        }
+
+        auto neighbor_grandparent = node_index_t::parent_of(neighbor_parent);
+        auto gp_neighbor = find_block(neighbor_grandparent);
+        if (gp_neighbor.has_value()) // parent of direct neighbor found
+        {
+            index_vector.push_back(node_index_t::offset_of(neighbor_parent));
+            return std::make_optional(std::make_pair(neighbor_parent, index_vector));
+        }
+
+        assert(false);
+    }
+
     [[nodiscard]]
     auto apply_refine_coarsen()
     {

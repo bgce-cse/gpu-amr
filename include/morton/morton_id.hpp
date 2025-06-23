@@ -145,7 +145,7 @@ public:
         return level;
     }
 
-    static constexpr morton_id neighbour_at(morton_id morton, direction dir)
+    static constexpr std::optional<morton_id> neighbour_at(morton_id morton, direction dir)
     {
         auto [coords, level] = decode(morton.id());
         uint32_t x_coord     = coords[0];
@@ -163,7 +163,7 @@ public:
 
         if (!isvalid_coord({ x_coord, y_coord }, level))
         {
-            return 0;
+            return std::nullopt;
         }
 
         return morton_id(encode({ x_coord, y_coord }, level));
