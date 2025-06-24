@@ -48,5 +48,4 @@ function evaluate_error(eq::Equation, scenario::Scenario, grid::Grid, t::Float64
         var_name = string(get_variable_name(eq,i))
         @printf "%s\t%15.6e\t%15.6e\t%15.6e\n" var_name l1_error[i] l2_error[i] linf_error[i]
     end
-
 end

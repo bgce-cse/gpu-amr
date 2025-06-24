@@ -38,7 +38,6 @@ struct GlobalMatrices
             end
         end
 
-
         reference_massmatrix_cell = massmatrix(basis, dimensions)
         reference_massmatrix_face = massmatrix(basis, dimensions - 1)
         reference_derivative_matrix = derivativematrix(basis)

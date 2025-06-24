@@ -154,7 +154,6 @@ function make_grid(config::Configuration, eq::Equation, scenario::Scenario)
         config.offset)
 end
 
-
 """
     globalposition(cell:Cell, coordinate_reference)
     

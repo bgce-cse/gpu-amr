@@ -94,10 +94,8 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
         end
         @views du[:,:,cell.dataidx] = inv_massmatrix * @views du[:,:,cell.dataidx] 
             #print("mass: ",norm(du))
-        
     end
     grid.maxeigenval = maxeigenval
-    
 end
 
 """
@@ -175,7 +173,6 @@ function main(configfile::String)
             if config.equation_name == "sibson" 
                 break
             end
-
         end
         timestep += 1
     end
@@ -184,6 +181,5 @@ function main(configfile::String)
         evaluate_error(eq, scenario, grid, grid.time)
     end
 end
-
 
 end

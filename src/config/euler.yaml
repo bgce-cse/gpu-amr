@@ -18,5 +18,4 @@ equation:
 
 output:
   start: 0.0 #s
-  
   step: 0.1 #s

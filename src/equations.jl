@@ -59,8 +59,6 @@ function evaluate_boundary(eq::Equation, scenario::Equation, face, normalidx, do
     error("evaluate_boundary called but not define.")
 end
 
-
-
 """
     get_initial_values(eq::Equation, scenario::Scenario, global_position; t=0.0) 
 
@@ -103,8 +101,6 @@ Return the maximum eigenvalue in direction of `normalidx` for
 function max_eigenval(eq::Equation, celldata, normalidx)
     error("Function max_eigenval not defined for equation/scenario")
 end
-
-
 
 """
     declare_dofs(eq, dof_names, num_params=0)
@@ -182,11 +178,9 @@ macro declare_dofs(eq, dof_names, num_params=0)
         end)
         end
 
-
     quote $(expressions...) end
 end
 
-#TODO is there a way to include all files in equations/?
 include("equations/advection.jl")
 include("equations/sibson.jl")
 include("equations/acoustic.jl")

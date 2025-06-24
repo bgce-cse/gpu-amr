@@ -38,8 +38,6 @@ function pointidx(i::Integer, j::Integer, order)
       return offset +
         (i - 1) + (order[1] - 1) * (
           (j - 1))
-
-
 end
 
 function get_plot_points(order)
@@ -105,7 +103,6 @@ mutable struct VTKPlotter
 
         new(eq, scenario, grid, filename, collection, plot_counter, vtkcells, vtkpoints, cellpoints)
         end
-
 end
 
 
@@ -121,7 +118,6 @@ function evaluate_dof_points(eq, grid, points, dofidx)
     end
     eval_data
 end
-
 
 """
     plot(plotter::VTKPlotter)

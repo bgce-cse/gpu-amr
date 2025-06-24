@@ -5,7 +5,6 @@ struct PlanarWaves <: Scenario
 end
 
 function is_periodic_boundary(equation::Advection, scenario::PlanarWaves)
-    #TODO do we have to do something?
     true
 end
 
@@ -18,7 +17,6 @@ function get_initial_values(eq::Advection, scenario::PlanarWaves, global_positio
 end
 
 function is_analytical_solution(equation::Advection, scenario::PlanarWaves)
-    #TODO implement?
     true
 end
 
@@ -26,14 +24,13 @@ function evaluate_flux(eq::Advection, celldofs, cellflux)
     velocity = 1.0
 
     # make the x–flux and y–flux blocks
-    fx = velocity .* celldofs   # size = (order^2, 3)
-    fy = velocity .* celldofs   # same
+    fx = velocity .* celldofs 
+    fy = velocity .* celldofs
 
     # stack them so you get (2*order^2, 3)
     cellflux .= vcat(fx, fy)
 end
 
 function max_eigenval(eq::Advection, celldata, normalidx)
-    # Is actually correct!
     1.0
 end

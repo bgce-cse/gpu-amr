@@ -2,19 +2,20 @@
 struct Euler <: Equation end
 @declare_dofs Euler [:rhou, :rhov, :rho, :rhoE]
 
-
 struct ShockTube <: Scenario end
 
 function is_periodic_boundary(eq::Euler, scenario::GaussianWave)
-true
+    true
 end
+
 function is_periodic_boundary(eq::Euler, scenario::ShockTube)
-false
+    false
 end
 
 function is_analytical_solution(equation::Euler, scenario::GaussianWave)
     true
 end
+
 function is_analytical_solution(equation::Euler, scenario::ShockTube)
     true
 end
@@ -85,19 +86,9 @@ function max_eigenval(eq::Euler, celldata, normalidx; gamma=1.4)
     return maximum(abs.(vn) .+ c)
 end
 
-
-
-
 function evaluate_boundary(eq::Euler, scenario::ShockTube, face, normalidx, dofsface, dofsfaceneigh)
-# dofsface and dofsfaceneigh have shape (num_2d_quadpoints, dofs)
-# you need to set dofsfaceneigh
-dofsfaceneigh .= dofsface
-dofsfaceneigh[:, normalidx] .= -dofsface[:, normalidx]
-
-
+    # dofsface and dofsfaceneigh have shape (num_2d_quadpoints, dofs)
+    dofsfaceneigh .= dofsface
+    dofsfaceneigh[:, normalidx] .= -dofsface[:, normalidx]
 end
-
-
-
-
 

@@ -16,7 +16,6 @@ struct BuffersVolume
 
         new(scaled_fluxcoeff, scaling)
     end
-
 end
 
 """
@@ -40,9 +39,7 @@ function evaluate_volume(globals, buffers, flux_coeff, basis, inverse_jacobian, 
 
     buffers.chi .= kron(Diagonal(diag(A)), Diagonal(vec(quadweights)))
 
-    
     celldu .+= globals.reference_derivative_matrix * (diag(buffers.chi) .* flux_coeff) #TODO sum factorization possible
-    
 end
 
 

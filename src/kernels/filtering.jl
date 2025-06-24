@@ -43,7 +43,6 @@ function requires_filtering(filter::IdentityFilter)
     false
 end
 
-
 """
     evaluate_filter_matrix(filter::Filter, basis)
 

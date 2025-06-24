@@ -87,7 +87,6 @@ function project_to_faces(globals, dofs, flux, dofsface, fluxface, face)
     
     dofsface .= globals.project_dofs_to_face[face] * dofs
     fluxface .= globals.project_flux_to_face[face] * flux
-   
 end
 
 """
@@ -107,8 +106,5 @@ function evaluate_face_integral(eq, globals, buffers, cell, face, celldu)
 
     celldu .-= globals.project_dofs_from_face[face] * (buffers.numericalflux' * globals.reference_massmatrix_face)'
 
-
-
     return maxeigenval
-
 end

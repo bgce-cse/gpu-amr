@@ -16,7 +16,6 @@ function get_initial_values(eq::Sibson, scenario::ConcentricWaves, global_positi
 end
 
 function is_analytical_solution(equation::Sibson, scenario::ConcentricWaves)
-    #TODO implement?
     true
 end
 
@@ -27,6 +26,5 @@ function evaluate_flux(eq::Sibson, celldofs, cellflux)
 end
 
 function max_eigenval(eq::Sibson, celldata, normalidx)
-    # TODO not implemented
     1.0
 end

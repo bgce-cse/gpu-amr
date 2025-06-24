@@ -22,17 +22,15 @@ function evaluate_flux(eq::Acoustic, celldofs, cellflux)
     # Extract variables
     u = celldofs[:,1]  # x-velocity
     v = celldofs[:,2]  # y-velocity
-    pressure = celldofs[:,3]  # pressure
-    rho = celldofs[:,4]  # density
-    K = celldofs[:,5]  # bulk modulus
+    pressure = celldofs[:,3] 
+    rho = celldofs[:,4]
+    K = celldofs[:,5]
     
-
-    momentum_flux_x = pressure ./ rho  # Flux for u-momentum equation
-    momentum_flux_y = pressure ./ rho  # Flux for v-momentum equation
+    momentum_flux_x = pressure ./ rho  
+    momentum_flux_y = pressure ./ rho  
     
-
-    pressure_flux_x = K .* u  # Flux for pressure equation in x-direction
-    pressure_flux_y = K .* v  # Flux for pressure equation in y-direction
+    pressure_flux_x = K .* u  
+    pressure_flux_y = K .* v 
     
     # Zero entries for variables that don't have flux in certain directions
     zero_entries = zeros(length(u))
@@ -52,21 +50,18 @@ function max_eigenval(eq::Acoustic, celldata, normalidx)
     return sqrt(K_max / rho_min)
 end
 
-
 function evaluate_boundary(eq::Acoustic, scenario::GaussianWave, face, normalidx, dofsface, dofsfaceneigh)
-# dofsface and dofsfaceneigh have shape (num_2d_quadpoints, dofs)
-# you need to set dofsfaceneigh
-dofsfaceneigh .= dofsface
-dofsfaceneigh[:, normalidx] .= -dofsface[:, normalidx]
-
-
+    # dofsface and dofsfaceneigh have shape (num_2d_quadpoints, dofs)
+    dofsfaceneigh .= dofsface
+    dofsfaceneigh[:, normalidx] .= -dofsface[:, normalidx]
 end
+
 """
 is_periodic_boundary(eq::Acoustic, scenario::GaussianWave)
 The GaussianWave scenario does not require periodic boundary conditions.
 """
 function is_periodic_boundary(eq::Acoustic, scenario::GaussianWave)
-false
+    false
 end
 
 

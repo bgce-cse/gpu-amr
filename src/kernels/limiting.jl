@@ -43,7 +43,6 @@ function minmod(s1, s2, s3)
     else
         0
     end 
-    
 end
 
 function linearize(globals, center_avg, slope_x, slope_y, dofs, cell)
