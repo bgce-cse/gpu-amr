@@ -7,8 +7,8 @@ simulation:
 
 solver:
   filter: identity
-  limiter: minmod
-  order: 4
+  limiter: minmod 
+  order: 3
   courant: 0.5
   timeintegrator: SSPRK3
 
