@@ -30,6 +30,7 @@ These results confirm the implementation correctly handles both shocks and smoot
 
 ## Shock tube video
 This is the video about the shock tube simulation with 20 elements and an order 3.
-<video width="640" controls>
-  <source src="shocktube.mp4" type="video/avi">
+<video width="800" controls>
+  <source src="https://gitlab.lrz.de/riccardo.capellupo/terradg.jl/-/raw/worksheet4/docs/assignments/shocktube.mp4" type="video/mp4">
 </video>
+
