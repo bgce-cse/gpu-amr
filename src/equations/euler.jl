@@ -13,11 +13,11 @@ function is_periodic_boundary(eq::Euler, scenario::ShockTube)
 end
 
 function is_analytical_solution(equation::Euler, scenario::GaussianWave)
-    true
+    false
 end
 
 function is_analytical_solution(equation::Euler, scenario::ShockTube)
-    true
+    false
 end
 
 function evaluate_energy(eq::Euler, rhou, rhov, rho, p, gamma = 1.4)

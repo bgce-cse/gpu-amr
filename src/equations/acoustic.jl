@@ -15,7 +15,7 @@ function get_initial_values(eq::Acoustic, scenario::GaussianWave, global_positio
 end
 
 function is_analytical_solution(equation::Acoustic, scenario::GaussianWave)
-    true
+    false
 end
 
 function evaluate_flux(eq::Acoustic, celldofs, cellflux)

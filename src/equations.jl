@@ -192,7 +192,6 @@ include("equations/euler.jl")
 Returns equation object for configuration `config`.
 """
 function make_equation(config::Configuration)
-    #TODO create list instead of a bunch of conditions
     if config.equation_name == "advection"
         return Advection()
     elseif config.equation_name == "sibson"
@@ -212,7 +211,6 @@ end
 Returns scenario object for configuration `config`.
 """
 function make_scenario(config::Configuration)
-    #TODO create list instead of a bunch of conditions
     if config.scenario_name == "planar_waves"
         return PlanarWaves()
     elseif config.scenario_name == "concentric_waves"
