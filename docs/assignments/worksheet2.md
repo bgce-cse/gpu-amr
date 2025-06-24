@@ -25,7 +25,7 @@ The following tables present the error norms (L1, L2, and L∞) for the Sibson f
 | 25            | 1.963029e-04 | 2.475913e-04 | 1.108314e-03 |
 | 50            | 2.459064e-05 | 3.102046e-05 | 1.354458e-04 |
 
-### Order 5 Error Norms (Estimated)
+### Order 5 Error Norms
 
 | Grid Elements | L1 Error | L2 Error | L∞ Error |
 |---------------|----------|----------|----------|
