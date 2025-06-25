@@ -199,25 +199,19 @@ public:
         return new_bp;
     }
 
-    auto fragment(std::vector<node_index_t>& to_refine) 
+    auto fragment(std::vector<node_index_t>& to_refine)
     {
-        std::cout << "[fragment] to_refine vector contains " << to_refine.size() << " entries:\n";
-        for (size_t i = 0; i < to_refine.size(); ++i) {
+        std::cout << "[fragment] to_refine vector contains " << to_refine.size()
+                  << " entries:\n";
+        for (size_t i = 0; i < to_refine.size(); ++i)
+        {
             std::cout << "  [" << i << "] id = " << to_refine[i].id() << std::endl;
         }
         for (size_t idx = 0; idx < to_refine.size(); idx++)
         {
-            auto node_id = to_refine[idx];
-            auto bp = find_block(node_index_t::parent_of(node_id));
-            assert(bp.has_value());
-
-            bp.value()->kill_cell(node_index_t::offset_of(node_id));
-
-            const auto p      = reinterpret_cast<pointer>(m_allocator.allocate_one());
-            const auto new_bp = block_pointer(node_id, p);
-            m_blocks.emplace_back(new_bp);
-
-        }  
+            [[maybe_unused]]
+            auto _ = fragment(to_refine[idx]);
+        }
     }
 
     auto test_get_neighbor()
@@ -226,18 +220,21 @@ public:
         for (size_t idx = 0; idx < m_blocks.size(); ++idx)
         {
             auto& block = m_blocks[idx];
-           
+
             for (int i = 0; i < 4; i++)
             {
-                if(block.metadata.cell_data[i].alive){
+                if (block.metadata.cell_data[i].alive)
+                {
                     auto cell_id = node_index_t::child_of(block.id, i);
-                    auto result = get_neighbors(cell_id, node_index_directon_t::right);
-                    std::cout << "I am cell " << cell_id.id() << " and my neighbors are :  " << std::endl;
-                    if(result)
+                    auto result  = get_neighbors(cell_id, node_index_directon_t::right);
+                    std::cout << "I am cell " << cell_id.id()
+                              << " and my neighbors are :  " << std::endl;
+                    if (result)
                     {
                         // result is a pair: {neighbor_id, std::vector<offsets>}
                         auto [neighbor_id, offsets] = *result;
-                        std::cout << "Neighbor block id: " << neighbor_id.id() << std::endl;
+                        std::cout << "Neighbor block id: " << neighbor_id.id()
+                                  << std::endl;
                         for (auto offset : offsets)
                         {
                             std::cout << "Neighbor cell offset: " << offset << std::endl;
@@ -247,9 +244,7 @@ public:
                     {
                         std::cout << "No neighbor in that direction." << std::endl;
                     }
-
                 }
-                
             }
         }
     }
@@ -258,47 +253,69 @@ public:
         -> std::optional<
             std::pair<node_index_t, std::vector<typename node_index_t::offset_t>>>
     {
-        std::cout << "[get_neighbors] Called for cell id: " << node_id.id()
-                  << " in direction: " << static_cast<int>(dir) << std::endl;
+        // std::cout << "[get_neighbors] Called for cell id: " << node_id.id()
+        //           << " in direction: " << static_cast<int>(dir) << std::endl;
 
-        auto parent_id = node_index_t::parent_of(node_id.id()).id();
-        std::cout << "[get_neighbors] Parent id: " << parent_id << std::endl;
+        auto parent_id = node_index_t::parent_of(node_id.id());
+        // std::cout << "[get_neighbors] Parent id: " << parent_id.id() << std::endl;
 
         auto bp_node = find_block(parent_id);
-        if (!bp_node.has_value()) {
-            std::cout << "[get_neighbors] Parent block not found!" << std::endl;
-            return std::nullopt;
+        if (!bp_node.has_value())
+        {
+            // std::cout << "[get_neighbors] Parent block not found!" << std::endl;
+            assert(false);
         }
 
         auto offset = node_index_t::offset_of(node_id.id());
-        std::cout << "[get_neighbors] Offset in parent: " << offset << std::endl;
+        // std::cout << "[get_neighbors] Offset in parent: " << offset << std::endl;
 
-        if (!bp_node.value()->metadata.cell_data[offset].alive) {
-            std::cout << "[get_neighbors] Cell is not alive in parent block!" << std::endl;
+        if (!bp_node.value()->metadata.cell_data[offset].alive)
+        {
+            // std::cout << "[get_neighbors] Cell is not alive in parent block!"
+            //           << std::endl;
+                      assert(false);
             return std::nullopt;
         }
 
         std::vector<typename node_index_t::offset_t> index_vector;
         auto direct_neighbor = node_index_t::neighbour_at(node_id, dir);
 
-        if (!direct_neighbor) {
-            std::cout << "[get_neighbors] No direct neighbor exists in that direction." << std::endl;
+        if (!direct_neighbor)
+        {
+            // std::cout << "[get_neighbors] No direct neighbor exists in that direction."
+                    //   << std::endl;
             return std::nullopt;
         }
-        std::cout << "[get_neighbors] Direct neighbor id: " << direct_neighbor.value().id() << std::endl;
+        // std::cout << "[get_neighbors] Direct neighbor id: "
+        //           << direct_neighbor.value().id() << std::endl;
 
         auto d_neighbor = find_block(direct_neighbor.value());
-        if (d_neighbor.has_value()) {
-            std::cout << "[get_neighbors] Direct neighbor block found!" << std::endl;
+        if (d_neighbor.has_value())
+        {
+            // std::cout << "[get_neighbors] Direct neighbor block found!" << std::endl;
             typename node_index_t::offset_t offset0, offset1;
-            switch (dir) {
-                case node_index_directon_t::left:   offset0 = 1; offset1 = 3; break;
-                case node_index_directon_t::right:  offset0 = 0; offset1 = 2; break;
-                case node_index_directon_t::bottom: offset0 = 2; offset1 = 3; break;
-                case node_index_directon_t::top:    offset0 = 0; offset1 = 1; break;
+            switch (dir)
+            {
+                case node_index_directon_t::left:
+                    offset0 = 1;
+                    offset1 = 3;
+                    break;
+                case node_index_directon_t::right:
+                    offset0 = 0;
+                    offset1 = 2;
+                    break;
+                case node_index_directon_t::bottom:
+                    offset0 = 2;
+                    offset1 = 3;
+                    break;
+                case node_index_directon_t::top:
+                    offset0 = 0;
+                    offset1 = 1;
+                    break;
                 default: break;
             }
-            std::cout << "[get_neighbors] Neighbor cell offsets: " << offset0 << ", " << offset1 << std::endl;
+            // std::cout << "[get_neighbors] Neighbor cell offsets: " << offset0 << ", "
+            //           << offset1 << std::endl;
             index_vector.push_back(offset0);
             index_vector.push_back(offset1);
             return std::make_optional(
@@ -307,33 +324,44 @@ public:
         }
 
         auto neighbor_parent = node_index_t::parent_of(direct_neighbor.value());
-        std::cout << "[get_neighbors] Checking neighbor's parent id: " << neighbor_parent.id() << std::endl;
+        // std::cout << "[get_neighbors] Checking neighbor's parent id: "
+        //           << neighbor_parent.id() << std::endl;
         auto p_neighbor = find_block(neighbor_parent);
-        if (p_neighbor.has_value()) {
-            std::cout << "[get_neighbors] Parent of direct neighbor found!" << std::endl;
+        if (p_neighbor.has_value())
+        {
+            // std::cout << "[get_neighbors] Parent of direct neighbor found!" << std::endl;
             auto neighbor_offset = node_index_t::offset_of(direct_neighbor.value());
-            std::cout << "[get_neighbors] Offset in neighbor's parent: " << neighbor_offset << std::endl;
+            // std::cout << "[get_neighbors] Offset in neighbor's parent: "
+            //           << neighbor_offset << std::endl;
             index_vector.push_back(neighbor_offset);
             return std::make_optional(std::make_pair(neighbor_parent, index_vector));
         }
 
         auto neighbor_grandparent = node_index_t::parent_of(neighbor_parent);
-        std::cout << "[get_neighbors] Checking neighbor's grandparent id: " << neighbor_grandparent.id() << std::endl;
+        // std::cout << "[get_neighbors] Checking neighbor's grandparent id: "
+        //           << neighbor_grandparent.id() << std::endl;
         auto gp_neighbor = find_block(neighbor_grandparent);
-        if (gp_neighbor.has_value()) {
-            std::cout << "[get_neighbors] Grandparent of direct neighbor found!" << std::endl;
+        if (gp_neighbor.has_value())
+        {
+            // std::cout << "[get_neighbors] Grandparent of direct neighbor found!"
+            //           << std::endl;
             auto neighbor_parent_offset = node_index_t::offset_of(neighbor_parent);
-            std::cout << "[get_neighbors] Offset in neighbor's grandparent: " << neighbor_parent_offset << std::endl;
+            // std::cout << "[get_neighbors] Offset in neighbor's grandparent: "
+            //           << neighbor_parent_offset << std::endl;
             index_vector.push_back(neighbor_parent_offset);
             return std::make_optional(std::make_pair(neighbor_grandparent, index_vector));
         }
 
-        std::cout << "[get_neighbors] No neighbor found after all checks!" << std::endl;
+        // std::cout << "[get_neighbors] No neighbor found after all checks!" << std::endl;
         assert(false);
     }
 
     [[nodiscard]]
-    auto apply_refine_coarsen() // supposed to return vecitd of cells to refine and vecotr fo block to coarsen, THis is then given t another fucntion ensuring the balancing.
+    auto apply_refine_coarsen()
+        -> std::pair<std::vector<node_index_t>, std::vector<node_index_t>>
+
+    // supposed to return vecitd of cells to refine and vecotr fo block to coarsen, THis
+    // is then given t another fucntion ensuring the balancing.
     {
         // std::cout << "Total blocks before refinement: " << m_blocks.size() <<
         // std::endl;
@@ -342,12 +370,12 @@ public:
         for (size_t idx = 0; idx < m_blocks.size(); ++idx)
         {
             auto& block = m_blocks[idx];
-            // if (block.coarsen_all() && block.alive_all())
-            // {
-            //     // std::cout << "Servus aus der coarseing if " << std::endl;
-            //     to_coarsen.push_back(block.id);
-            //     // [[maybe_unused]] auto _ = recombine(block.id);
-            // }
+            if (block.coarsen_all() && block.alive_all())
+            {
+                // std::cout << "Servus aus der coarseing if " << std::endl;
+                to_coarsen.push_back(block.id);
+                // [[maybe_unused]] auto _ = recombine(block.id);
+            }
 
             // std::cout << "Block " << idx << " id: " <<  block.id.id() << std::endl;
 
@@ -376,68 +404,169 @@ public:
                     // auto _ = fragment(child_id);
                 }
             }
-            
         }
-        return to_refine;
-        
+        return { to_refine, to_coarsen };
+
         // Erase from highest to lowest to avoid shifting issues
         // for (auto idx = to_coarsen.size(); idx-- > 0;)
         // {
-        //     // std::cout << "calling recombine for " << to_coarsen[idx].id() << std::endl;
+        //     // std::cout << "calling recombine for " << to_coarsen[idx].id() <<
+        //     std::endl;
         //     [[maybe_unused]]
         //     auto _ = recombine(to_coarsen[idx]);
         // }
     }
 
-    auto balancing(std::vector<node_index_t>& to_refine)
+    auto balancing(
+        std::vector<node_index_t>& to_refine,
+        std::vector<node_index_t>& to_coarsen
+    )
     {
         // check if balancing condition is violated.
         // first refinement
-        constexpr node_index_directon_t directions[] = {
-            node_index_directon_t::left,
-            node_index_directon_t::right,
-            node_index_directon_t::top,
-            node_index_directon_t::bottom
-        };
+        constexpr node_index_directon_t directions[] = { node_index_directon_t::left,
+                                                         node_index_directon_t::right,
+                                                         node_index_directon_t::top,
+                                                         node_index_directon_t::bottom };
 
         for (size_t i = 0; i < to_refine.size(); i++)
         {
-            auto cell_id = to_refine[i];
+            auto cell_id         = to_refine[i];
             auto [coords, level] = node_index_t::decode(cell_id.id());
-            std::cout << "[balancing] Checking cell " << cell_id.id()
-                      << " at level " << (int)level
-                      << " coords: (" << coords[0] << "," << coords[1] << ")\n";
+            std::cout << "[balancing] Refinement  Checking cell " << cell_id.id()
+                      << " at level " << (int)level << " coords: (" << coords[0] << ","
+                      << coords[1] << ")\n";
             for (auto direction : directions)
             {
                 auto result = get_neighbors(cell_id.id(), direction);
-                if (!result) {
-                    std::cout << "  No neighbor in direction " << static_cast<int>(direction) << "\n";
+                if (!result)
+                {
+                    // std::cout << "  No neighbor in direction "
+                    //           << static_cast<int>(direction) << "\n";
                     continue;
                 }
-                auto [neighbor_id, offsets] = *result;
+                auto [neighbor_id, offsets]  = *result;
                 auto [__, level_bp_neighbor] = node_index_t::decode(neighbor_id.id());
-                std::cout << "  Neighbor in direction " << static_cast<int>(direction)
-                          << ": id=" << neighbor_id.id()
-                          << " bp level=" << (int)level_bp_neighbor
-                          << " offsets: ";
-                for (auto off : offsets) std::cout << off << " ";
-                std::cout << "\n";
-                if (level_bp_neighbor < level - 1) 
+                // std::cout << "  Neighbor in direction " << static_cast<int>(direction)
+                //           << ": id=" << neighbor_id.id()
+                //           << " bp level=" << (int)level_bp_neighbor << " offsets: ";
+                // for (auto off : offsets)
+                //     std::cout << off << " ";
+                // std::cout << "\n";
+                if (level_bp_neighbor < level - 1)
                 {
-                    
-                    std::cout << "    [balancing] Balancing violation! Refining neighbor cell "
+                    std::cout
+                        << "    [balancing] Balancing violation! Refining neighbor cell "
 
-                              << node_index_t::child_of(neighbor_id, offsets[0]).id() << "\n";
+                        << node_index_t::child_of(neighbor_id, offsets[0]).id() << "\n";
                     // balancing condition violated
-                    // push this cell to refinement cells (it will be checked itself later as it is appended at the end of the vector)
+                    // push this cell to refinement cells (it will be checked itself later
+                    // as it is appended at the end of the vector)
                     auto new_id = node_index_t::child_of(neighbor_id, offsets[0]).id();
-                    if (std::find_if(to_refine.begin(), to_refine.end(),
-                                     [&](const node_index_t& n) { return n.id() == new_id; }) == to_refine.end())
+                    if (std::find_if(
+                            to_refine.begin(),
+                            to_refine.end(),
+                            [&](const node_index_t& n) { return n.id() == new_id; }
+                        ) == to_refine.end())
                     {
-                        to_refine.push_back(node_index_t::child_of(neighbor_id, offsets[0]));
+                        to_refine.push_back(
+                            node_index_t::child_of(neighbor_id, offsets[0])
+                        );
                     }
                 }
-            } 
+            }
+        }
+        std::vector<node_index_t> parents_of_to_refine;
+        for (auto child_cell : to_refine)
+        {
+            auto parent_block = node_index_t::parent_of(child_cell.id());
+            parents_of_to_refine.push_back(parent_block.id());
+        }
+
+        // check coarsening after refining - if there is a conflict refinment wins and the
+        // cell needs to be removed from coarsening
+        for (size_t i = 0; i < to_coarsen.size(); i++)
+        {
+            auto block_id        = to_coarsen[i];
+            auto [coords, level] = node_index_t::decode(block_id.id());
+            std::cout << "[balancing] Coarsening  Checking block " << block_id.id()
+                      << " at level " << (int)level << " coords: (" << coords[0] << ","
+                      << coords[1] << ")\n";
+
+            for (auto direction : directions)
+            {
+                auto offset0 = 0;
+                auto offset1 = 0;
+
+                switch (direction)
+                {
+                    case node_index_directon_t::left:
+                        offset0 = 0;
+                        offset1 = 2;
+                        break;
+                    case node_index_directon_t::right:
+                        offset0 = 1;
+                        offset1 = 3;
+                        break;
+                    case node_index_directon_t::bottom:
+                        offset0 = 2;
+                        offset1 = 3;
+                        break;
+                    case node_index_directon_t::top:
+                        offset0 = 0;
+                        offset1 = 1;
+                        break;
+                    default: break;
+                }
+                std::vector<int> offsets;
+                offsets.push_back(offset0);
+                offsets.push_back(offset1);
+                for (auto offset : offsets)
+                {
+                    auto child_cell = node_index_t::child_of(block_id.id(), offset);
+                    auto result     = get_neighbors(child_cell.id(), direction);
+                    if (!result)
+                    {
+                        // std::cout << "  No neighbor in direction "
+                        //           << static_cast<int>(direction) << "\n";
+                        continue;
+                    }
+                    auto [neighbor_id, neighbor_offsets]  = *result;
+                    auto [__, level_bp_neighbor] = node_index_t::decode(neighbor_id.id());
+                    // std::cout << "  Neighbor in direction " << static_cast<int>(direction)
+                    //           << ": id=" << neighbor_id.id()
+                    //           << " bp level=" << (int)level_bp_neighbor << " offsets: ";
+                    // for (auto off : neighbor_offsets)
+                    //     std::cout << off << " ";
+                    // std::cout << "\n";
+                    if (level_bp_neighbor > level)
+                    {
+                        // std::cout << "    [balancing] Balancing violation! coarsening  "
+                        //              "neighbor cells " <<std::endl;
+
+                        // balancing condition violated
+                        // push this cell to coarsening cells (it will be checked itself
+                        // later as it is appended at the end of the vector)
+
+                        if (std::find_if(
+                                to_coarsen.begin(),
+                                to_coarsen.end(),
+                                [&](const node_index_t& n)
+                                { return n.id() == neighbor_id.id(); }
+                            ) == to_coarsen.end() &&
+                            std::find_if(
+                                parents_of_to_refine.begin(),
+                                parents_of_to_refine.end(),
+                                [&](const node_index_t& n)
+                                { return n.id() == neighbor_id.id(); }
+                            ) == parents_of_to_refine.end())
+                        {
+                            to_coarsen.push_back(neighbor_id);
+                            
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -472,6 +601,29 @@ public:
         auto const& it = pbp.value();
         it->revive_cell(offset);
         return it->operator[](offset);
+    }
+
+    auto recombine(const std::vector<node_index_t>& node_ids) -> void
+    {
+        std::cout << "[recombine] to_coarsen vector contains " << node_ids.size()
+                  << " entries:\n";
+        for (size_t i = 0; i < node_ids.size(); ++i)
+        {
+            auto [coords, level] = node_index_t::decode(node_ids[i].id());
+            std::cout << "  [" << i << "] id = " << node_ids[i].id()
+                      << " coords: (" << coords[0] << "," << coords[1] << ")"
+                      << " level: " << static_cast<int>(level) << std::endl;
+        }
+
+        for (const auto& node_id : node_ids)
+        {
+            auto [coords, level] = node_index_t::decode(node_id.id());
+            std::cout << "[recombine] Recombining node_id: " << node_id.id()
+                      << " coords: (" << coords[0] << "," << coords[1] << ")"
+                      << " level: " << static_cast<int>(level) << std::endl;
+            [[maybe_unused]]
+            auto _ = recombine(node_id);
+        }
     }
 
     [[nodiscard]]
