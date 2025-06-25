@@ -21,10 +21,10 @@ function is_analytical_solution(equation::Advection, scenario::PlanarWaves)
     true
 end
 
-function evaluate_flux(eq::Advection, celldofs, cellflux) #1x3 2x3
+function evaluate_flux(eq::Advection, celldofs, cellflux)
         
     velocity = 1.0
-    cellflux .= vcat([velocity .* celldofs for _ in 1:size(cellflux, 1)]...) #check velocity
+    cellflux .= vcat([velocity .* celldofs for _ in 1:size(cellflux, 1)]...)
 
 end
 
@@ -32,5 +32,3 @@ function max_eigenval(eq::Advection, celldata, normalidx)
     # Is actually correct!
     1.0
 end
-
-#ciaociaocioa

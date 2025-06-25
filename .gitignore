@@ -1,1 +1,2 @@
-output
+output/*
+.DS_Store
