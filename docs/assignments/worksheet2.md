@@ -2,7 +2,7 @@
 
 # Tests
 <div style="text-align: center;">
-  <img src="passed_tests.png" width="800"/>
+  <img src="images/passed_tests.png" width="800"/>
   <p style="margin-top: 8px; font-style: italic;">Figure 1: tests table, the right massmatrix function was left commented-out to show the user the success of all tests (except the massmatrix)</p>
 </div>
 
@@ -61,7 +61,7 @@ Where $e_{f}$ is the error on the finer grid and $e_{c}$ is the error on the coa
 
 
 <div style="text-align: center;">
-  <img src="sibson_order1-2_50.png" width="1200"/>
+  <img src="images/sibson_order1-2_50.png" width="1200"/>
   <p style="margin-top: 8px; font-style: italic;">Figure 2: Comparison of the Sibson function at t=0, using different interpolation orders: first-order (left) and second-order (right), both computed on a grid with N=50 cells.</p>
 </div>
 

@@ -102,6 +102,7 @@ Evaluate the `basis` with coefficients
 """
 function evaluate_basis(basis::Basis, coeffs, x)
 
+    # C is the coefficient matrix
     C = reshape(coeffs,size(basis,1),size(basis,2))
     sum([C[i,j]*lagrange_1d(basis.quadpoints,i,x[1])*lagrange_1d(basis.quadpoints,j,x[2]) for i in 1:size(basis,1) for j in 1:size(basis,2)])
     
@@ -131,7 +132,7 @@ function project_to_reference_basis(fun, basis::Basis, ndofs::Integer)
     end
 
     return M
-end#return order*order *3
+end
 
 """
     massmatrix(basis, dimensions)
@@ -171,8 +172,8 @@ function derivativematrix(basis::Basis)
     D1 = [ lagrange_diff(pts, j, pts[i]) 
            for i in 1:n, j in 1:n]
 
-    Dx = kron(I(n), D1)'   # size n^2 × n^2
-    Dy = kron(D1, I(n))'   # size n^2 × n^2
+    Dx = kron(I(n), D1)'   
+    Dy = kron(D1, I(n))'   
     
     hcat(Dx,Dy)
 end
@@ -208,53 +209,22 @@ Multiplying it with coefficient vector for the right basis
 returns the coefficients of the solution evaluated at the 
 quadrature nodes of the face.
 """
-# function face_projection_matrix(basis, face)
-#     n = length(basis.quadpoints)
-#     n2d = n^2
-    
-#     # Create face projection matrix
-#     P = zeros(n, n2d)
-    
-#     # Get quadrature points on the face
-#     face_points = get_face_quadpoints(basis, face)
 
-
-    
-#     # Fill the projection matrix
-#     for i in 1:n  # Row index (face point index)
-#         x, y = face_points[i]
-        
-#         for j in 1:n  # Column indices (volume basis functions)
-#             for k in 1:n
-#                 idx = (k-1)*n + j  # Linear index for 2D basis
-                
-#                 # Evaluate basis function at face point
-#                 if face == left || face == right
-#                     # For left/right faces, y varies along the face
-#                     P[i, idx] = lagrange_1d(basis.quadpoints, j, x) * 
-#                                 lagrange_1d(basis.quadpoints, k, y)
-#                 else  # top or bottom
-#                     # For top/bottom faces, x varies along the face
-#                     P[i, idx] = lagrange_1d(basis.quadpoints, j, x) * 
-#                                 lagrange_1d(basis.quadpoints, k, y)
-#                 end
-#             end
-#         end
-#     end
-    
-#     return P
-# end
-
-function face_projection_matrix(basis, face)
-    face_quad = get_face_quadpoints(basis,face)
+function face_projection_matrix(basis::Basis, face)
+    n = basis.order
     if face == left || face == right
-        phi = [lagrange_1d(face_quad[2],j,face_quad[1]) for j in 1:length(basis.quadpoints)]
+        # For vertical faces (x=0 or x=1), project along x-dimension
+        x_face_coord = get_face_quadpoints(basis, face)[1]
+        phi_x_at_face = [lagrange_1d(basis.quadpoints, i, x_face_coord) for i in 1:n]
+        return kron(I(n), phi_x_at_face')
     else 
-        phi = [lagrange_1d(face_quad[1],j,face_quad[2]) for j in 1:length(basis.quadpoints)]
+        # For horizontal faces (y=0 or y=1), project along y-dimension
+        y_face_coord = get_face_quadpoints(basis, face)[2]
+        phi_y_at_face = [lagrange_1d(basis.quadpoints, j, y_face_coord) for j in 1:n]
+        return kron(phi_y_at_face', I(n))
     end
-    LinearAlgebra.kron(LinearAlgebra.I(basis.order),phi)'
-
 end
+
 
 """
     evaluate_m_to_n_vandermonde_basis(basis) 
