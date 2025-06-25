@@ -44,7 +44,7 @@ int main()
 
     int i = 0;
 
-    for (; i != 5; ++i)
+    for (; i != 7; ++i)
     {
         std::cout << "starting with i : "<< i <<std::endl;
         h.compute_refine_flag([](const index_t& idx){
@@ -75,7 +75,7 @@ int main()
         std::string file_extension = std::to_string(i) + ".vtk";
         vtk_printer.print(h,file_extension);
     }
-    for (; i != 10; ++i)
+    for (; i != 14; ++i)
     {
         h.compute_refine_flag([](const index_t& idx){
             auto [coords, level] = index_t::decode(idx.id());
@@ -105,8 +105,6 @@ int main()
         std::string file_extension = std::to_string(i) + ".vtk";
         vtk_printer.print(h,file_extension);
     }
-    
-
     
     return EXIT_SUCCESS;
 }
