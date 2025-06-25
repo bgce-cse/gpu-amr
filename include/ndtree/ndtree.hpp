@@ -262,7 +262,7 @@ public:
         auto bp_node = find_block(parent_id);
         if (!bp_node.has_value())
         {
-            // std::cout << "[get_neighbors] Parent block not found!" << std::endl;
+            std::cout << "[get_neighbors] Parent block not found!" << std::endl;
             assert(false);
         }
 
@@ -271,9 +271,9 @@ public:
 
         if (!bp_node.value()->metadata.cell_data[offset].alive)
         {
-            // std::cout << "[get_neighbors] Cell is not alive in parent block!"
-            //           << std::endl;
-                      assert(false);
+            std::cout << "[get_neighbors] Cell is not alive in parent block!"
+                      << std::endl;
+            assert(false);
             return std::nullopt;
         }
 
@@ -283,7 +283,7 @@ public:
         if (!direct_neighbor)
         {
             // std::cout << "[get_neighbors] No direct neighbor exists in that direction."
-                    //   << std::endl;
+            //           << std::endl;
             return std::nullopt;
         }
         // std::cout << "[get_neighbors] Direct neighbor id: "
@@ -329,7 +329,8 @@ public:
         auto p_neighbor = find_block(neighbor_parent);
         if (p_neighbor.has_value())
         {
-            // std::cout << "[get_neighbors] Parent of direct neighbor found!" << std::endl;
+            // std::cout << "[get_neighbors] Parent of direct neighbor found!" <<
+            // std::endl;
             auto neighbor_offset = node_index_t::offset_of(direct_neighbor.value());
             // std::cout << "[get_neighbors] Offset in neighbor's parent: "
             //           << neighbor_offset << std::endl;
@@ -352,7 +353,8 @@ public:
             return std::make_optional(std::make_pair(neighbor_grandparent, index_vector));
         }
 
-        // std::cout << "[get_neighbors] No neighbor found after all checks!" << std::endl;
+        // std::cout << "[get_neighbors] No neighbor found after all checks!" <<
+        // std::endl;
         assert(false);
     }
 
@@ -424,6 +426,8 @@ public:
     {
         // check if balancing condition is violated.
         // first refinement
+        std::vector<node_index_t> blocks_to_remove;
+
         constexpr node_index_directon_t directions[] = { node_index_directon_t::left,
                                                          node_index_directon_t::right,
                                                          node_index_directon_t::top,
@@ -441,15 +445,15 @@ public:
                 auto result = get_neighbors(cell_id.id(), direction);
                 if (!result)
                 {
-                    // std::cout << "  No neighbor in direction "
-                    //           << static_cast<int>(direction) << "\n";
+                    std::cout << "  No neighbor in direction "
+                              << static_cast<int>(direction) << "\n";
                     continue;
                 }
                 auto [neighbor_id, offsets]  = *result;
                 auto [__, level_bp_neighbor] = node_index_t::decode(neighbor_id.id());
-                // std::cout << "  Neighbor in direction " << static_cast<int>(direction)
-                //           << ": id=" << neighbor_id.id()
-                //           << " bp level=" << (int)level_bp_neighbor << " offsets: ";
+                std::cout << "  Neighbor in direction " << static_cast<int>(direction)
+                          << ": id=" << neighbor_id.id()
+                          << " bp level=" << (int)level_bp_neighbor << " offsets: ";
                 // for (auto off : offsets)
                 //     std::cout << off << " ";
                 // std::cout << "\n";
@@ -489,9 +493,9 @@ public:
         {
             auto block_id        = to_coarsen[i];
             auto [coords, level] = node_index_t::decode(block_id.id());
-            std::cout << "[balancing] Coarsening  Checking block " << block_id.id()
-                      << " at level " << (int)level << " coords: (" << coords[0] << ","
-                      << coords[1] << ")\n";
+            // std::cout << "[balancing] Coarsening  Checking block " << block_id.id()
+            //           << " at level " << (int)level << " coords: (" << coords[0] << ","
+            //           << coords[1] << ")\n";
 
             for (auto direction : directions)
             {
@@ -531,42 +535,74 @@ public:
                         //           << static_cast<int>(direction) << "\n";
                         continue;
                     }
-                    auto [neighbor_id, neighbor_offsets]  = *result;
+                    auto [neighbor_id, neighbor_offsets] = *result;
                     auto [__, level_bp_neighbor] = node_index_t::decode(neighbor_id.id());
-                    // std::cout << "  Neighbor in direction " << static_cast<int>(direction)
+                    // std::cout << "  Neighbor in direction " <<
+                    // static_cast<int>(direction)
                     //           << ": id=" << neighbor_id.id()
-                    //           << " bp level=" << (int)level_bp_neighbor << " offsets: ";
+                    //           << " bp level=" << (int)level_bp_neighbor << " offsets:
+                    //           ";
                     // for (auto off : neighbor_offsets)
                     //     std::cout << off << " ";
                     // std::cout << "\n";
                     if (level_bp_neighbor > level)
                     {
-                        // std::cout << "    [balancing] Balancing violation! coarsening  "
-                        //              "neighbor cells " <<std::endl;
+                        std::cout << "    [balancing] Balancing violation! removing this block from coarsenign " <<std::endl;
 
-                        // balancing condition violated
+                        // balancing condition violated - just remove this block from to coarsen vector
                         // push this cell to coarsening cells (it will be checked itself
                         // later as it is appended at the end of the vector)
+                        std::cout << "    [balancing] Balancing violation! Marking this block for removal from coarsening\n";
+                        blocks_to_remove.push_back(block_id);
+                        break; // Optionally break if you want to skip further checks for this block
+                    // Decrement i if you continue looping, since the vector shrinks
 
-                        if (std::find_if(
-                                to_coarsen.begin(),
-                                to_coarsen.end(),
-                                [&](const node_index_t& n)
-                                { return n.id() == neighbor_id.id(); }
-                            ) == to_coarsen.end() &&
-                            std::find_if(
-                                parents_of_to_refine.begin(),
-                                parents_of_to_refine.end(),
-                                [&](const node_index_t& n)
-                                { return n.id() == neighbor_id.id(); }
-                            ) == parents_of_to_refine.end())
-                        {
-                            to_coarsen.push_back(neighbor_id);
-                            
-                        }
+                        // if (std::find_if(
+                        //         to_coarsen.begin(),
+                        //         to_coarsen.end(),
+                        //         [&](const node_index_t& n)
+                        //         { return n.id() == neighbor_id.id(); }
+                        //     ) == to_coarsen.end() &&
+                        //     std::find_if(
+                        //         parents_of_to_refine.begin(),
+                        //         parents_of_to_refine.end(),
+                        //         [&](const node_index_t& n)
+                        //         { return n.id() == neighbor_id.id(); }
+                        //     ) == parents_of_to_refine.end())
+                        // {
+                        //     auto block = find_block(neighbor_id);
+                        //     assert(block.has_value());
+                        //     if (!block.has_value())
+                        //     {
+                        //         std::cout << "balancing tries to add a block which "
+                        //                      "doesnt even exist"
+                        //                   << std::endl;
+                        //         std::cout << "block id : " << neighbor_id.id()
+                        //                   << std::endl;
+                        //         assert(false);
+                        //     }
+                        //     std::cout << "[recombine] to_coarsen vector contains "
+                        //               << to_coarsen.size() << " entries:\n";
+                        //     for ( size_t index = 0; index < to_coarsen.size(); ++index)
+                        //     {
+                        //         auto  [coordinaten, levels] = node_index_t::decode(to_coarsen[index].id());
+                        //         std::cout << "  [" << index << "] id = " << to_coarsen[index].id()
+                        //                   << " coords: (" << coordinaten[0] << "," << coordinaten[1]
+                        //                   << ")" << " level: " << static_cast<int>(levels)
+                        //                   << std::endl;
+                        //     }
+                            // to_coarsen.push_back(neighbor_id);
+                    // }
                     }
                 }
             }
+        }
+        for (const auto& id : blocks_to_remove)
+        {
+            to_coarsen.erase(
+                std::remove(to_coarsen.begin(), to_coarsen.end(), id),
+                to_coarsen.end()
+            );
         }
     }
 
@@ -610,8 +646,8 @@ public:
         for (size_t i = 0; i < node_ids.size(); ++i)
         {
             auto [coords, level] = node_index_t::decode(node_ids[i].id());
-            std::cout << "  [" << i << "] id = " << node_ids[i].id()
-                      << " coords: (" << coords[0] << "," << coords[1] << ")"
+            std::cout << "  [" << i << "] id = " << node_ids[i].id() << " coords: ("
+                      << coords[0] << "," << coords[1] << ")"
                       << " level: " << static_cast<int>(level) << std::endl;
         }
 

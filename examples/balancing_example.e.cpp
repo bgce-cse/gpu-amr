@@ -33,12 +33,12 @@ int main()
     rngf::seed<F>();
 
     using cell_t  = cell<F, N>;
-    using index_t = amr::ndt::morton::morton_id<7u, 2u>;
+    using index_t = amr::ndt::morton::morton_id<8u, 2u>;
     using tree_t  = amr::ndt::tree::ndtree<cell_t, index_t>;
     tree_t h;
 
     // ndt::print::vtk_print vtk_printer("output_auto_partitioning");
-    ndt::print::structured_print structured_printer(std::cout);
+    // ndt::print::structured_print structured_printer(std::cout);
     ndt::print::vtk_print vtk_printer("balancing_test");
 
 
@@ -65,13 +65,14 @@ int main()
             return 0;
             });
         auto [to_refine, to_coarsen] = h.apply_refine_coarsen();
+       
         std::cout << "apply refine coarseing done " << std::endl;
         h.balancing(to_refine, to_coarsen);
         std::cout << "balancing done" <<std::endl;
         h.fragment(to_refine);
         h.recombine(to_coarsen);
         
-        structured_printer.print(h);
+        // structured_printer.print(h);
         std::string file_extension = std::to_string(i) + ".vtk";
         vtk_printer.print(h,file_extension);
     }
@@ -89,18 +90,21 @@ int main()
                            (mid_y - center) * (mid_y - center);
 
             // Only refine if not at max level!
-            if (level < idx.max_depth() && dist2 < 0.3 / idx.level() * max_size*  max_size ) {
+            if (level > 0 && dist2 < 0.3 / idx.level() * max_size*  max_size ) {
                 return 2;
             }
             return 0;
             });
+            std::cout << "compute flags done done" <<std::endl;
         auto [to_refine, to_coarsen] = h.apply_refine_coarsen();
         std::cout << "apply refine coarseing done " << std::endl;
+        std::cout << "size of coarsen vector beofre balancing " << to_coarsen.size() <<std::endl;
         h.balancing(to_refine, to_coarsen);
+        std::cout << "size of coarsen vector after balancing " << to_coarsen.size() <<std::endl;
         std::cout << "balancing done" <<std::endl;
         h.fragment(to_refine);
         h.recombine(to_coarsen);
-        
+        std::cout << "actual refine / coarsening done" <<std::endl;
         // structured_printer.print(h);
         std::string file_extension = std::to_string(i) + ".vtk";
         vtk_printer.print(h,file_extension);
