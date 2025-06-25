@@ -33,19 +33,20 @@ int main()
     rngf::seed<F>();
 
     using cell_t  = cell<F, N>;
-    using index_t = amr::ndt::morton::morton_id<2u, 2u>;
+    using index_t = amr::ndt::morton::morton_id<7u, 2u>;
     using tree_t  = amr::ndt::tree::ndtree<cell_t, index_t>;
     tree_t h;
 
-    ndt::print::vtk_print vtk_printer("output_auto_partitioning");
+    // ndt::print::vtk_print vtk_printer("output_auto_partitioning");
     ndt::print::structured_print structured_printer(std::cout);
+    ndt::print::vtk_print vtk_printer("balancing_test");
 
 
     int i = 0;
-    std::string file_extension = std::to_string(i) + ".vtk";
-    vtk_printer.print(h,file_extension);
-    for (; i != 3; ++i)
+
+    for (; i != 5; ++i)
     {
+        std::cout << "starting with i : "<< i <<std::endl;
         h.compute_refine_flag([](const index_t& idx){
             auto [coords, level] = index_t::decode(idx.id());
             auto max_size = 1u << idx.max_depth();
@@ -63,39 +64,19 @@ int main()
             }
             return 0;
             });
-        h.apply_refine_coarsen();
+        auto to_refine = h.apply_refine_coarsen();
+        std::cout << "apply refine coarseing done " << std::endl;
+        h.balancing(to_refine);
+        std::cout << "balancing done" <<std::endl;
+        h.fragment(to_refine);
         
-        file_extension = std::to_string(i+1) + ".vtk";
-        vtk_printer.print(h,file_extension);
         structured_printer.print(h);
+        std::string file_extension = std::to_string(i) + ".vtk";
+        vtk_printer.print(h,file_extension);
     }
-    auto const res = h.blocks().at(h.blocks().size() - 1);
-    auto child_cell = index_t::child_of(res.id,0);
-    auto result = h.get_neighbors(child_cell, index_t::direction::left);
-    if (result) {
-        // result is a pair: {neighbor_id, std::vector<offsets>}
-        auto [neighbor_id, offsets] = *result;
-        std::cout << "Neighbor block id: " << neighbor_id.id() << std::endl;
-        for (auto offset : offsets) {
-            std::cout << "Neighbor cell offset: " << offset << std::endl;
-        }
-    } else {
-        std::cout << "No neighbor in that direction." << std::endl;
-    }
-
-    // for (int dir = 0; dir < 4; ++dir) {
-    // auto result = h.get_neighbors(cell_id, static_cast<index_t::direction>(dir));
-    // std::cout << "Direction " << dir << ": ";
-    // if (result) {
-    //     auto [neighbor_id, offsets] = *result;
-    //     auto [coords, level] = index_t::decode(neighbor_id.id());
-    //     std::cout << "Neighbor at (" << coords[0] << "," << coords[1] << ") level " << (int)level << " offsets: ";
-    //     for (auto o : offsets) std::cout << o << " ";
-    //     std::cout << "\n";
-    // } else {
-    //     std::cout << "No neighbor\n";
-    // }
-    // }
+    // std::string file_extension = std::to_string(i) + ".vtk";
+    // vtk_printer.print(h,file_extension);
+    // h.test_get_neighbor();
 
     
     return EXIT_SUCCESS;
