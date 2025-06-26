@@ -60,8 +60,8 @@ public:
             }
 
             [[nodiscard]]
-            constexpr auto operator[](std::integral auto const i
-            ) const noexcept -> cell_metadata
+            constexpr auto operator[](std::integral auto const i) const noexcept
+                -> cell_metadata
             {
 #ifdef AMR_NDTREE_CHECKBOUNDS
                 assert_in_bounds(i);
@@ -84,8 +84,8 @@ public:
         block_metadata metadata;
 
         [[nodiscard]]
-        constexpr auto operator[](std::integral auto const i
-        ) const noexcept -> cell_pointer
+        constexpr auto operator[](std::integral auto const i) const noexcept
+            -> cell_pointer
         {
 #ifdef AMR_NDTREE_CHECKBOUNDS
             assert_in_bounds(i);
@@ -161,9 +161,9 @@ public:
 #endif
     };
 
-    using container_t                = std::vector<block_pointer>;
-    using container_iterator_t       = typename container_t::iterator;
-    using container_const_iterator_t = typename container_t::const_iterator;
+    using index_map_t                = std::vector<block_pointer>;
+    using index_map_iterator_t       = typename index_map_t::iterator;
+    using index_map_const_iterator_t = typename index_map_t::const_iterator;
 
 public:
     ndtree() noexcept
@@ -547,15 +547,20 @@ public:
                     // std::cout << "\n";
                     if (level_bp_neighbor > level)
                     {
-                        std::cout << "    [balancing] Balancing violation! removing this block from coarsenign " <<std::endl;
+                        std::cout << "    [balancing] Balancing violation! removing this "
+                                     "block from coarsenign "
+                                  << std::endl;
 
-                        // balancing condition violated - just remove this block from to coarsen vector
-                        // push this cell to coarsening cells (it will be checked itself
-                        // later as it is appended at the end of the vector)
-                        std::cout << "    [balancing] Balancing violation! Marking this block for removal from coarsening\n";
+                        // balancing condition violated - just remove this block from to
+                        // coarsen vector push this cell to coarsening cells (it will be
+                        // checked itself later as it is appended at the end of the
+                        // vector)
+                        std::cout << "    [balancing] Balancing violation! Marking this "
+                                     "block for removal from coarsening\n";
                         blocks_to_remove.push_back(block_id);
-                        break; // Optionally break if you want to skip further checks for this block
-                    // Decrement i if you continue looping, since the vector shrinks
+                        break; // Optionally break if you want to skip further checks for
+                               // this block
+                        // Decrement i if you continue looping, since the vector shrinks
 
                         // if (std::find_if(
                         //         to_coarsen.begin(),
@@ -585,14 +590,18 @@ public:
                         //               << to_coarsen.size() << " entries:\n";
                         //     for ( size_t index = 0; index < to_coarsen.size(); ++index)
                         //     {
-                        //         auto  [coordinaten, levels] = node_index_t::decode(to_coarsen[index].id());
-                        //         std::cout << "  [" << index << "] id = " << to_coarsen[index].id()
-                        //                   << " coords: (" << coordinaten[0] << "," << coordinaten[1]
-                        //                   << ")" << " level: " << static_cast<int>(levels)
+                        //         auto  [coordinaten, levels] =
+                        //         node_index_t::decode(to_coarsen[index].id()); std::cout
+                        //         << "  [" << index << "] id = " <<
+                        //         to_coarsen[index].id()
+                        //                   << " coords: (" << coordinaten[0] << "," <<
+                        //                   coordinaten[1]
+                        //                   << ")" << " level: " <<
+                        //                   static_cast<int>(levels)
                         //                   << std::endl;
                         //     }
-                            // to_coarsen.push_back(neighbor_id);
-                    // }
+                        // to_coarsen.push_back(neighbor_id);
+                        // }
                     }
                 }
             }
@@ -600,8 +609,7 @@ public:
         for (const auto& id : blocks_to_remove)
         {
             to_coarsen.erase(
-                std::remove(to_coarsen.begin(), to_coarsen.end(), id),
-                to_coarsen.end()
+                std::remove(to_coarsen.begin(), to_coarsen.end(), id), to_coarsen.end()
             );
         }
     }
@@ -663,8 +671,8 @@ public:
     }
 
     [[nodiscard]]
-    auto get_block(node_index_t const& node_id
-    ) const noexcept -> std::optional<block_pointer>
+    auto get_block(node_index_t const& node_id) const noexcept
+        -> std::optional<block_pointer>
     {
         auto bp = find_block(node_id);
         if (!bp.has_value()) return std::nullopt;
@@ -672,8 +680,8 @@ public:
     }
 
     [[nodiscard]]
-    auto get_cell(node_index_t const& node_id
-    ) const noexcept -> std::optional<block_pointer>
+    auto get_cell(node_index_t const& node_id) const noexcept
+        -> std::optional<block_pointer>
     {
         const auto parent = node_index_t::parent_of(node_id);
         const auto offset = node_index_t::offset_of(node_id);
@@ -683,15 +691,15 @@ public:
     }
 
     [[nodiscard]]
-    auto blocks() const noexcept -> container_t const&
+    auto blocks() const noexcept -> index_map_t const&
     {
         return m_blocks;
     }
 
 private:
     [[nodiscard]]
-    auto find_block(node_index_t const& node_id
-    ) const noexcept -> std::optional<container_const_iterator_t>
+    auto find_block(node_index_t const& node_id) const noexcept
+        -> std::optional<index_map_const_iterator_t>
     {
         auto it = std::ranges::find_if(
             m_blocks, [&id = node_id](auto const& e) { return e.id == id; }
@@ -700,8 +708,8 @@ private:
     }
 
     [[nodiscard]]
-    auto find_block(node_index_t const& node_id
-    ) noexcept -> std::optional<container_iterator_t>
+    auto find_block(node_index_t const& node_id) noexcept
+        -> std::optional<index_map_iterator_t>
     {
         auto it = std::ranges::find_if(
             m_blocks, [&id = node_id](auto const& e) { return e.id == id; }
@@ -709,7 +717,7 @@ private:
         return it == m_blocks.end() ? std::nullopt : std::optional{ it };
     }
 
-    auto release(container_iterator_t const& bp) noexcept -> void
+    auto release(index_map_iterator_t const& bp) noexcept -> void
     {
         auto p = bp->ptr;
         for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
@@ -722,7 +730,7 @@ private:
 
 private:
     allocator_t m_allocator;
-    container_t m_blocks;
+    index_map_t m_blocks;
 };
 
 } // namespace amr::ndt::tree

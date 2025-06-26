@@ -10,6 +10,28 @@
 namespace amr::ndt::concepts
 {
 
+template <typename T>
+concept TypeMap = requires {
+    typename T::type;
+    { T::index() } -> std::same_as<std::size_t>;
+};
+
+namespace detail
+{
+
+template <typename>
+constexpr bool type_map_tuple_impl = false;
+template <template <class...> class Tuple, class... Types>
+    requires(TypeMap<Types> && ...)
+constexpr bool type_map_tuple_impl<Tuple<Types...>> = true;
+
+} // namespace detail
+
+template <typename T>
+concept DeconstructibleType = requires {
+    typename T::deconstructed_types_map_t;
+} && detail::type_map_tuple_impl<typename T::deconstructed_types_map_t>;
+
 template <typename I>
 concept NodeIndex =
     requires(
