@@ -71,19 +71,52 @@ int main()
     using rngf = typename utility::random::srandom;
     rngf::seed<typename S1::type>();
 
-    using index_t   = amr::ndt::morton::morton_id<7u, 2u>;
-    using tree_t    = amr::ndt::tree::flat_ndtree<cell, index_t>;
-    const auto size = 10;
-    tree_t     tree(size);
+    using index_t       = amr::ndt::morton::morton_id<7u, 2u>;
+    using tree_t        = amr::ndt::tree::flat_ndtree<cell, index_t>;
+    const auto capacity = 100;
+    tree_t     tree(capacity);
 
-    for (auto i = 0; i != size; ++i)
+    tree.get<S1>(0) = 10;
+    tree.get<S2>(0) = 100;
+
+    for (auto i = 0uz; i != tree.size(); ++i)
     {
         std::cout << tree.get<S1>(i) << '\n';
         std::cout << tree.get<S2>(i) << '\n';
     }
 
+    std::cout << tree.size() << '\n';
     [[maybe_unused]]
     auto _ = tree.fragment(index_t::root());
+    std::cout << tree.size() << '\n';
+
+    for (auto i = 0uz; i != tree.size() + 2; ++i)
+    {
+        if (i == tree.size()) std::cout << "----grabage----\n";
+        std::cout << tree.get<S1>(i) << ", ";
+        std::cout << tree.get<S2>(i) << '\n';
+    }
+
+    std::cout << "\nSorting...\n";
+    tree.sort_buffers();
+
+    for (auto i = 0uz; i != tree.size() + 2; ++i)
+    {
+        if (i == tree.size()) std::cout << "----grabage----\n";
+        std::cout << tree.get<S1>(i) << ", ";
+        std::cout << tree.get<S2>(i) << '\n';
+    }
+
+    std::cout << "\nRecombine...\n";
+    [[maybe_unused]]
+    auto __ = tree.recombine(0);
+
+    for (auto i = 0uz; i != tree.size() + 2; ++i)
+    {
+        if (i == tree.size()) std::cout << "----grabage----\n";
+        std::cout << tree.get<S1>(i) << ", ";
+        std::cout << tree.get<S2>(i) << '\n';
+    }
 
     return EXIT_SUCCESS;
 }

@@ -74,7 +74,7 @@ public:
     using deconstruced_types_t =
         typename deconstructed_types_impl<typename T::deconstructed_types_map_t>::type;
 
-    using flat_index_map_t           = pointer_t<std::pair<node_index_t, flat_index_t>>;
+    using flat_index_map_t           = pointer_t<node_index_t>;
     using flat_index_array_t         = pointer_t<flat_index_t>;
     using index_map_t                = std::unordered_map<node_index_t, flat_index_t>;
     using index_map_iterator_t       = typename index_map_t::iterator;
@@ -85,8 +85,8 @@ public:
         : m_size{}
 
     {
-        m_linear_index_map = (pointer_t<std::pair<node_index_t, flat_index_t>>)
-            std::malloc(size * sizeof(node_index_t));
+        m_linear_index_map =
+            (pointer_t<node_index_t>)std::malloc(size * sizeof(node_index_t));
         m_sort_buffer = (pointer_t<flat_index_t>)std::malloc(size * sizeof(flat_index_t));
         std::apply(
             [size](auto&... b)
@@ -108,15 +108,21 @@ public:
     }
 
 public:
+    [[nodiscard]]
+    auto size() const noexcept -> size_type
+    {
+        return m_size;
+    }
+
     template <concepts::TypeMap Map_Type>
-    [[gnu::always_inline, gnu::flatten]]
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
     auto get(flat_index_t const& idx) noexcept -> reference_t<typename Map_Type::type>
     {
         return std::get<pointer_t<typename Map_Type::type>>(m_data_buffers)[idx];
     }
 
     template <concepts::TypeMap Map_Type>
-    [[gnu::always_inline, gnu::flatten]]
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
     auto get(flat_index_t const& idx) const noexcept
         -> const_reference_t<typename Map_Type::type>
     {
@@ -128,60 +134,60 @@ public:
     {
         auto it = find_index(node_id);
         assert(it.has_value());
-        const auto old_pos = it.value()->second;
-        // TODO: Impement interpolation
-        [[maybe_unused]]
-        auto const old_node = gather_node(old_pos);
-        std::cout << old_node << '\n';
-        block_swap(old_pos, m_size - 1);
-        m_index_map.erase(it.value());
-        auto const start = m_size;
-        for (auto i = decltype(node_index_t::nd_fanout()){};
-             i != node_index_t::nd_fanout();
-             ++i)
+        auto const start_to = m_size;
+        for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
         {
             auto child_id = node_index_t::child_of(node_id, i);
             assert(!find_index(child_id).has_value());
-            m_index_map.insert(std::pair(child_id, start + i));
+            append(child_id);
         }
-        return start;
+        const auto from = it.value()->second;
+        interpolate_node(from, start_to);
+        block_swap(from, back_idx());
+        m_index_map.erase(it.value()->first);
+        --m_size;
+        return start_to;
     }
 
     [[nodiscard]]
     auto recombine(node_index_t const& node_id) -> flat_index_t
     {
-        const auto parent_it = find_index(node_id);
-        assert(!parent_it.has_value());
+        assert(!find_index(node_id).has_value());
 
         const auto child_0    = node_index_t::child_of(node_id, 0);
         const auto child_0_it = find_index(child_0);
         assert(child_0_it.has_value());
 
-        const auto start    = child_0_it.value()->second;
-        auto const new_node = restrict_nodes(start);
-        for (auto i = decltype(node_index_t::nd_fanout()){};
-             i != node_index_t::nd_fanout();
-             ++i)
+        const auto start = child_0_it.value()->second;
+        append(node_id);
+        restrict_nodes(start, back_idx());
+        const auto max_swaps = m_size - start - s_nd_fanout;
+        for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
         {
             const auto child_i    = node_index_t::child_of(node_id, i);
-            auto       child_i_it = m_index_map.find(child_i);
+            auto       child_i_it = find_index(child_i);
             assert(child_i_it.has_value());
             assert(child_i_it.value()->second == start + i);
-            if (i != 0)
+            if (i < max_swaps)
             {
-                block_swap(child_i_it->second, --m_size);
+                block_swap(start + i, back_idx());
             }
-            m_index_map.erase(child_i_it);
+            m_index_map.erase(child_i_it.value()->first);
+            --m_size;
         }
-        scatter_node(new_node, start);
-        m_index_map.insert(std::pair(node_id, start));
         return start;
     }
 
 public:
+    [[nodiscard, gnu::always_inline]]
+    auto back_idx() noexcept -> flat_index_t
+    {
+        return m_size - 1;
+    }
+
     auto append(node_index_t const& node_id) noexcept -> void
     {
-        m_linear_index_map[m_size] = std::pair(node_id, m_size);
+        m_linear_index_map[m_size] = node_id;
         m_index_map[node_id]       = m_size;
         ++m_size;
     }
@@ -209,29 +215,37 @@ public:
             m_sort_buffer,
             &m_sort_buffer[m_size],
             [this](auto const i, auto const j)
-            { return node_idx(m_linear_index_map[i]) < node_idx(m_linear_index_map[j]); }
+            { return m_linear_index_map[i] < m_linear_index_map[j]; }
         );
-        for (flat_index_t i = 0; i != m_size; ++i)
+        std::cout << '\n';
+        for (flat_index_t i = 0; i != back_idx(); ++i)
         {
             const auto j = m_sort_buffer[i];
+            std::cout << "i: " << i << ", idx: " << m_linear_index_map[i].id()
+                      << "\nj: " << j << ", idx: " << m_linear_index_map[j].id() << '\n';
             block_swap(i, j);
         }
         for (flat_index_t i = 0; i != m_size; ++i)
         {
-            m_index_map[node_idx(m_linear_index_map[i])] = i;
+            assert(m_index_map[m_linear_index_map[i]] == i);
         }
     }
 
     [[gnu::always_inline, gnu::flatten]]
     auto block_swap(flat_index_t const& i, flat_index_t const& j) noexcept -> void
     {
-        // assert(i != j);
-        const auto i_it = find_index(node_idx(m_linear_index_map[i]));
-        const auto j_it = find_index(node_idx(m_linear_index_map[j]));
+        assert(i < m_size);
+        assert(j < m_size);
+        if (i == j)
+        {
+            return;
+        }
+        const auto i_it = find_index(m_linear_index_map[i]);
+        const auto j_it = find_index(m_linear_index_map[j]);
         assert(i_it.has_value());
         assert(j_it.has_value());
         std::swap(m_index_map[i_it.value()->first], m_index_map[j_it.value()->first]);
-        std::swap(flat_idx(m_linear_index_map[i]), flat_idx(m_linear_index_map[j]));
+        std::swap(m_linear_index_map[i], m_linear_index_map[j]);
         std::apply(
             [i, j](auto&... b) { (void)(std::swap(b[i], b[j]), ...); }, m_data_buffers
         );
@@ -259,35 +273,50 @@ public:
         );
     }
 
-    [[nodiscard]]
-    auto restrict_node(flat_index_t const& i) const noexcept -> value_type
+    auto restrict_nodes(
+        flat_index_t const& start_from,
+        flat_index_t const& to
+    ) const noexcept -> void
     {
-        // TODO:
-        return gather_node(i); // Wrong of course
+        std::cout << "In restriction from [" << start_from << ", "
+                  << start_from + s_nd_fanout - 1 << "] to " << to << '\n';
+        auto mean = [](auto data[s_nd_fanout])
+        {
+            auto ret = data[0];
+            for (auto i = 1u; i != s_nd_fanout; ++i)
+            {
+                ret += data[i];
+            }
+            return ret / s_nd_fanout;
+        };
+        std::apply(
+            [start_from, to, &mean](auto&... b)
+            { (void)((b[to] = mean(&b[start_from])), ...); },
+            m_data_buffers
+        );
     }
 
-    [[nodiscard, gnu::always_inline, gnu::flatten]]
-    static constexpr auto node_idx(auto& p) noexcept -> auto&
+    auto interpolate_node(
+        flat_index_t const& from,
+        flat_index_t const& start_to
+    ) const noexcept -> void
     {
-        return p.first;
-    }
-
-    [[nodiscard, gnu::always_inline, gnu::flatten]]
-    static constexpr auto node_idx(auto const& p) noexcept -> auto const&
-    {
-        return p.first;
-    }
-
-    [[nodiscard, gnu::always_inline, gnu::flatten]]
-    static constexpr auto flat_idx(auto& p) noexcept -> auto&
-    {
-        return p.second;
-    }
-
-    [[nodiscard, gnu::always_inline, gnu::flatten]]
-    static constexpr auto flat_idx(auto const& p) noexcept -> auto const&
-    {
-        return p.second;
+        std::cout << "In interpolation from " << from << " to [" << start_to << ", "
+                  << start_to + s_nd_fanout - 1 << "]\n";
+        auto const old_node = gather_node(from);
+        std::cout << old_node << '\n';
+        std::apply(
+            [from, start_to](auto&... b)
+            {
+                for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
+                {
+                    (void)((b[start_to + i] =
+                                b[from] * static_cast<value_t<decltype(b)>>(i + 1)),
+                           ...);
+                }
+            },
+            m_data_buffers
+        );
     }
 
 public:
