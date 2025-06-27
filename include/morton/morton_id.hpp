@@ -131,9 +131,8 @@ public:
 
     static constexpr morton_id child_of(morton_id parent_id, offset_t off)
     {
-
-        auto [coords, level] = decode(parent_id.id()); 
-        assert(level < s_depth && "Cell already at max level");  
+        auto [coords, level] = decode(parent_id.id());
+        assert(level < s_depth && "Cell already at max level");
         auto sibling = offset(parent_id.id() + 1, off);
 
         return sibling;
@@ -145,7 +144,8 @@ public:
         return level;
     }
 
-    static constexpr std::optional<morton_id> neighbour_at(morton_id morton, direction dir)
+    static constexpr std::optional<morton_id>
+        neighbour_at(morton_id morton, direction dir)
     {
         auto [coords, level] = decode(morton.id());
         uint32_t x_coord     = coords[0];
@@ -215,7 +215,6 @@ auto operator<(
 {
     return idx_a.id() < idx_b.id();
 }
-
 
 // 3D Specialization
 template <std::unsigned_integral auto Depth>
@@ -375,5 +374,22 @@ public:
 };
 
 } // namespace amr::ndt::morton
+
+namespace std
+{
+
+template <std::unsigned_integral auto Depth, std::unsigned_integral auto Dimension>
+struct hash<amr::ndt::morton::morton_id<Depth, Dimension>>
+{
+    [[nodiscard]]
+    auto
+        operator()(amr::ndt::morton::morton_id<Depth, Dimension> const& id) const noexcept
+        -> std::size_t
+    {
+        return id.id();
+    }
+};
+
+} // namespace std
 
 #endif // AMR_INCLUDED_MORTON

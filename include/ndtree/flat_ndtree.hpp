@@ -1,20 +1,24 @@
-#ifndef AMR_INCLUDED_NDTREE
-#define AMR_INCLUDED_NDTREE
+#ifndef AMR_INCLUDED_FLAT_NDTREE
+#define AMR_INCLUDED_FLAT_NDTREE
 
 #include "ndconcepts.hpp"
 #include "ndhierarchy.hpp"
 #include "utility/compile_time_utility.hpp"
 #include "utility/constexpr_functions.hpp"
 #include <algorithm>
+#include <cassert>
 #include <concepts>
 #include <cstdint>
 #include <cstdlib>
-#include <flat_map>
+#include <numeric>
 #include <tuple>
 #include <type_traits>
+#include <unordered_map>
+#include <utility>
 
 #ifndef NDEBUG
 #    define AMR_NDTREE_CHECKBOUNDS
+#    define AMR_NDTREE_ENABLE_CHECKS
 #endif
 
 namespace amr::ndt::tree
@@ -30,10 +34,17 @@ public:
     using flat_index_t                = size_type;
     using node_index_directon_t       = typename node_index_t::direction_t;
     static constexpr auto s_nd_fanout = node_index_t::nd_fanout();
+
+    template <typename Type>
+    using value_t = std::remove_pointer_t<std::remove_cvref_t<Type>>;
     template <typename Type>
     using pointer_t = Type*;
     template <typename Type>
     using const_pointer_t = Type const*;
+    template <typename Type>
+    using reference_t = Type&;
+    template <typename Type>
+    using const_reference_t = Type const&;
 
     static_assert(s_nd_fanout > 1);
 
@@ -44,7 +55,7 @@ public:
         requires concepts::detail::type_map_tuple_impl<std::tuple<Ts...>>
     struct deconstructed_buffers_impl<std::tuple<Ts...>>
     {
-        using type = std::tuple<typename Ts::type*...>;
+        using type = std::tuple<pointer_t<typename Ts::type>...>;
     };
 
     using deconstructed_buffers_t =
@@ -63,52 +74,230 @@ public:
     using deconstruced_types_t =
         typename deconstructed_types_impl<typename T::deconstructed_types_map_t>::type;
 
-    using index_map_t                = std::flat_map<node_index_t, flat_index_t>;
+    using flat_index_map_t           = pointer_t<std::pair<node_index_t, flat_index_t>>;
+    using flat_index_array_t         = pointer_t<flat_index_t>;
+    using index_map_t                = std::unordered_map<node_index_t, flat_index_t>;
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
 
 public:
     flat_ndtree(size_type size) noexcept
+        : m_size{}
+
+    {
+        m_linear_index_map = (pointer_t<std::pair<node_index_t, flat_index_t>>)
+            std::malloc(size * sizeof(node_index_t));
+        m_sort_buffer = (pointer_t<flat_index_t>)std::malloc(size * sizeof(flat_index_t));
+        std::apply(
+            [size](auto&... b)
+            {
+                ((void)(b = (pointer_t<value_t<decltype(b)>>)
+                            std::malloc(size * sizeof(value_t<decltype(b)>))),
+                 ...);
+            },
+            m_data_buffers
+        );
+        append(node_index_t::root());
+    }
+
+    ~flat_ndtree() noexcept
+    {
+        std::apply([](auto&... b) { (void)(std::free(b), ...); }, m_data_buffers);
+        std::free(m_sort_buffer);
+        std::free(m_linear_index_map);
+    }
+
+public:
+    template <concepts::TypeMap Map_Type>
+    [[gnu::always_inline, gnu::flatten]]
+    auto get(flat_index_t const& idx) noexcept -> reference_t<typename Map_Type::type>
+    {
+        return std::get<pointer_t<typename Map_Type::type>>(m_data_buffers)[idx];
+    }
+
+    template <concepts::TypeMap Map_Type>
+    [[gnu::always_inline, gnu::flatten]]
+    auto get(flat_index_t const& idx) const noexcept
+        -> const_reference_t<typename Map_Type::type>
+    {
+        return std::get<pointer_t<typename Map_Type::type>>(m_data_buffers)[idx];
+    }
+
+    [[nodiscard]]
+    auto fragment(node_index_t const& node_id) -> flat_index_t
+    {
+        auto it = find_index(node_id);
+        assert(it.has_value());
+        const auto old_pos = it.value()->second;
+        // TODO: Impement interpolation
+        [[maybe_unused]]
+        auto const old_node = gather_node(old_pos);
+        std::cout << old_node << '\n';
+        block_swap(old_pos, m_size - 1);
+        m_index_map.erase(it.value());
+        auto const start = m_size;
+        for (auto i = decltype(node_index_t::nd_fanout()){};
+             i != node_index_t::nd_fanout();
+             ++i)
+        {
+            auto child_id = node_index_t::child_of(node_id, i);
+            assert(!find_index(child_id).has_value());
+            m_index_map.insert(std::pair(child_id, start + i));
+        }
+        return start;
+    }
+
+    [[nodiscard]]
+    auto recombine(node_index_t const& node_id) -> flat_index_t
+    {
+        const auto parent_it = find_index(node_id);
+        assert(!parent_it.has_value());
+
+        const auto child_0    = node_index_t::child_of(node_id, 0);
+        const auto child_0_it = find_index(child_0);
+        assert(child_0_it.has_value());
+
+        const auto start    = child_0_it.value()->second;
+        auto const new_node = restrict_nodes(start);
+        for (auto i = decltype(node_index_t::nd_fanout()){};
+             i != node_index_t::nd_fanout();
+             ++i)
+        {
+            const auto child_i    = node_index_t::child_of(node_id, i);
+            auto       child_i_it = m_index_map.find(child_i);
+            assert(child_i_it.has_value());
+            assert(child_i_it.value()->second == start + i);
+            if (i != 0)
+            {
+                block_swap(child_i_it->second, --m_size);
+            }
+            m_index_map.erase(child_i_it);
+        }
+        scatter_node(new_node, start);
+        m_index_map.insert(std::pair(node_id, start));
+        return start;
+    }
+
+public:
+    auto append(node_index_t const& node_id) noexcept -> void
+    {
+        m_linear_index_map[m_size] = std::pair(node_id, m_size);
+        m_index_map[node_id]       = m_size;
+        ++m_size;
+    }
+
+    [[nodiscard]]
+    auto find_index(node_index_t const& node_id) const noexcept
+        -> std::optional<index_map_iterator_t>
+    {
+        const auto it = m_index_map.find(node_id);
+        return it == m_index_map.end() ? std::nullopt : std::optional{ it };
+    }
+
+    [[nodiscard]]
+    auto find_index(node_index_t const& node_id) noexcept
+        -> std::optional<index_map_const_iterator_t>
+    {
+        const auto it = m_index_map.find(node_id);
+        return it == m_index_map.end() ? std::nullopt : std::optional{ it };
+    }
+
+    auto sort_buffers() noexcept -> void
+    {
+        std::iota(m_sort_buffer, &m_sort_buffer[m_size], 0);
+        std::sort(
+            m_sort_buffer,
+            &m_sort_buffer[m_size],
+            [this](auto const i, auto const j)
+            { return node_idx(m_linear_index_map[i]) < node_idx(m_linear_index_map[j]); }
+        );
+        for (flat_index_t i = 0; i != m_size; ++i)
+        {
+            const auto j = m_sort_buffer[i];
+            block_swap(i, j);
+        }
+        for (flat_index_t i = 0; i != m_size; ++i)
+        {
+            m_index_map[node_idx(m_linear_index_map[i])] = i;
+        }
+    }
+
+    [[gnu::always_inline, gnu::flatten]]
+    auto block_swap(flat_index_t const& i, flat_index_t const& j) noexcept -> void
+    {
+        // assert(i != j);
+        const auto i_it = find_index(node_idx(m_linear_index_map[i]));
+        const auto j_it = find_index(node_idx(m_linear_index_map[j]));
+        assert(i_it.has_value());
+        assert(j_it.has_value());
+        std::swap(m_index_map[i_it.value()->first], m_index_map[j_it.value()->first]);
+        std::swap(flat_idx(m_linear_index_map[i]), flat_idx(m_linear_index_map[j]));
+        std::apply(
+            [i, j](auto&... b) { (void)(std::swap(b[i], b[j]), ...); }, m_data_buffers
+        );
+    }
+
+    [[nodiscard]]
+    auto gather_node(flat_index_t const& i) const noexcept -> value_type
+    {
+        return std::apply(
+            [i](auto&&... args)
+            { return value_type(std::forward<decltype(args)>(args)[i]...); },
+            m_data_buffers
+        );
+    }
+
+    auto scatter_node(value_type const& v, const flat_index_t i) const noexcept -> void
     {
         std::apply(
-            [size](auto&... e)
+            [&v, i](auto&... b)
             {
-                ((e = (pointer_t<std::remove_pointer_t<std::remove_cvref_t<decltype(e)>>>)
-                      std::malloc(
-                          size *
-                          sizeof(std::remove_pointer_t<std::remove_cvref_t<decltype(e)>>)
-                      )),
-                 ...);
+                (void)((b[i] = std::get<value_t<decltype(b)>>(v.data_tuple()).value),
+                       ...);
             },
             m_data_buffers
         );
     }
 
-    ~flat_ndtree() noexcept
+    [[nodiscard]]
+    auto restrict_node(flat_index_t const& i) const noexcept -> value_type
     {
-        std::apply([](auto&... e) { (std::free(e), ...); }, m_data_buffers);
+        // TODO:
+        return gather_node(i); // Wrong of course
     }
 
-public:
-    template <concepts::TypeMap Map_Type>
-    [[gnu::always_inline, gnu::flatten]]
-    auto get() noexcept -> pointer_t<typename Map_Type::type>
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
+    static constexpr auto node_idx(auto& p) noexcept -> auto&
     {
-        return std::get<pointer_t<typename Map_Type::type>>(m_data_buffers);
+        return p.first;
     }
 
-    template <concepts::TypeMap Map_Type>
-    [[gnu::always_inline, gnu::flatten]]
-    auto get() const noexcept -> const_pointer_t<typename Map_Type::type>
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
+    static constexpr auto node_idx(auto const& p) noexcept -> auto const&
     {
-        return std::get<pointer_t<typename Map_Type::type>>(m_data_buffers);
+        return p.first;
+    }
+
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
+    static constexpr auto flat_idx(auto& p) noexcept -> auto&
+    {
+        return p.second;
+    }
+
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
+    static constexpr auto flat_idx(auto const& p) noexcept -> auto const&
+    {
+        return p.second;
     }
 
 public:
     deconstructed_buffers_t m_data_buffers;
+    flat_index_map_t        m_linear_index_map;
+    flat_index_array_t      m_sort_buffer;
     index_map_t             m_index_map;
+    size_type               m_size;
 };
 
 } // namespace amr::ndt::tree
 
-#endif // AMR_INCLUDED_NDTREE
+#endif // AMR_INCLUDED_FLAT_NDTREE
