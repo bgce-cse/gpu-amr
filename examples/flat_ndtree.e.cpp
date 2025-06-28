@@ -2,7 +2,8 @@
 #include "containers/static_vector.hpp"
 #include "morton/morton_id.hpp"
 #include "ndtree/ndhierarchy.hpp"
-#include "ndtree/structured_print.hpp"
+// #include "ndtree/structured_print.hpp"
+#include "ndtree/print_tree_a.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iostream>
@@ -64,7 +65,7 @@ auto operator<<(std::ostream& os, cell const& c) -> std::ostream&
 int main()
 {
     std::cout << "Hello space partition world\n";
-
+    ndt::print::vtk_print vtk_printer("tree_a_test");
     using rngi = typename utility::random::srandom;
     rngi::seed<typename S2::type>();
 
@@ -106,6 +107,8 @@ int main()
         std::cout << tree.get<S1>(i) << ", ";
         std::cout << tree.get<S2>(i) << '\n';
     }
+    std::string file_extension = "refine.vtk";
+    vtk_printer.print(tree,file_extension);
 
     std::cout << "\nRecombine...\n";
     [[maybe_unused]]
@@ -118,5 +121,7 @@ int main()
         std::cout << tree.get<S2>(i) << '\n';
     }
 
+     file_extension = "coarsen.vtk";
+    vtk_printer.print(tree,file_extension);
     return EXIT_SUCCESS;
 }
