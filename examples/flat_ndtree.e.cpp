@@ -86,8 +86,7 @@ int main()
     }
 
     std::cout << tree.size() << '\n';
-    [[maybe_unused]]
-    auto _ = tree.fragment(index_t::root());
+    tree.fragment(index_t::root());
     std::cout << tree.size() << '\n';
 
     for (auto i = 0uz; i != tree.size() + 2; ++i)
@@ -108,8 +107,7 @@ int main()
     }
 
     std::cout << "\nRecombine...\n";
-    [[maybe_unused]]
-    auto __ = tree.recombine(0);
+    tree.recombine(index_t::root());
 
     for (auto i = 0uz; i != tree.size() + 2; ++i)
     {

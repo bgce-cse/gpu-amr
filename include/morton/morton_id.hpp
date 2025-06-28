@@ -2,6 +2,7 @@
 #define AMR_INCLUDED_MORTON
 
 #include <array>
+#include <bitset>
 #include <cassert>
 #include <climits>
 #include <cstdint>
@@ -172,6 +173,11 @@ public:
     constexpr auto id() const noexcept
     {
         return m_id;
+    }
+
+    constexpr auto repr() const noexcept -> std::string
+    {
+        return std::bitset<bits()>(m_id).to_string();
     }
 
     constexpr auto level() const noexcept
