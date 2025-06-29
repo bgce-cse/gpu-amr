@@ -52,8 +52,9 @@ private:
         std::vector<size_t> cell_indices;
 
         // For flat_ndtree: iterate over all valid indices
+
         for (size_t i = 0; i < tree.size(); ++i) {
-            auto id = tree.m_linear_index_map[i]; // or use a public accessor
+            auto id = tree.node_index_at(i); // or use a public accessor
             auto level = id.level();
             auto max_depth = IndexType::max_depth();
             uint32_t cell_size = 1u << (max_depth - level);

@@ -41,6 +41,7 @@ public:
     static constexpr size_type s_depth = Depth;
     static constexpr size_type s_dim   = 2u;
 
+    constexpr morton_id() : m_id(0) {}
     constexpr morton_id(mask_t id)
         : m_id{ id }
     {
