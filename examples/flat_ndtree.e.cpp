@@ -87,39 +87,42 @@ int main()
     }
 
     std::cout << tree.size() << '\n';
-    tree.fragment(index_t::root());
-    std::cout << tree.size() << '\n';
 
-    for (auto i = 0uz; i != tree.size() + 2; ++i)
+    for (int j = 0; j != 10; ++j)
     {
-        if (i == tree.size()) std::cout << "----grabage----\n";
-        std::cout << tree.get<S1>(i) << ", ";
-        std::cout << tree.get<S2>(i) << '\n';
+        auto chosen = rngi::randrange(0uz, tree.size() - 1);
+        std::cout << "Chose: " << chosen << '\n';
+        tree.fragment(tree.get_node_index_at(chosen));
+        std::cout << "Pre compact: \n";
+        for (auto i = 0uz; i != tree.size(); ++i)
+        {
+            std::cout << tree.get_node_index_at(i).repr() << '\n';
+        }
+        tree.compact();
+        std::cout << "Post compact: \n";
+        for (auto i = 0uz; i != tree.size(); ++i)
+        {
+            std::cout << tree.get_node_index_at(i).repr() << '\n';
+        }
     }
 
     std::cout << "\nSorting...\n";
+    for (auto i = 0uz; i != tree.size(); ++i)
+    {
+        std::cout << tree.get_node_index_at(i).repr() << '\n';
+    }
     tree.sort_buffers();
 
-    for (auto i = 0uz; i != tree.size() + 2; ++i)
+    std::cout << "\nSorted...\n";
+    for (auto i = 0uz; i != tree.size(); ++i)
     {
-        if (i == tree.size()) std::cout << "----grabage----\n";
         std::cout << tree.get<S1>(i) << ", ";
         std::cout << tree.get<S2>(i) << '\n';
     }
     std::string file_extension = "refine.vtk";
-    vtk_printer.print(tree,file_extension);
+    vtk_printer.print(tree, file_extension);
 
-    std::cout << "\nRecombine...\n";
-    tree.recombine(index_t::root());
-
-    for (auto i = 0uz; i != tree.size() + 2; ++i)
-    {
-        if (i == tree.size()) std::cout << "----grabage----\n";
-        std::cout << tree.get<S1>(i) << ", ";
-        std::cout << tree.get<S2>(i) << '\n';
-    }
-
-     file_extension = "coarsen.vtk";
-    vtk_printer.print(tree,file_extension);
+    file_extension = "coarsen.vtk";
+    vtk_printer.print(tree, file_extension);
     return EXIT_SUCCESS;
 }
