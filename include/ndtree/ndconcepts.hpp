@@ -5,6 +5,7 @@
 #include <functional>
 #include <iterator>
 #include <optional>
+#include <string>
 #include <type_traits>
 
 namespace amr::ndt::concepts
@@ -51,6 +52,7 @@ concept NodeIndex =
         { I::offset(i, offset) } -> std::same_as<I>; // TODO: Rethink
         { I::level(i) } -> std::same_as<typename I::level_t>;
         { i.id() } -> std::same_as<typename I::mask_t>;
+        { i.repr() } -> std::same_as<std::string>;
         { std::less{}(i, i) } -> std::convertible_to<bool>;
     } &&
     std::integral<typename I::size_type> && std::unsigned_integral<typename I::mask_t> &&
