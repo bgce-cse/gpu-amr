@@ -93,8 +93,8 @@ int main()
                                (mid_y - center) * (mid_y - center);
 
                 // Only refine if not at max level!
-                if (level < idx.max_depth() &&
-                    dist2 < 0.3 / idx.level() * max_size * max_size)
+                if (idx.level() == 0 || (level < idx.max_depth() &&
+                                         dist2 < 0.3 / idx.level() * max_size * max_size))
                 {
                     return tree_t::refine_status_t::Refine;
                 }

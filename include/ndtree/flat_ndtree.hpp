@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <numeric>
+#include <system_error>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -33,7 +34,7 @@ public:
     using value_type                  = T;
     using node_index_t                = Node_Index;
     using size_type                   = std::size_t;
-    using flat_index_t                = size_type;
+    using linear_index_t              = size_type;
     using node_index_directon_t       = typename node_index_t::direction_t;
     static constexpr auto s_nd_fanout = node_index_t::nd_fanout();
 
@@ -70,7 +71,7 @@ public:
         requires concepts::detail::type_map_tuple_impl<std::tuple<Ts...>>
     struct deconstructed_types_impl<std::tuple<Ts...>>
     {
-        using type = std::tuple<typename Ts::type...>;
+        using type = std::tuple<value_t<typename Ts::type>...>;
     };
 
     using deconstruced_types_t =
@@ -85,10 +86,10 @@ public:
 
     using refine_status_t = RefinementStatus;
 
-    using flat_index_map_t           = pointer_t<node_index_t>;
-    using flat_index_array_t         = pointer_t<flat_index_t>;
+    using linear_index_map_t         = pointer_t<node_index_t>;
+    using linear_index_array_t       = pointer_t<linear_index_t>;
     using flat_refine_status_array_t = pointer_t<refine_status_t>;
-    using index_map_t                = std::unordered_map<node_index_t, flat_index_t>;
+    using index_map_t                = std::unordered_map<node_index_t, linear_index_t>;
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
 
@@ -108,8 +109,9 @@ public:
         );
         m_linear_index_map =
             (pointer_t<node_index_t>)std::malloc(size * sizeof(node_index_t));
-        m_sort_buffer = (pointer_t<flat_index_t>)std::malloc(size * sizeof(flat_index_t));
-        m_refinement_status_buffer =
+        m_reorder_buffer =
+            (pointer_t<linear_index_t>)std::malloc(size * sizeof(linear_index_t));
+        m_refine_status_buffer =
             (pointer_t<refine_status_t>)std::malloc(size * sizeof(refine_status_t));
 
         append(node_index_t::root());
@@ -117,10 +119,10 @@ public:
 
     ~flat_ndtree() noexcept
     {
-        std::free(m_refinement_status_buffer);
-        std::free(m_sort_buffer);
+        std::free(m_refine_status_buffer);
+        std::free(m_reorder_buffer);
         std::free(m_linear_index_map);
-        std::apply([](auto&... b) { (void)(std::free(b), ...); }, m_data_buffers);
+        std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_data_buffers);
     }
 
 public:
@@ -132,7 +134,7 @@ public:
 
     template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
-    auto get(flat_index_t const idx) noexcept -> reference_t<typename Map_Type::type>
+    auto get(linear_index_t const idx) noexcept -> reference_t<typename Map_Type::type>
     {
         assert(idx < m_size);
         return std::get<pointer_t<typename Map_Type::type>>(m_data_buffers)[idx];
@@ -140,7 +142,7 @@ public:
 
     template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
-    auto get(flat_index_t const idx) const noexcept
+    auto get(linear_index_t const idx) const noexcept
         -> const_reference_t<typename Map_Type::type>
     {
         assert(idx < m_size);
@@ -193,33 +195,32 @@ public:
 
     auto fragment(std::vector<node_index_t>& to_refine)
     {
-        // TODO: assert(sorted);
+        assert(is_sorted());
         for (auto const& node_id : to_refine)
         {
             fragment(node_id);
         }
-        compact();
         sort_buffers();
     }
 
     auto recombine(const std::vector<node_index_t>& node_ids) -> void
     {
-        // TODO: assert(sorted);
+        assert(is_sorted());
         for (const auto& node_id : node_ids)
         {
             recombine(node_id);
         }
-        compact();
         sort_buffers();
     }
 
     template <typename Fn>
-    auto
-        update_refine_flags(Fn&& fn) noexcept(noexcept(fn(std::declval<flat_index_t&>())))
+    auto update_refine_flags(Fn&& fn) noexcept(
+        noexcept(fn(std::declval<linear_index_t&>()))
+    )
     {
-        for (flat_index_t i = 0; i < m_size; ++i)
+        for (linear_index_t i = 0; i < m_size; ++i)
         {
-            m_refinement_status_buffer[i] = fn(m_linear_index_map[i]);
+            m_refine_status_buffer[i] = fn(m_linear_index_map[i]);
         }
     }
 
@@ -229,7 +230,7 @@ public:
         std::vector<node_index_t> to_refine;
         std::vector<node_index_t> to_coarsen;
         std::vector<node_index_t> parent_morton_idx;
-        for (flat_index_t i = 0; i < m_size; ++i)
+        for (linear_index_t i = 0; i < m_size; ++i)
         {
             const auto node_id = m_linear_index_map[i];
             if (node_id.id() == 0)
@@ -245,7 +246,7 @@ public:
             parent_morton_idx.end()
         );
 
-        for (flat_index_t i = 0; i < m_size; ++i)
+        for (linear_index_t i = 0; i < m_size; ++i)
         {
             if (is_refine_elegible(i))
             {
@@ -513,7 +514,7 @@ public:
 
 public:
     [[nodiscard]]
-    auto node_index_at(flat_index_t idx) const noexcept -> node_index_t
+    auto get_node_index_at(linear_index_t idx) const noexcept -> node_index_t
     {
         assert(idx < m_size && "Index out of bounds in node_index_at()");
         return m_linear_index_map[idx];
@@ -521,7 +522,7 @@ public:
 
 private:
     [[nodiscard, gnu::always_inline]]
-    auto back_idx() noexcept -> flat_index_t
+    auto back_idx() noexcept -> linear_index_t
 
     {
         return m_size - 1;
@@ -554,10 +555,11 @@ private:
 public:
     auto sort_buffers() noexcept -> void
     {
-        std::iota(m_sort_buffer, &m_sort_buffer[m_size], 0);
+        compact();
+        std::iota(m_reorder_buffer, &m_reorder_buffer[m_size], 0);
         std::sort(
-            m_sort_buffer,
-            &m_sort_buffer[m_size],
+            m_reorder_buffer,
+            &m_reorder_buffer[m_size],
             [this](auto const i, auto const j)
             { return m_linear_index_map[i] < m_linear_index_map[j]; }
         );
@@ -574,18 +576,18 @@ public:
         );
 
         // Copy sorted data into temporaries
-        for (flat_index_t i = 0; i < m_size; ++i)
+        for (linear_index_t i = 0; i < m_size; ++i)
         {
-            tmp_index[i]  = m_linear_index_map[m_sort_buffer[i]];
-            tmp_status[i] = m_refinement_status_buffer[m_sort_buffer[i]];
+            tmp_index[i]  = m_linear_index_map[m_reorder_buffer[i]];
+            tmp_status[i] = m_refine_status_buffer[m_reorder_buffer[i]];
         }
-        copy_to_tmp_buffers(m_data_buffers, tmp_data_buffers, m_sort_buffer, m_size);
+        copy_to_tmp_buffers(m_data_buffers, tmp_data_buffers, m_reorder_buffer, m_size);
 
         // Copy back from temporaries
-        for (flat_index_t i = 0; i < m_size; ++i)
+        for (linear_index_t i = 0; i < m_size; ++i)
         {
             m_linear_index_map[i]              = tmp_index[i];
-            m_refinement_status_buffer[i]      = tmp_status[i];
+            m_refine_status_buffer[i]          = tmp_status[i];
             m_index_map[m_linear_index_map[i]] = i;
         }
         copy_from_tmp_buffers(m_data_buffers, tmp_data_buffers, m_size);
@@ -596,7 +598,7 @@ public:
     void copy_to_tmp_buffers_impl(
         TupleBuffers&    buffers,
         TupleTmpBuffers& tmp_buffers,
-        flat_index_t*    sort_buffer,
+        linear_index_t*  sort_buffer,
         size_t           m_sizee,
         std::index_sequence<Is...>
     )
@@ -617,7 +619,7 @@ public:
     void copy_to_tmp_buffers(
         TupleBuffers&    buffers,
         TupleTmpBuffers& tmp_buffers,
-        flat_index_t*    sort_buffer,
+        linear_index_t*  sort_buffer,
         size_t           m_sizee
     )
     {
@@ -663,35 +665,40 @@ public:
         );
     }
 
-    auto sort_buffers_old() noexcept -> void
+    /*
+    auto sort_buffers() noexcept -> void
     {
-        std::iota(m_sort_buffer, &m_sort_buffer[m_size], 0);
-        std::sort(
-            m_sort_buffer,
-            &m_sort_buffer[m_size],
-            [this](auto const i, auto const j)
-            { return m_linear_index_map[i] < m_linear_index_map[j]; }
-        );
-        std::cout << '\n';
-        for (flat_index_t i = 0; i != back_idx(); ++i)
+        compact();
+        for (auto k = 0uz; k != size(); ++k)
         {
-            const auto j = m_sort_buffer[i];
-            std::cout << "i: " << i << ", idx: " << m_linear_index_map[i].repr()
-                      << "\nj: " << j << ", idx: " << m_linear_index_map[j].repr()
-                      << '\n';
-            if (i == j) continue;
+            m_reorder_buffer[k] = std::count_if(
+                m_linear_index_map,
+                &m_linear_index_map[m_size],
+                [this, k](auto const& a) { return a < m_linear_index_map[k]; }
+            );
+        }
+        for (linear_index_t i = 0; i != back_idx();)
+        {
+            const auto j = m_reorder_buffer[i];
+            if (i == j)
+            {
+                ++i;
+                continue;
+            }
+            std::swap(m_reorder_buffer[i], m_reorder_buffer[j]);
+            std::swap(
+                m_index_map[m_linear_index_map[i]], m_index_map[m_linear_index_map[j]]
+            );
             block_buffer_swap(i, j);
-            // Swap index entries
         }
-        for (flat_index_t i = 0; i != m_size; ++i)
-        {
-            assert(m_index_map[m_linear_index_map[i]] == i);
-        }
+        assert(is_sorted());
+        assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
     }
+    */
 
 private:
     [[nodiscard]]
-    auto gather_node(flat_index_t const i) const noexcept -> value_type
+    auto gather_node(linear_index_t const i) const noexcept -> value_type
     {
         return std::apply(
             [i](auto&&... args)
@@ -700,19 +707,19 @@ private:
         );
     }
 
-    auto scatter_node(value_type const& v, const flat_index_t i) const noexcept -> void
+    auto scatter_node(value_type const& v, const linear_index_t i) const noexcept -> void
     {
         std::apply(
             [&v, i](auto&... b)
             {
-                (void)((b[i] = std::get<value_t<decltype(b)>>(v.data_tuple()).value),
-                       ...);
+                ((void)(b[i] = std::get<value_t<decltype(b)>>(v.data_tuple()).value),
+                 ...);
             },
             m_data_buffers
         );
     }
 
-    auto restrict_nodes(flat_index_t const start_from, flat_index_t const to) noexcept
+    auto restrict_nodes(linear_index_t const start_from, linear_index_t const to) noexcept
         -> void
     {
         std::cout << "In restriction from [" << start_from << ", "
@@ -722,20 +729,20 @@ private:
             auto ret = data[0];
             for (auto i = 1u; i != s_nd_fanout; ++i)
             {
-                ret += data[i];
+                ret += data[i] / s_nd_fanout;
             }
-            return ret / s_nd_fanout;
+            return ret;
         };
         std::apply(
             [start_from, to, &mean](auto&... b)
-            { (void)((b[to] = mean(&(b[start_from]))), ...); },
+            { ((void)(b[to] = mean(&(b[start_from]))), ...); },
             m_data_buffers
         );
     }
 
     auto interpolate_node(
-        flat_index_t const from,
-        flat_index_t const start_to
+        linear_index_t const from,
+        linear_index_t const start_to
     ) const noexcept -> void
     {
         std::cout << "In interpolation from " << from << " to [" << start_to << ", "
@@ -747,9 +754,9 @@ private:
             {
                 for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
                 {
-                    (void)((b[start_to + i] =
-                                b[from] * static_cast<value_t<decltype(b)>>(i + 1)),
-                           ...);
+                    ((void)(b[start_to + i] =
+                                b[from] + static_cast<value_t<decltype(b)>>(i + 1)),
+                     ...);
                 }
             },
             m_data_buffers
@@ -757,19 +764,19 @@ private:
     }
 
     [[nodiscard]]
-    auto get_refine_status(const flat_index_t i) const noexcept -> refine_status_t
+    auto get_refine_status(const linear_index_t i) const noexcept -> refine_status_t
     {
         assert(i < m_size);
-        return m_refinement_status_buffer[i];
+        return m_refine_status_buffer[i];
     }
 
 private:
     [[nodiscard]]
-    auto is_refine_elegible(const flat_index_t i) const noexcept -> bool
+    auto is_refine_elegible(const linear_index_t i) const noexcept -> bool
     {
         const auto node_id = m_linear_index_map[i];
         assert(m_index_map.contains(node_id));
-        const auto status = m_refinement_status_buffer[i];
+        const auto status = m_refine_status_buffer[i];
         const auto level  = node_index_t::level(node_id);
         return (status == refine_status_t::Refine) && (level < node_index_t::max_depth());
     }
@@ -787,7 +794,7 @@ private:
                 return false;
             }
             const auto idx = it.value()->second;
-            if (m_refinement_status_buffer[idx] != refine_status_t::Coarsen)
+            if (m_refine_status_buffer[idx] != refine_status_t::Coarsen)
             {
                 return false;
             }
@@ -795,10 +802,12 @@ private:
         return true;
     }
 
+    // TODO: privatize
+public:
     auto compact() noexcept -> void
     {
         size_t tail = 0;
-        for (flat_index_t head = 0; head < m_size; ++head)
+        for (linear_index_t head = 0; head < m_size; ++head)
         {
             const auto node_id = m_linear_index_map[head];
             if (m_index_map.contains(node_id))
@@ -809,14 +818,15 @@ private:
         }
         m_size = tail;
         m_index_map.clear();
-        for (flat_index_t i = 0; i != m_size; ++i)
+        for (linear_index_t i = 0; i != m_size; ++i)
         {
             m_index_map[m_linear_index_map[i]] = i;
         }
     }
 
     [[gnu::always_inline, gnu::flatten]]
-    auto block_buffer_swap(flat_index_t const i, flat_index_t const j) noexcept -> void
+    auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
+        -> void
     {
         assert(i < m_size);
         assert(j < m_size);
@@ -826,19 +836,42 @@ private:
         }
         assert(m_linear_index_map[i] != m_linear_index_map[j]);
         std::swap(m_linear_index_map[i], m_linear_index_map[j]);
-        std::swap(m_refinement_status_buffer[i], m_refinement_status_buffer[j]);
+        std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
         std::apply(
-            [i, j](auto&... b) { (void)(std::swap(b[i], b[j]), ...); }, m_data_buffers
+            [i, j](auto&... b) { ((void)std::swap(b[i], b[j]), ...); }, m_data_buffers
         );
+    }
+
+    [[nodiscard]]
+    auto is_sorted() const noexcept -> bool
+    {
+        if (std::ranges::is_sorted(
+                m_linear_index_map, &m_linear_index_map[m_size], std::less{}
+            ))
+        {
+            for (linear_index_t i = 0; i != m_size; ++i)
+            {
+                assert(m_index_map.contains(m_linear_index_map[i]));
+                if (m_index_map.at(m_linear_index_map[i]) != i)
+                {
+                    std::cout << "index map is not correct" << std::endl;
+                    return false;
+                }
+            }
+            return true;
+        }
+        std::cout << "linear index is not sorted" << std::endl;
+        ;
+        return false;
     }
 
 #ifdef AMR_NDTREE_ENABLE_CHECKS
     auto check_index_map() const noexcept -> void
     {
         assert(m_index_map.size() <= m_size);
-        for (const auto& [node_idx, flat_idx] : m_index_map)
+        for (const auto& [node_idx, linear_idx] : m_index_map)
         {
-            assert(m_linear_index_map[flat_idx] == node_idx);
+            assert(m_linear_index_map[linear_idx] == node_idx);
         }
         std::cout << "Hash table looks good chef...\n";
     }
@@ -847,9 +880,9 @@ private:
 private:
     index_map_t                m_index_map;
     deconstructed_buffers_t    m_data_buffers;
-    flat_index_map_t           m_linear_index_map;
-    flat_index_array_t         m_sort_buffer;
-    flat_refine_status_array_t m_refinement_status_buffer;
+    linear_index_map_t         m_linear_index_map;
+    linear_index_array_t       m_reorder_buffer;
+    flat_refine_status_array_t m_refine_status_buffer;
     size_type                  m_size;
 };
 

@@ -1,14 +1,15 @@
 #ifndef AMR_INCLUDED_NDT_STRUCTURED_PRINT
 #define AMR_INCLUDED_NDT_STRUCTURED_PRINT
 
+#include "morton/morton_id.hpp"
 #include "ndtree.hpp"
 #include <algorithm>
-#include <fstream>
 #include <bitset>
+#include <filesystem>
+#include <fstream>
 #include <ostream>
 #include <ranges>
-#include "morton/morton_id.hpp"
-#include <filesystem> 
+
 namespace ndt::print
 {
 
@@ -27,7 +28,8 @@ public:
         // Compose full path: ./vtk_output/base_filename + extension
         std::string full_filename = "vtk_output/" + m_base_filename + filename_extension;
         std::ofstream file(full_filename);
-        if (!file.is_open()) {
+        if (!file.is_open())
+        {
             throw std::runtime_error("Cannot open file: " + full_filename);
         }
         write_header(file);
@@ -42,50 +44,55 @@ private:
         file << "ASCII\n";
         file << "DATASET UNSTRUCTURED_GRID\n";
     }
-    
+
     void write_points(std::ofstream& file, auto const& tree) const
     {
-        using TreeType = std::remove_cvref_t<decltype(tree)>;
+        using TreeType  = std::remove_cvref_t<decltype(tree)>;
         using IndexType = typename TreeType::node_index_t;
 
         std::vector<std::array<uint32_t, 3>> points;
-        std::vector<size_t> cell_indices;
+        std::vector<size_t>                  cell_indices;
 
         // For flat_ndtree: iterate over all valid indices
 
-        for (size_t i = 0; i < tree.size(); ++i) {
-            auto id = tree.node_index_at(i); // or use a public accessor
-            auto level = id.level();
-            auto max_depth = IndexType::max_depth();
+        for (size_t i = 0; i < tree.size(); ++i)
+        {
+            auto     id        = tree.get_node_index_at(i); // or use a public accessor
+            auto     level     = id.level();
+            auto     max_depth = IndexType::max_depth();
             uint32_t cell_size = 1u << (max_depth - level);
 
             auto [coords, _] = IndexType::decode(id.id());
-            uint32_t x = coords[0];
-            uint32_t y = coords[1];
+            uint32_t x       = coords[0];
+            uint32_t y       = coords[1];
 
             cell_indices.push_back(points.size());
-            points.push_back({x, y, 0});
-            points.push_back({x + cell_size, y, 0});
-            points.push_back({x + cell_size, y + cell_size, 0});
-            points.push_back({x, y + cell_size, 0});
+            points.push_back({ x, y, 0 });
+            points.push_back({ x + cell_size, y, 0 });
+            points.push_back({ x + cell_size, y + cell_size, 0 });
+            points.push_back({ x, y + cell_size, 0 });
         }
 
         // Write points
         file << "POINTS " << points.size() << " double\n";
-        for (auto const& [x, y, z] : points) {
+        for (auto const& [x, y, z] : points)
+        {
             file << x << " " << y << " " << z << "\n";
         }
 
         // Write cells (each cell is a quad, 4 points)
         file << "CELLS " << cell_indices.size() << " " << cell_indices.size() * 5 << "\n";
-        for (size_t i = 0; i < cell_indices.size(); ++i) {
+        for (size_t i = 0; i < cell_indices.size(); ++i)
+        {
             size_t idx = cell_indices[i];
-            file << "4 " << idx << " " << idx + 1 << " " << idx + 2 << " " << idx + 3 << "\n";
+            file << "4 " << idx << " " << idx + 1 << " " << idx + 2 << " " << idx + 3
+                 << "\n";
         }
 
         // Write cell types (VTK_QUAD = 9)
         file << "CELL_TYPES " << cell_indices.size() << "\n";
-        for (size_t i = 0; i < cell_indices.size(); ++i) {
+        for (size_t i = 0; i < cell_indices.size(); ++i)
+        {
             file << "9\n";
         }
 
@@ -93,17 +100,14 @@ private:
         file << "CELL_DATA " << cell_indices.size() << "\n";
         file << "SCALARS cell_index int 1\n";
         file << "LOOKUP_TABLE default\n";
-        for (size_t i = 0; i < cell_indices.size(); ++i) {
+        for (size_t i = 0; i < cell_indices.size(); ++i)
+        {
             file << i << "\n";
         }
     }
-    
+
     std::string m_base_filename;
 };
-
-
-
-
 
 } // namespace ndt::print
 
