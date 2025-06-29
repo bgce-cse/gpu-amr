@@ -17,11 +17,10 @@
 #include <utility>
 
 #ifndef NDEBUG
-// #    define AMR_NDTREE_CHECKBOUNDS
-// #    define AMR_NDTREE_ENABLE_CHECKS
-// #    define AMR_NDTREE_CHECK_NEIGHBORS
-// #    define AMR_NDTREE_CHECK_BALANCING
-
+#    define AMR_NDTREE_CHECKBOUNDS
+#    define AMR_NDTREE_ENABLE_CHECKS
+#    define AMR_NDTREE_CHECK_NEIGHBORS
+#    define AMR_NDTREE_CHECK_BALANCING
 #endif
 
 namespace amr::ndt::tree
@@ -30,16 +29,6 @@ namespace amr::ndt::tree
 template <concepts::DeconstructibleType T, concepts::NodeIndex Node_Index>
 class flat_ndtree
 {
-private:
-    enum struct RefinementStatus : char
-    {
-        Stable  = 0,
-        Refine  = 1,
-        Coarsen = 2,
-    };
-
-    using refine_status_t = RefinementStatus;
-
 public:
     using value_type                  = T;
     using node_index_t                = Node_Index;
@@ -86,6 +75,15 @@ public:
 
     using deconstruced_types_t =
         typename deconstructed_types_impl<typename T::deconstructed_types_map_t>::type;
+
+    enum struct RefinementStatus : char
+    {
+        Stable  = 0,
+        Refine  = 1,
+        Coarsen = 2,
+    };
+
+    using refine_status_t = RefinementStatus;
 
     using flat_index_map_t           = pointer_t<node_index_t>;
     using flat_index_array_t         = pointer_t<flat_index_t>;
@@ -136,22 +134,22 @@ public:
     [[nodiscard, gnu::always_inline, gnu::flatten]]
     auto get(flat_index_t const idx) noexcept -> reference_t<typename Map_Type::type>
     {
-        // assert(idx < m_size);
+        assert(idx < m_size);
         return std::get<pointer_t<typename Map_Type::type>>(m_data_buffers)[idx];
     }
 
     template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
-    auto get(flat_index_t const idx
-    ) const noexcept -> const_reference_t<typename Map_Type::type>
+    auto get(flat_index_t const idx) const noexcept
+        -> const_reference_t<typename Map_Type::type>
     {
-        // assert(idx < m_size);
+        assert(idx < m_size);
         return std::get<pointer_t<typename Map_Type::type>>(m_data_buffers)[idx];
     }
 
     auto fragment(node_index_t const node_id) -> void
     {
-        auto it = find_index(node_id);
+        const auto it = find_index(node_id);
         assert(it.has_value());
         auto const start_to = m_size;
         for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
@@ -164,13 +162,7 @@ public:
         }
         const auto from = it.value()->second;
         interpolate_node(from, start_to);
-        block_swap(from, back_idx());
         m_index_map.erase(it.value());
-        --m_size;
-        assert(
-            m_linear_index_map[from] == node_index_t::child_of(node_id, s_nd_fanout - 1)
-        );
-        assert(m_index_map[node_index_t::child_of(node_id, s_nd_fanout - 1)] == from);
 #ifdef AMR_NDTREE_ENABLE_CHECKS
         check_index_map();
 #endif
@@ -178,9 +170,6 @@ public:
 
     auto recombine(node_index_t const parent_node_id) -> void
     {
-        // sort_buffers();
-        std::cout << "[recombine] Start for parent " << parent_node_id.id() << "\n";
-
         assert(!find_index(parent_node_id).has_value());
 
         const auto child_0    = node_index_t::child_of(parent_node_id, 0);
@@ -188,95 +177,49 @@ public:
         assert(child_0_it.has_value());
 
         const auto start = child_0_it.value()->second;
-        std::cout << "[recombine] Appending parent " << parent_node_id.id()
-                  << " at back_idx " << back_idx() + 1 << "\n";
         append(parent_node_id);
         assert(m_linear_index_map[back_idx()] == parent_node_id);
-        std::cout << "[recombine] Restricting nodes from \n";
         restrict_nodes(start, back_idx());
-        const auto max_swaps = m_size - start - s_nd_fanout;
-        std::cout << "[recombine] max_swaps: " << max_swaps << ", m_size: " << m_size
-                  << ", start: " << start << ", s_nd_fanout: " << s_nd_fanout << "\n";
-        // assert(max_swaps > 0);
 
         for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
         {
             const auto child_i    = node_index_t::child_of(parent_node_id, i);
             auto       child_i_it = find_index(child_i);
             assert(child_i_it.has_value());
-            std::cout << "[recombine] Handling child " << i << " (id: " << child_i.id()
-                      << ") at index " << child_i_it.value()->second << "\n";
-            if (i < max_swaps)
-            {
-                std::cout << "[recombine] Swapping child index "
-                          << child_i_it.value()->second << " with back_idx " << back_idx()
-                          << "\n";
-                block_swap(child_i_it.value()->second, back_idx());
-            }
-            std::cout << "[recombine] Erasing child " << child_i.id()
-                      << " from index map\n";
+            assert(child_i_it.value()->second == start + i);
             m_index_map.erase(child_i_it.value());
-            --m_size;
-            // print_linear_index_map("[recombine] Morton index array after erasure:");
         }
-        std::cout << "[recombine] After loop, parent should be at index " << start
-                  << "\n";
-        // print_linear_index_map("[recombine] Morton index array at end:");
-        // assert(m_linear_index_map[start] == parent_node_id);
-        // assert(m_index_map[parent_node_id] == start);
-        std::cout << "[recombine] Done for parent " << parent_node_id.id() << "\n";
     }
 
     auto fragment(std::vector<node_index_t>& to_refine)
     {
+        // TODO: assert(sorted);
+        for (auto const& node_id : to_refine)
+        {
+            fragment(node_id);
+        }
+        compact();
         sort_buffers();
-        std::cout << "[fragment] to_refine vector contains " << to_refine.size()
-                  << " entries:\n";
-        for (size_t i = 0; i < to_refine.size(); ++i)
-        {
-            std::cout << "  [" << i << "] id = " << to_refine[i].id() << std::endl;
-        }
-        for (size_t idx = 0; idx < to_refine.size(); idx++)
-        {
-            fragment(to_refine[idx]);
-            sort_buffers();
-        }
     }
 
     auto recombine(const std::vector<node_index_t>& node_ids) -> void
     {
-        sort_buffers();
-        std::cout << "[recombine] to_coarsen vector contains " << node_ids.size()
-                  << " entries:\n";
-        for (size_t i = 0; i < node_ids.size(); ++i)
-        {
-            auto [coords, level] = node_index_t::decode(node_ids[i].id());
-            std::cout << "  [" << i << "] id = " << node_ids[i].id() << " coords: ("
-                      << coords[0] << "," << coords[1] << ")"
-                      << " level: " << static_cast<int>(level) << std::endl;
-        }
-
+        // TODO: assert(sorted);
         for (const auto& node_id : node_ids)
         {
-            auto [coords, level] = node_index_t::decode(node_id.id());
-            std::cout << "[recombine] Recombining node_id: " << node_id.id()
-                      << " coords: (" << coords[0] << "," << coords[1] << ")"
-                      << " level: " << static_cast<int>(level) << std::endl;
             recombine(node_id);
-            sort_buffers();
         }
+        compact();
+        sort_buffers();
     }
 
-    template <typename Lambda>
-    void compute_refine_flag(Lambda&& condition)
+    template <typename Fn>
+    auto
+        update_refine_flags(Fn&& fn) noexcept(noexcept(fn(std::declval<flat_index_t&>())))
     {
         for (flat_index_t i = 0; i < m_size; ++i)
         {
-            auto node_id = m_linear_index_map[i];
-            // The lambda should return an int or RefinementStatus (0=Stable, 1=Refine,
-            // 2=Coarsen)
-            auto flag                     = condition(node_id);
-            m_refinement_status_buffer[i] = static_cast<refine_status_t>(flag);
+            m_refinement_status_buffer[i] = fn(m_linear_index_map[i]);
         }
     }
 
@@ -288,12 +231,12 @@ public:
         std::vector<node_index_t> parent_morton_idx;
         for (flat_index_t i = 0; i < m_size; ++i)
         {
-            auto node_id = m_linear_index_map[i];
+            const auto node_id = m_linear_index_map[i];
             if (node_id.id() == 0)
             {
                 continue;
             }
-            auto parent_id = node_index_t::parent_of(node_id);
+            const auto parent_id = node_index_t::parent_of(node_id);
             parent_morton_idx.push_back(parent_id);
         }
         std::sort(parent_morton_idx.begin(), parent_morton_idx.end());
@@ -304,59 +247,17 @@ public:
 
         for (flat_index_t i = 0; i < m_size; ++i)
         {
-            auto node_id         = m_linear_index_map[i];
-            auto status          = m_refinement_status_buffer[i];
-            auto [coords, level] = node_index_t::decode(node_id.id());
-            if (status == refine_status_t::Refine)
+            if (is_refine_elegible(i))
             {
-                if (level < node_index_t::max_depth()) to_refine.push_back(node_id);
+                const auto node_id = m_linear_index_map[i];
+                to_refine.push_back(node_id);
             }
         }
         for (auto parent_id : parent_morton_idx)
         {
-#ifdef AMR_NDTREE_CHECK_BALANCING
-            std::cout << "[apply_refine_coarsen] Checking parent " << parent_id.id()
-                      << " for coarsening...\n";
-#endif
-            for (int i = 0; i < 4; ++i)
+            if (is_coarsen_elegible(parent_id))
             {
-                auto child = node_index_t::child_of(parent_id, i);
-#ifdef AMR_NDTREE_CHECK_BALANCING
-                std::cout << "  child " << i << ": " << child.id();
-#endif
-                auto it = find_index(child.id());
-                if (it.has_value())
-                {
-                    [[maybe_unused]]
-                    auto idx = it.value()->second;
-#ifdef AMR_NDTREE_CHECK_BALANCING
-                    std::cout << " (status: " << int(m_refinement_status_buffer[idx])
-                              << ")";
-#endif
-                }
-                else
-                {
-#ifdef AMR_NDTREE_CHECK_BALANCING
-                    std::cout << " (not found)";
-#endif
-                }
-#ifdef AMR_NDTREE_CHECK_BALANCING
-                std::cout << "\n";
-#endif
-            }
-            if (coarsen_all(parent_id))
-            {
-#ifdef AMR_NDTREE_CHECK_BALANCING
-                std::cout << "  -> All children marked for coarsening, adding parent "
-                          << parent_id.id() << "\n";
-#endif
                 to_coarsen.push_back(parent_id.id());
-            }
-            else
-            {
-#ifdef AMR_NDTREE_CHECK_BALANCING
-                std::cout << "  -> Not all children marked for coarsening.\n";
-#endif
             }
         }
         return { to_refine, to_coarsen };
@@ -611,6 +512,14 @@ public:
     }
 
 public:
+    [[nodiscard]]
+    auto node_index_at(flat_index_t idx) const noexcept -> node_index_t
+    {
+        assert(idx < m_size && "Index out of bounds in node_index_at()");
+        return m_linear_index_map[idx];
+    }
+
+private:
     [[nodiscard, gnu::always_inline]]
     auto back_idx() noexcept -> flat_index_t
 
@@ -626,16 +535,16 @@ public:
     }
 
     [[nodiscard]]
-    auto find_index(node_index_t const node_id
-    ) const noexcept -> std::optional<index_map_const_iterator_t>
+    auto find_index(node_index_t const node_id) const noexcept
+        -> std::optional<index_map_const_iterator_t>
     {
         const auto it = m_index_map.find(node_id);
         return it == m_index_map.end() ? std::nullopt : std::optional{ it };
     }
 
     [[nodiscard]]
-    auto find_index(node_index_t const node_id
-    ) noexcept -> std::optional<index_map_iterator_t>
+    auto find_index(node_index_t const node_id) noexcept
+        -> std::optional<index_map_iterator_t>
     {
         const auto it = m_index_map.find(node_id);
         return it == m_index_map.end() ? std::nullopt : std::optional{ it };
@@ -684,8 +593,13 @@ public:
 
     // Helper to copy sorted data into temporaries
     template <typename TupleBuffers, typename TupleTmpBuffers, std::size_t... Is>
-    void
-        copy_to_tmp_buffers_impl(TupleBuffers& buffers, TupleTmpBuffers& tmp_buffers, flat_index_t* sort_buffer, size_t m_sizee, std::index_sequence<Is...>)
+    void copy_to_tmp_buffers_impl(
+        TupleBuffers&    buffers,
+        TupleTmpBuffers& tmp_buffers,
+        flat_index_t*    sort_buffer,
+        size_t           m_sizee,
+        std::index_sequence<Is...>
+    )
     {
         (...,
          (
@@ -716,8 +630,12 @@ public:
 
     /// Helper to copy back from temporaries
     template <typename TupleBuffers, typename TupleTmpBuffers, std::size_t... Is>
-    void
-        copy_from_tmp_buffers_impl(TupleBuffers& buffers, TupleTmpBuffers& tmp_buffers, size_t m_sizee, std::index_sequence<Is...>)
+    void copy_from_tmp_buffers_impl(
+        TupleBuffers&    buffers,
+        TupleTmpBuffers& tmp_buffers,
+        size_t           m_sizee,
+        std::index_sequence<Is...>
+    )
     {
         (...,
          (
@@ -762,7 +680,8 @@ public:
                       << "\nj: " << j << ", idx: " << m_linear_index_map[j].repr()
                       << '\n';
             if (i == j) continue;
-            block_swap(i, j);
+            block_buffer_swap(i, j);
+            // Swap index entries
         }
         for (flat_index_t i = 0; i != m_size; ++i)
         {
@@ -771,32 +690,6 @@ public:
     }
 
 private:
-    [[gnu::always_inline, gnu::flatten]]
-    auto block_swap(flat_index_t const i, flat_index_t const j) noexcept -> void
-    {
-        if (i == j)
-        {
-            return;
-        }
-        assert(i < m_size);
-        assert(j < m_size);
-        assert(m_linear_index_map[i] != m_linear_index_map[j]);
-
-        {
-            const auto i_it = m_index_map.find(m_linear_index_map[i]);
-            const auto j_it = m_index_map.find(m_linear_index_map[j]);
-            assert(i_it != m_index_map.end());
-            assert(j_it != m_index_map.end());
-            assert(i_it != j_it);
-            std::swap(i_it->second, j_it->second);
-        }
-        std::swap(m_linear_index_map[i], m_linear_index_map[j]);
-        std::swap(m_refinement_status_buffer[i], m_refinement_status_buffer[j]);
-        std::apply(
-            [i, j](auto&... b) { (void)(std::swap(b[i], b[j]), ...); }, m_data_buffers
-        );
-    }
-
     [[nodiscard]]
     auto gather_node(flat_index_t const i) const noexcept -> value_type
     {
@@ -810,7 +703,8 @@ private:
     auto scatter_node(value_type const& v, const flat_index_t i) const noexcept -> void
     {
         std::apply(
-            [&v, i](auto&... b) {
+            [&v, i](auto&... b)
+            {
                 (void)((b[i] = std::get<value_t<decltype(b)>>(v.data_tuple()).value),
                        ...);
             },
@@ -839,8 +733,10 @@ private:
         );
     }
 
-    auto interpolate_node(flat_index_t const from, flat_index_t const start_to)
-        const noexcept -> void
+    auto interpolate_node(
+        flat_index_t const from,
+        flat_index_t const start_to
+    ) const noexcept -> void
     {
         std::cout << "In interpolation from " << from << " to [" << start_to << ", "
                   << start_to + s_nd_fanout - 1 << "]\n";
@@ -861,33 +757,36 @@ private:
     }
 
     [[nodiscard]]
-    auto get_refine_status(flat_index_t const i) const noexcept -> refine_status_t
+    auto get_refine_status(const flat_index_t i) const noexcept -> refine_status_t
     {
         assert(i < m_size);
         return m_refinement_status_buffer[i];
     }
 
-public:
+private:
     [[nodiscard]]
-    auto node_index_at(flat_index_t idx) const noexcept -> node_index_t
+    auto is_refine_elegible(const flat_index_t i) const noexcept -> bool
     {
-        assert(idx < m_size && "Index out of bounds in node_index_at()");
-        return m_linear_index_map[idx];
+        const auto node_id = m_linear_index_map[i];
+        assert(m_index_map.contains(node_id));
+        const auto status = m_refinement_status_buffer[i];
+        const auto level  = node_index_t::level(node_id);
+        return (status == refine_status_t::Refine) && (level < node_index_t::max_depth());
     }
 
     [[nodiscard]]
-    auto coarsen_all(node_index_t parent_id) const noexcept -> bool
+    auto is_coarsen_elegible(node_index_t parent_id) const noexcept -> bool
     {
-        for (int i = 0; i < 4; ++i)
+        for (typename node_index_t::offset_t i = 0; i < s_nd_fanout; ++i)
         {
-            auto child = node_index_t::child_of(parent_id, i);
-            auto it    = find_index(child.id());
+            const auto child = node_index_t::child_of(parent_id, i);
+            const auto it    = find_index(child.id());
+            // TODO: Maybe do this an assert rather
             if (!it.has_value())
             {
-                // Child not found, cannot coarsen
                 return false;
             }
-            flat_index_t idx = it.value()->second;
+            const auto idx = it.value()->second;
             if (m_refinement_status_buffer[idx] != refine_status_t::Coarsen)
             {
                 return false;
@@ -896,53 +795,50 @@ public:
         return true;
     }
 
-public:
-    void print_linear_index_map(const std::string& msg = "") const
+    auto compact() noexcept -> void
     {
-        if (!msg.empty()) std::cout << msg << "\n";
-        std::cout << "m_linear_index_map [size=" << m_size << "]: ";
-        for (size_t i = 0; i < m_size; ++i)
-            std::cout << m_linear_index_map[i].id() << " ";
-        std::cout << "\n";
-    }
-
-    void compact()
-    {
-        size_t write = 0;
-        for (size_t read = 0; read < m_size; ++read)
+        size_t tail = 0;
+        for (flat_index_t head = 0; head < m_size; ++head)
         {
-            auto node_id = m_linear_index_map[read];
-            if (m_index_map.count(node_id))
-            { // Only keep valid nodes
-                if (write != read)
-                {
-                    m_linear_index_map[write]         = m_linear_index_map[read];
-                    m_refinement_status_buffer[write] = m_refinement_status_buffer[read];
-                    std::apply(
-                        [&](auto&... b) { (void)(std::swap(b[write], b[read]), ...); },
-                        m_data_buffers
-                    );
-                    m_index_map[node_id] = write;
-                }
-                ++write;
+            const auto node_id = m_linear_index_map[head];
+            if (m_index_map.contains(node_id))
+            {
+                block_buffer_swap(head, tail);
+                ++tail;
             }
         }
-        m_size = write;
+        m_size = tail;
+        m_index_map.clear();
+        for (flat_index_t i = 0; i != m_size; ++i)
+        {
+            m_index_map[m_linear_index_map[i]] = i;
+        }
+    }
+
+    [[gnu::always_inline, gnu::flatten]]
+    auto block_buffer_swap(flat_index_t const i, flat_index_t const j) noexcept -> void
+    {
+        assert(i < m_size);
+        assert(j < m_size);
+        if (i == j)
+        {
+            return;
+        }
+        assert(m_linear_index_map[i] != m_linear_index_map[j]);
+        std::swap(m_linear_index_map[i], m_linear_index_map[j]);
+        std::swap(m_refinement_status_buffer[i], m_refinement_status_buffer[j]);
+        std::apply(
+            [i, j](auto&... b) { (void)(std::swap(b[i], b[j]), ...); }, m_data_buffers
+        );
     }
 
 #ifdef AMR_NDTREE_ENABLE_CHECKS
     auto check_index_map() const noexcept -> void
     {
-        assert(m_index_map.size() == m_size);
-        std::cout << "Index map: " << '\n';
-        for (const auto& [key, value] : m_index_map)
+        assert(m_index_map.size() <= m_size);
+        for (const auto& [node_idx, flat_idx] : m_index_map)
         {
-            std::cout << "Key:[" << key.repr() << "] Value:[" << value << "]\n";
-        }
-        for (flat_index_t i = 0; i != m_size; ++i)
-        {
-            std::cout << m_linear_index_map[i].repr() << '\n';
-            assert(m_index_map.at(m_linear_index_map[i]) == i);
+            assert(m_linear_index_map[flat_idx] == node_idx);
         }
         std::cout << "Hash table looks good chef...\n";
     }
