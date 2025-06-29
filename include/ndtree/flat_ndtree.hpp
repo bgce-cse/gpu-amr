@@ -111,6 +111,8 @@ public:
             (pointer_t<node_index_t>)std::malloc(size * sizeof(node_index_t));
         m_reorder_buffer =
             (pointer_t<linear_index_t>)std::malloc(size * sizeof(linear_index_t));
+        m_permutation_buffer =
+            (pointer_t<linear_index_t>)std::malloc(size * sizeof(linear_index_t));
         m_refine_status_buffer =
             (pointer_t<refine_status_t>)std::malloc(size * sizeof(refine_status_t));
 
@@ -121,6 +123,7 @@ public:
     {
         std::free(m_refine_status_buffer);
         std::free(m_reorder_buffer);
+        std::free(m_permutation_buffer);
         std::free(m_linear_index_map);
         std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_data_buffers);
     }
@@ -556,126 +559,16 @@ public:
     auto sort_buffers() noexcept -> void
     {
         compact();
-        std::iota(m_reorder_buffer, &m_reorder_buffer[m_size], 0);
+        std::iota(m_permutation_buffer, &m_permutation_buffer[m_size], 0);
         std::sort(
-            m_reorder_buffer,
-            &m_reorder_buffer[m_size],
+            m_permutation_buffer,
+            &m_permutation_buffer[m_size],
             [this](auto const i, auto const j)
             { return m_linear_index_map[i] < m_linear_index_map[j]; }
         );
-
-        // Temporary buffers
-        std::vector<node_index_t>    tmp_index(m_size);
-        std::vector<refine_status_t> tmp_status(m_size);
-
-        // For each data buffer in m_data_buffers, create a temp vector
-        auto tmp_data_buffers = std::apply(
-            [this](auto&... b)
-            { return std::make_tuple(std::vector<value_t<decltype(b)>>(m_size)...); },
-            m_data_buffers
-        );
-
-        // Copy sorted data into temporaries
         for (linear_index_t i = 0; i < m_size; ++i)
         {
-            tmp_index[i]  = m_linear_index_map[m_reorder_buffer[i]];
-            tmp_status[i] = m_refine_status_buffer[m_reorder_buffer[i]];
-        }
-        copy_to_tmp_buffers(m_data_buffers, tmp_data_buffers, m_reorder_buffer, m_size);
-
-        // Copy back from temporaries
-        for (linear_index_t i = 0; i < m_size; ++i)
-        {
-            m_linear_index_map[i]              = tmp_index[i];
-            m_refine_status_buffer[i]          = tmp_status[i];
-            m_index_map[m_linear_index_map[i]] = i;
-        }
-        copy_from_tmp_buffers(m_data_buffers, tmp_data_buffers, m_size);
-    }
-
-    // Helper to copy sorted data into temporaries
-    template <typename TupleBuffers, typename TupleTmpBuffers, std::size_t... Is>
-    void copy_to_tmp_buffers_impl(
-        TupleBuffers&    buffers,
-        TupleTmpBuffers& tmp_buffers,
-        linear_index_t*  sort_buffer,
-        size_t           m_sizee,
-        std::index_sequence<Is...>
-    )
-    {
-        (...,
-         (
-             [&]
-             {
-                 auto& buf   = std::get<Is>(buffers);
-                 auto& tmp_b = std::get<Is>(tmp_buffers);
-                 for (size_t i = 0; i < m_sizee; ++i)
-                     tmp_b[i] = buf[sort_buffer[i]];
-             }()
-         ));
-    }
-
-    template <typename TupleBuffers, typename TupleTmpBuffers>
-    void copy_to_tmp_buffers(
-        TupleBuffers&    buffers,
-        TupleTmpBuffers& tmp_buffers,
-        linear_index_t*  sort_buffer,
-        size_t           m_sizee
-    )
-    {
-        constexpr std::size_t N =
-            std::tuple_size<std::remove_reference_t<TupleBuffers>>::value;
-        copy_to_tmp_buffers_impl(
-            buffers, tmp_buffers, sort_buffer, m_sizee, std::make_index_sequence<N>{}
-        );
-    }
-
-    /// Helper to copy back from temporaries
-    template <typename TupleBuffers, typename TupleTmpBuffers, std::size_t... Is>
-    void copy_from_tmp_buffers_impl(
-        TupleBuffers&    buffers,
-        TupleTmpBuffers& tmp_buffers,
-        size_t           m_sizee,
-        std::index_sequence<Is...>
-    )
-    {
-        (...,
-         (
-             [&]
-             {
-                 auto& buf   = std::get<Is>(buffers);
-                 auto& tmp_b = std::get<Is>(tmp_buffers);
-                 for (size_t i = 0; i < m_sizee; ++i)
-                     buf[i] = tmp_b[i];
-             }()
-         ));
-    }
-
-    template <typename TupleBuffers, typename TupleTmpBuffers>
-    void copy_from_tmp_buffers(
-        TupleBuffers&    buffers,
-        TupleTmpBuffers& tmp_buffers,
-        size_t           m_sizee
-    )
-    {
-        constexpr std::size_t N =
-            std::tuple_size<std::remove_reference_t<TupleBuffers>>::value;
-        copy_from_tmp_buffers_impl(
-            buffers, tmp_buffers, m_sizee, std::make_index_sequence<N>{}
-        );
-    }
-
-    /*
-    auto sort_buffers() noexcept -> void
-    {
-        compact();
-        for (auto k = 0uz; k != size(); ++k)
-        {
-            m_reorder_buffer[k] = std::count_if(
-                m_linear_index_map,
-                &m_linear_index_map[m_size],
-                [this, k](auto const& a) { return a < m_linear_index_map[k]; }
-            );
+            m_reorder_buffer[m_permutation_buffer[i]] = i;
         }
         for (linear_index_t i = 0; i != back_idx();)
         {
@@ -694,11 +587,11 @@ public:
         assert(is_sorted());
         assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
     }
-    */
 
 private:
     [[nodiscard]]
     auto gather_node(linear_index_t const i) const noexcept -> value_type
+
     {
         return std::apply(
             [i](auto&&... args)
@@ -882,6 +775,7 @@ private:
     deconstructed_buffers_t    m_data_buffers;
     linear_index_map_t         m_linear_index_map;
     linear_index_array_t       m_reorder_buffer;
+    linear_index_array_t       m_permutation_buffer;
     flat_refine_status_array_t m_refine_status_buffer;
     size_type                  m_size;
 };
