@@ -102,7 +102,25 @@ private:
         file << "LOOKUP_TABLE default\n";
         for (size_t i = 0; i < cell_indices.size(); ++i)
         {
-            file << i << "\n";
+            file << i << "\n";  // Just output the cell index
+        }
+        
+        // Write cell data - S1 component (float)
+        file << "SCALARS S1_value float 1\n";
+        file << "LOOKUP_TABLE default\n";
+        for (size_t i = 0; i < cell_indices.size(); ++i)
+        {
+            auto result = tree.gather_node(i);
+            file << std::get<0>(result.data_tuple()).value << "\n";  // First component
+        }
+        
+        // Write S2 component (int)
+        file << "SCALARS S2_value int 1\n";
+        file << "LOOKUP_TABLE default\n";
+        for (size_t i = 0; i < cell_indices.size(); ++i)
+        {
+            auto result = tree.gather_node(i);
+            file << std::get<1>(result.data_tuple()).value << "\n";  // Second component
         }
     }
 

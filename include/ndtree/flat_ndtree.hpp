@@ -606,7 +606,7 @@ public:
         assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
     }
 
-private:
+public:
     [[nodiscard]]
     auto gather_node(linear_index_t const i) const noexcept -> value_type
 
