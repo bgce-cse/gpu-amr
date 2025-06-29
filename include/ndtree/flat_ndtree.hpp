@@ -582,6 +582,16 @@ public:
                     {
                         auto [__, neighbor_id_level] =
                             node_index_t::decode(neighbor_id.id());
+                        auto iterator = std::find_if(
+                            to_refine.begin(),
+                            to_refine.end(),
+                            [&](const node_index_t& n)
+                            { return n.id() == neighbor_id.id(); }
+                        );
+                        if (iterator != to_refine.end()) // this is untested... 
+                        {
+                            neighbor_id_level++;
+                        }
 #ifdef AMR_NDTREE_CHECK_BALANCING
                         std::cout << "    [coarsen] Neighbor " << neighbor_id.id()
                                   << " at level " << int(neighbor_id_level) << "\n";
