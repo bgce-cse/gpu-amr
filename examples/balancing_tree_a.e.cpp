@@ -75,11 +75,9 @@ int main()
 
     int i = 0;
 
-    std::size_t checksum = 0;
-    for (; i != 7; ++i)
+    for (; i != 9; ++i)
     {
-        std::cout << "starting with i : " << i << std::endl;
-        h.update_refine_flags(
+        h.reconstruct_tree(
             [](const index_t& idx)
             {
                 auto [coords, level] = index_t::decode(idx.id());
@@ -101,22 +99,12 @@ int main()
                 return tree_t::refine_status_t::Stable;
             }
         );
-        auto [to_refine, to_coarsen] = h.apply_refine_coarsen();
-        checksum                     = (checksum << 1) ^ to_refine.size();
-        checksum                     = (checksum << 1) ^ to_coarsen.size();
-
-        std::cout << "apply refine coarseing done " << std::endl;
-        h.balancing(to_refine, to_coarsen);
-        std::cout << "balancing done" << std::endl;
-        h.fragment(to_refine);
-        h.recombine(to_coarsen);
-
         std::string file_extension = std::to_string(i) + ".vtk";
         vtk_printer.print(h, file_extension);
     }
-    for (; i != 14; ++i)
+    for (; i != 18; ++i)
     {
-        h.update_refine_flags(
+        h.reconstruct_tree(
             [](const index_t& idx)
             {
                 auto [coords, level] = index_t::decode(idx.id());
@@ -137,25 +125,9 @@ int main()
                 return tree_t::refine_status_t::Stable;
             }
         );
-        std::cout << "compute flags done done" << std::endl;
-        auto [to_refine, to_coarsen] = h.apply_refine_coarsen();
-        checksum                     = (checksum << 1) ^ to_refine.size();
-        checksum                     = (checksum << 1) ^ to_coarsen.size();
-        std::cout << "apply refine coarseing done " << std::endl;
-        std::cout << "size of coarsen vector beofre balancing " << to_coarsen.size()
-                  << std::endl;
-        h.balancing(to_refine, to_coarsen);
-        std::cout << "size of coarsen vector after balancing " << to_coarsen.size()
-                  << std::endl;
-        std::cout << "balancing done" << std::endl;
-        h.fragment(to_refine);
-        h.recombine(to_coarsen);
-        std::cout << "actual refine / coarsening done" << std::endl;
         std::string file_extension = std::to_string(i) + ".vtk";
         vtk_printer.print(h, file_extension);
     }
-
-    std::cout << "Cheksum: " << checksum << '\n';
 
     return EXIT_SUCCESS;
 }

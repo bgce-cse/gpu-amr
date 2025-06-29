@@ -20,8 +20,8 @@
 #ifndef NDEBUG
 #    define AMR_NDTREE_CHECKBOUNDS
 #    define AMR_NDTREE_ENABLE_CHECKS
-#    define AMR_NDTREE_CHECK_NEIGHBORS
-#    define AMR_NDTREE_CHECK_BALANCING
+// #    define AMR_NDTREE_CHECK_NEIGHBORS
+// #    define AMR_NDTREE_CHECK_BALANCING
 #endif
 
 namespace amr::ndt::tree
@@ -196,20 +196,20 @@ public:
         }
     }
 
-    auto fragment(std::vector<node_index_t>& to_refine)
+    auto fragment() -> void
     {
         assert(is_sorted());
-        for (auto const& node_id : to_refine)
+        for (auto const& node_id : m_to_refine)
         {
             fragment(node_id);
         }
         sort_buffers();
     }
 
-    auto recombine(const std::vector<node_index_t>& node_ids) -> void
+    auto recombine() -> void
     {
         assert(is_sorted());
-        for (const auto& node_id : node_ids)
+        for (const auto& node_id : m_to_coarsen)
         {
             recombine(node_id);
         }
@@ -228,10 +228,10 @@ public:
     }
 
     auto apply_refine_coarsen()
-        -> std::pair<std::vector<node_index_t>, std::vector<node_index_t>>
+        -> void
     {
-        std::vector<node_index_t> to_refine;
-        std::vector<node_index_t> to_coarsen;
+        m_to_refine.clear();
+        m_to_coarsen.clear();
         std::vector<node_index_t> parent_morton_idx;
         for (linear_index_t i = 0; i < m_size; ++i)
         {
@@ -254,17 +254,16 @@ public:
             if (is_refine_elegible(i))
             {
                 const auto node_id = m_linear_index_map[i];
-                to_refine.push_back(node_id);
+                m_to_refine.push_back(node_id);
             }
         }
         for (auto parent_id : parent_morton_idx)
         {
             if (is_coarsen_elegible(parent_id))
             {
-                to_coarsen.push_back(parent_id.id());
+                m_to_coarsen.push_back(parent_id.id());
             }
         }
-        return { to_refine, to_coarsen };
     }
 
     auto get_neighbors(node_index_t const& node_id, node_index_directon_t dir)
@@ -369,10 +368,7 @@ public:
         assert(false && "none of the four cases in get neighbor was met");
     }
 
-    auto balancing(
-        std::vector<node_index_t>& to_refine,
-        std::vector<node_index_t>& to_coarsen
-    )
+    auto balancing()
     {
         constexpr node_index_directon_t directions[] = { node_index_directon_t::left,
                                                          node_index_directon_t::right,
@@ -380,9 +376,9 @@ public:
                                                          node_index_directon_t::bottom };
 
         // Refinement balancing
-        for (size_t i = 0; i < to_refine.size(); i++)
+        for (size_t i = 0; i < m_to_refine.size(); i++)
         {
-            auto cell_id         = to_refine[i];
+            auto cell_id         = m_to_refine[i];
             auto [coords, level] = node_index_t::decode(cell_id.id());
 #ifdef AMR_NDTREE_CHECK_BALANCING
             std::cout << "[balancing] Refinement  Checking cell " << cell_id.id()
@@ -411,13 +407,13 @@ public:
                                   << neighbor.id() << "\n";
 #endif
                         if (std::find_if(
-                                to_refine.begin(),
-                                to_refine.end(),
+                                m_to_refine.begin(),
+                                m_to_refine.end(),
                                 [&](const node_index_t& n)
                                 { return n.id() == neighbor.id(); }
-                            ) == to_refine.end())
+                            ) == m_to_refine.end())
                         {
-                            to_refine.push_back(neighbor);
+                            m_to_refine.push_back(neighbor);
                         }
                     }
                 }
@@ -426,9 +422,9 @@ public:
 
         // Coarsening balancing
         std::vector<node_index_t> blocks_to_remove;
-        for (size_t i = 0; i < to_coarsen.size(); i++)
+        for (size_t i = 0; i < m_to_coarsen.size(); i++)
         {
-            auto parent_id       = to_coarsen[i];
+            auto parent_id       = m_to_coarsen[i];
             auto [coords, level] = node_index_t::decode(parent_id.id());
 #ifdef AMR_NDTREE_CHECK_BALANCING
             std::cout << "[balancing] Coarsening Checking parent " << parent_id.id()
@@ -488,12 +484,12 @@ public:
                         auto [__, neighbor_id_level] =
                             node_index_t::decode(neighbor_id.id());
                         auto iterator = std::find_if(
-                            to_refine.begin(),
-                            to_refine.end(),
+                            m_to_refine.begin(),
+                            m_to_refine.end(),
                             [&](const node_index_t& n)
                             { return n.id() == neighbor_id.id(); }
                         );
-                        if (iterator != to_refine.end()) // this is untested... 
+                        if (iterator != m_to_refine.end()) // this is untested... 
                         {
                             neighbor_id_level++;
                         }
@@ -519,13 +515,25 @@ public:
         }
         for (const auto& id : blocks_to_remove)
         {
-            to_coarsen.erase(
-                std::remove(to_coarsen.begin(), to_coarsen.end(), id), to_coarsen.end()
+            m_to_coarsen.erase(
+                std::remove(m_to_coarsen.begin(), m_to_coarsen.end(), id), m_to_coarsen.end()
             );
         }
     }
 
 public:
+        template <typename Fn>
+    auto reconstruct_tree(Fn&& fn) noexcept(
+        noexcept(fn(std::declval<linear_index_t&>()))
+    )
+    {
+        update_refine_flags(fn);
+        apply_refine_coarsen();
+        balancing();
+        fragment();
+        recombine();
+    }
+
     [[nodiscard]]
     auto get_node_index_at(linear_index_t idx) const noexcept -> node_index_t
     {
@@ -625,8 +633,8 @@ private:
     auto restrict_nodes(linear_index_t const start_from, linear_index_t const to) noexcept
         -> void
     {
-        std::cout << "In restriction from [" << start_from << ", "
-                  << start_from + s_nd_fanout - 1 << "] to " << to << '\n';
+        // std::cout << "In restriction from [" << start_from << ", "
+        //           << start_from + s_nd_fanout - 1 << "] to " << to << '\n';
         auto mean = [](auto const data[s_nd_fanout])
         {
             auto ret = data[0];
@@ -648,8 +656,8 @@ private:
         linear_index_t const start_to
     ) const noexcept -> void
     {
-        std::cout << "In interpolation from " << from << " to [" << start_to << ", "
-                  << start_to + s_nd_fanout - 1 << "]\n";
+        // std::cout << "In interpolation from " << from << " to [" << start_to << ", "
+        //           << start_to + s_nd_fanout - 1 << "]\n";
         auto const old_node = gather_node(from);
         std::cout << old_node << '\n';
         std::apply(
@@ -788,6 +796,8 @@ private:
     linear_index_array_t       m_permutation_buffer;
     flat_refine_status_array_t m_refine_status_buffer;
     size_type                  m_size;
+    std::vector<node_index_t> m_to_refine;
+    std::vector<node_index_t> m_to_coarsen;
 };
 
 } // namespace amr::ndt::tree
