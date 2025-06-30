@@ -227,8 +227,7 @@ public:
         }
     }
 
-    auto apply_refine_coarsen()
-        -> void
+    auto apply_refine_coarsen() -> void
     {
         m_to_refine.clear();
         m_to_coarsen.clear();
@@ -489,7 +488,7 @@ public:
                             [&](const node_index_t& n)
                             { return n.id() == neighbor_id.id(); }
                         );
-                        if (iterator != m_to_refine.end()) // this is untested... 
+                        if (iterator != m_to_refine.end()) // this is untested...
                         {
                             neighbor_id_level++;
                         }
@@ -516,16 +515,15 @@ public:
         for (const auto& id : blocks_to_remove)
         {
             m_to_coarsen.erase(
-                std::remove(m_to_coarsen.begin(), m_to_coarsen.end(), id), m_to_coarsen.end()
+                std::remove(m_to_coarsen.begin(), m_to_coarsen.end(), id),
+                m_to_coarsen.end()
             );
         }
     }
 
 public:
-        template <typename Fn>
-    auto reconstruct_tree(Fn&& fn) noexcept(
-        noexcept(fn(std::declval<linear_index_t&>()))
-    )
+    template <typename Fn>
+    auto reconstruct_tree(Fn&& fn) noexcept(noexcept(fn(std::declval<linear_index_t&>())))
     {
         update_refine_flags(fn);
         apply_refine_coarsen();
@@ -544,7 +542,6 @@ public:
 private:
     [[nodiscard, gnu::always_inline]]
     auto back_idx() noexcept -> linear_index_t
-
     {
         return m_size - 1;
     }
@@ -588,6 +585,7 @@ public:
         {
             m_reorder_buffer[m_permutation_buffer[i]] = i;
         }
+        size_type swaps = 0;
         for (linear_index_t i = 0; i != back_idx();)
         {
             const auto j = m_reorder_buffer[i];
@@ -601,6 +599,10 @@ public:
                 m_index_map[m_linear_index_map[i]], m_index_map[m_linear_index_map[j]]
             );
             block_buffer_swap(i, j);
+            if (++swaps == m_size - 1)
+            {
+                break; // size - 1 swaps guarantee the sorting is complete.
+            }
         }
         assert(is_sorted());
         assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
@@ -656,13 +658,18 @@ public:
         linear_index_t const start_to
     ) const noexcept -> void
     {
-        // std::cout << "In interpolation from " << from << " to [" << start_to << ", "
-        //           << start_to + s_nd_fanout - 1 << "]\n";
         auto const old_node = gather_node(from);
         std::cout << old_node << '\n';
+#ifdef AMR_NDTREE_ENABLE_CHECKS
+        for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
+        {
+            assert(m_index_map.at(m_linear_index_map[start_to + i]) == start_to + i);
+        }
+#endif
         std::apply(
             [from, start_to](auto&... b)
             {
+                // TODO: Implement
                 for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
                 {
                     ((void)(b[start_to + i] =
@@ -796,8 +803,8 @@ private:
     linear_index_array_t       m_permutation_buffer;
     flat_refine_status_array_t m_refine_status_buffer;
     size_type                  m_size;
-    std::vector<node_index_t> m_to_refine;
-    std::vector<node_index_t> m_to_coarsen;
+    std::vector<node_index_t>  m_to_refine;
+    std::vector<node_index_t>  m_to_coarsen;
 };
 
 } // namespace amr::ndt::tree
