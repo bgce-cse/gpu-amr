@@ -74,7 +74,7 @@ public:
         using type = std::tuple<value_t<typename Ts::type>...>;
     };
 
-    using deconstruced_types_t =
+    using deconstructed_types_t =
         typename deconstructed_types_impl<typename T::deconstructed_types_map_t>::type;
 
     enum struct RefinementStatus : char
@@ -111,10 +111,9 @@ public:
             (pointer_t<node_index_t>)std::malloc(size * sizeof(node_index_t));
         m_reorder_buffer =
             (pointer_t<linear_index_t>)std::malloc(size * sizeof(linear_index_t));
-        m_permutation_buffer =
-            (pointer_t<linear_index_t>)std::malloc(size * sizeof(linear_index_t));
         m_refine_status_buffer =
             (pointer_t<refine_status_t>)std::malloc(size * sizeof(refine_status_t));
+        std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
 
         append(node_index_t::root());
     }
@@ -123,7 +122,6 @@ public:
     {
         std::free(m_refine_status_buffer);
         std::free(m_reorder_buffer);
-        std::free(m_permutation_buffer);
         std::free(m_linear_index_map);
         std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_data_buffers);
     }
@@ -574,35 +572,63 @@ public:
     auto sort_buffers() noexcept -> void
     {
         compact();
-        std::iota(m_permutation_buffer, &m_permutation_buffer[m_size], 0);
         std::sort(
-            m_permutation_buffer,
-            &m_permutation_buffer[m_size],
+            m_reorder_buffer,
+            &m_reorder_buffer[m_size],
             [this](auto const i, auto const j)
             { return m_linear_index_map[i] < m_linear_index_map[j]; }
         );
-        for (linear_index_t i = 0; i < m_size; ++i)
-        {
-            m_reorder_buffer[m_permutation_buffer[i]] = i;
-        }
-        size_type swaps = 0;
+
+        linear_index_t        backup_start_pos;
+        node_index_t          backup_node_index;
+        refine_status_t       backup_refine_status;
+        deconstructed_types_t backup_buffer;
+
         for (linear_index_t i = 0; i != back_idx();)
         {
-            const auto j = m_reorder_buffer[i];
-            if (i == j)
+            auto src = m_reorder_buffer[i];
+            if (i == src)
             {
                 ++i;
                 continue;
             }
-            std::swap(m_reorder_buffer[i], m_reorder_buffer[j]);
-            std::swap(
-                m_index_map[m_linear_index_map[i]], m_index_map[m_linear_index_map[j]]
+
+            backup_start_pos     = i;
+            backup_node_index    = m_linear_index_map[i];
+            backup_refine_status = m_refine_status_buffer[i];
+            std::apply(
+                [&backup_buffer, i](auto&... b)
+                { ((void)(std::get<value_t<decltype(b)>>(backup_buffer) = b[i]), ...); },
+                m_data_buffers
             );
-            block_buffer_swap(i, j);
-            if (++swaps == m_size - 1)
+
+            auto dst = i;
+            do
             {
-                break; // size - 1 swaps guarantee the sorting is complete.
-            }
+                m_linear_index_map[dst]     = m_linear_index_map[src];
+                m_refine_status_buffer[dst] = m_refine_status_buffer[src];
+                std::apply(
+                    [src, dst](auto&... b) { ((void)(b[dst] = b[src]), ...); },
+                    m_data_buffers
+                );
+                m_index_map[m_linear_index_map[dst]] = dst;
+                m_reorder_buffer[dst]                = dst;
+                dst                                  = src;
+                src                                  = m_reorder_buffer[src];
+                assert(src != dst);
+            } while (src != backup_start_pos);
+
+            m_linear_index_map[dst]     = backup_node_index;
+            m_refine_status_buffer[dst] = backup_refine_status;
+            std::apply(
+                [&backup_buffer, dst](auto&... b)
+                {
+                    ((void)(b[dst] = std::get<value_t<decltype(b)>>(backup_buffer)), ...);
+                },
+                m_data_buffers
+            );
+            m_index_map[backup_node_index] = dst;
+            m_reorder_buffer[dst]          = dst;
         }
         assert(is_sorted());
         assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
@@ -800,7 +826,6 @@ private:
     deconstructed_buffers_t    m_data_buffers;
     linear_index_map_t         m_linear_index_map;
     linear_index_array_t       m_reorder_buffer;
-    linear_index_array_t       m_permutation_buffer;
     flat_refine_status_array_t m_refine_status_buffer;
     size_type                  m_size;
     std::vector<node_index_t>  m_to_refine;
