@@ -138,7 +138,7 @@ public:
     auto get(linear_index_t const idx) noexcept -> reference_t<typename Map_Type::type>
     {
         assert(idx < m_size);
-        return std::get<pointer_t<typename Map_Type::type>>(m_data_buffers)[idx];
+        return std::get<Map_Type::index()>(m_data_buffers)[idx];
     }
 
     template <concepts::TypeMap Map_Type>
@@ -147,7 +147,7 @@ public:
         -> const_reference_t<typename Map_Type::type>
     {
         assert(idx < m_size);
-        return std::get<pointer_t<typename Map_Type::type>>(m_data_buffers)[idx];
+        return std::get<Map_Type::index()>(m_data_buffers)[idx];
     }
 
     auto fragment(node_index_t const node_id) -> void
@@ -596,11 +596,11 @@ public:
             backup_start_pos     = i;
             backup_node_index    = m_linear_index_map[i];
             backup_refine_status = m_refine_status_buffer[i];
-            std::apply(
-                [&backup_buffer, i](auto&... b)
-                { ((void)(std::get<value_t<decltype(b)>>(backup_buffer) = b[i]), ...); },
-                m_data_buffers
-            );
+            [this, &backup_buffer, i]<std::size_t... I>(std::index_sequence<I...>)
+            {
+                ((void)(std::get<I>(backup_buffer) = std::get<I>(m_data_buffers)[i]),
+                 ...);
+            }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
 
             auto dst = i;
             do
@@ -620,13 +620,11 @@ public:
 
             m_linear_index_map[dst]     = backup_node_index;
             m_refine_status_buffer[dst] = backup_refine_status;
-            std::apply(
-                [&backup_buffer, dst](auto&... b)
-                {
-                    ((void)(b[dst] = std::get<value_t<decltype(b)>>(backup_buffer)), ...);
-                },
-                m_data_buffers
-            );
+            [this, &backup_buffer, dst]<std::size_t... I>(std::index_sequence<I...>)
+            {
+                ((void)(std::get<I>(m_data_buffers)[dst] = std::get<I>(backup_buffer)),
+                 ...);
+            }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
             m_index_map[backup_node_index] = dst;
             m_reorder_buffer[dst]          = dst;
         }
@@ -648,14 +646,11 @@ public:
 
     auto scatter_node(value_type const& v, const linear_index_t i) const noexcept -> void
     {
-        std::apply(
-            [&v, i](auto&... b)
-            {
-                ((void)(b[i] = std::get<value_t<decltype(b)>>(v.data_tuple()).value),
-                 ...);
-            },
-            m_data_buffers
-        );
+        [this, &v, i]<std::size_t... I>(std::index_sequence<I...>)
+        {
+            ((void)(std::get<I>(m_data_buffers)[i] = std::get<I>(v.data_tuple()).value),
+             ...);
+        }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
     }
 
     auto restrict_nodes(linear_index_t const start_from, linear_index_t const to) noexcept
