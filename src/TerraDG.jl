@@ -109,27 +109,27 @@ function main(configfile::String)
     eq = make_equation(config)
     scenario = make_scenario(config)
 
-    grid = make_grid(config, eq, scenario)
-    integrator = make_timeintegrator(config, grid)
+    grid = make_grid(config, eq, scenario)#TODO change into make structure with the amr enabler 
+    integrator = make_timeintegrator(config, grid)#TODO same?
 
     @info "Initialising global matrices"
-    globals = GlobalMatrices(grid.basis, filter, grid.basis.dimensions)
+    globals = GlobalMatrices(grid.basis, filter, grid.basis.dimensions) #TODO most of this is fine is on the ref element
     @info "Initialised global matrices"
 
     filename = "output/plot"
 
     # Init everything
     for cell in grid.cells
-        @views interpolate_initial_dofs(eq, scenario, grid.dofs[:,:,cell.dataidx],cell,grid.basis)
+        @views interpolate_initial_dofs(eq, scenario, grid.dofs[:,:,cell.dataidx],cell,grid.basis)#TODO passing dofs for the tree should be doable 
     end
 
-    plotter = VTKPlotter(eq, scenario, grid, filename)
+    plotter = VTKPlotter(eq, scenario, grid, filename) #TODO change plotter
 
     grid.time = 0
     timestep = 0
     next_plotted = config.plot_start
 
-    limiter = make_limiter(config,get_ndofs(eq))
+    limiter = make_limiter(config,get_ndofs(eq))#TODO maybe start without a limiter
      
     while grid.time < config.end_time
         if timestep > 0
@@ -143,7 +143,7 @@ function main(configfile::String)
             @assert dt > 0
             @info "Running timestep" timestep dt grid.time
             step(integrator, grid, dt) do du, dofs, time
-                evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
+                evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)#TODO figure out what to do here
             end
             grid.time += dt
             time_end = time()
@@ -153,7 +153,7 @@ function main(configfile::String)
             # Compute initial eigenvalue (needed for dt)
             grid.maxeigenval = -1
             for cell in grid.cells
-                @views celldata = grid.dofs[:,:,cell.dataidx]
+                @views celldata = grid.dofs[:,:,cell.dataidx]#TODO passing dofs for the tree should be doable 
                 for normalidx=1:2
                     cureigenval = max_eigenval(eq, celldata, normalidx)
                     grid.maxeigenval = max(grid.maxeigenval, cureigenval)
