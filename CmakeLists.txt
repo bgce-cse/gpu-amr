@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.10)
+project(MyLibTorchProject)
+
+set(CMAKE_CXX_STANDARD 23)
+
+# Point to your LibTorch installation
+set(CMAKE_PREFIX_PATH "~/libtorch")
+
+find_package(Torch REQUIRED)
+
+add_executable(main examples/main.cpp)
+target_link_libraries(main "${TORCH_LIBRARIES}")
+set_property(TARGET main PROPERTY CXX_STANDARD 23)
