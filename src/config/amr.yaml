@@ -1,0 +1,23 @@
+simulation:
+  end_time: 1
+  grid_elements: 4
+  grid_size: 1.0
+  offset: [0.0, 0.0]
+
+solver:
+  order: 1
+  courant: 0.5
+  timeintegrator: SSPRK2
+
+equation:
+  equation: acoustic
+  scenario: gaussian_wave
+  
+output:
+  start: 0 #s
+  step: 0.1 #s
+
+amr:
+  amr : true
+  max_level: 10
+  balance_constraint: 1

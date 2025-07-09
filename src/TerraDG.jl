@@ -5,6 +5,7 @@ using Logging
 using LinearAlgebra
 import YAML
 
+
 include("configuration.jl")
 include("basis.jl")
 include("equations.jl")
@@ -22,7 +23,7 @@ include("global_matrices.jl")
 """
     evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
 
-Evalutes the right-hand-side of the equation `eq` for 
+Evalutes the right-hand-side of the equation `eq` for
 scenario `scenario`, with filter `filter`, 
 collection of global matrices `globals`, update
 `du`, degrees of freedom `dofs` and grid `grid`.

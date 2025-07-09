@@ -1,12 +1,22 @@
 include("amr_quad_tree.jl")
 include("amr_plotter.jl")
 using Random
+using WriteVTK
+using Printf
+using Logging
+using LinearAlgebra
+import YAML
 
 # Test the AMR Quad Tree
-function test_amr_quad_tree()
+function test_amr_quad_tree(configfile::String= "src/config/amr.yaml")
+    config = Configuration(configfile)
+
+    eq = make_equation(config)
+    scenario = make_scenario(config)
     # Initialize tree with 4x4 initial grid
-    println("Creating AMR Quad Tree with 4x4 initial grid...")
-    tree = AMRQuadTree(4, 8, 1)  # 4x4 grid, max level 8, balance constraint 2
+    println("Creating AMR Quad Tree with $(config.grid_elements)x $(config.grid_elements) initial grid...")
+    amr = config.amr
+    tree = AMRQuadTree(config, eq, scenario)  # 4x4 grid, max level 8, balance constraint 2
     plotter = AMRVTKPlotter("tree")  # will produce tree_0.vtu, tree_1.vtu, ... tree.pvd
 
     
@@ -46,6 +56,7 @@ function test_amr_quad_tree()
         println("  rc       - Coarsen random node")
         println("  p        - Print tree structure")
         println("  g        - Print grid with boundaries")
+        println("  d        - print dofs")
         println("  gc       - Print compact grid")
         println("  s        - Show statistics")
         println("  n x y d  - Show neighbors of node at (x,y) in direction d")
@@ -62,6 +73,10 @@ function test_amr_quad_tree()
             break
         elseif input == "p"
             print_tree(tree)
+        elseif input == "d"
+            for i in eachindex(tree.cells)
+                println(tree.dofs[:,:,i])
+            end
         elseif input == "g"
             print_grid(tree)
         elseif input == "gc"

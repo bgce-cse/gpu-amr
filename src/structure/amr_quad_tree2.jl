@@ -1,28 +1,21 @@
 using DataStructures
 using NearestNeighbors
-include("../basis.jl")
-include("../configuration.jl")
-include("../equations.jl")
 
 # Direction enumeration for neighbor finding
 @enum Direction North South East West 
 
-
 # Node structure for the quad tree
 mutable struct QuadTreeNode
     level::Int
-    x::Float64  # x coordinate of bottom-left corner TODO cahnge into the center
+    x::Float64  # x coordinate of bottom-left corner
     y::Float64  # y coordinate of bottom-left corner
     size::Float64  # size of the cell
     children::Vector{Union{QuadTreeNode, Nothing}}  # 4 children (SW, SE, NW, NE)
     neighbors::Dict{Direction, Vector{QuadTreeNode}}  # neighbors in each direction
     parent::Union{QuadTreeNode, Nothing}
     is_leaf::Bool
-    id::Int #TODO change it into morton index
+    id::Int
     can_coarsen::Bool # New field: indicates if this node can be coarsened
-    dofs_node::Array{Float64,2}
-    flux_node::Array{Float64,2}
-    
     
     function QuadTreeNode(level, x, y, size, parent=nothing, id=0, can_coarsen=true)
         node = new(level, x, y, size, Vector{Union{QuadTreeNode, Nothing}}(nothing, 4), 
@@ -35,28 +28,6 @@ mutable struct QuadTreeNode
     end
 end
 
-# Wrapper of cells_nodes 
-struct CellArrayView
-    cells_nodes::Vector{QuadTreeNode}
-    field::Symbol  # :dofs_node or :flux_node
-end
-
-function Base.getindex(view::CellArrayView, node::Int, doftype::Int, cell::Int)
-    data = getfield(view.cells_nodes[cell], view.field)
-    return data[node, doftype]
-end
-
-function Base.setindex!(view::CellArrayView, value, node::Int, doftype::Int, cell::Int)
-    data = getfield(view.cells_nodes[cell], view.field)
-    data[node, doftype] = value
-end
-
-function Base.getindex(view::CellArrayView, nodes::Union{Int, Colon}, doftypes::Union{Int, Colon}, cell::Int)
-    data = getfield(view.cells_nodes[cell], view.field)
-    return data[nodes, doftypes]
-end
-
-
 # AMR Quad Tree structure
 mutable struct AMRQuadTree
     root::QuadTreeNode
@@ -64,53 +35,18 @@ mutable struct AMRQuadTree
     balance_constraint::Int  # maximum level difference between neighbors
     node_counter::Int
     all_nodes::Vector{QuadTreeNode}  # Keep track of all nodes for easier access
-    basis::Basis
-    size::Array{Float64, 1}
-    cells::Vector{QuadTreeNode}
-    maxeigenval::Float64
-    time::Float64
-    dofs::CellArrayView
-    flux::CellArrayView
-
     
-    function AMRQuadTree(config::Configuration, eq::Equation, scenario::Scenario, max_level::Int=10, balance_constraint::Int=1)#move max level and balance constraint into config->yaml
-        @assert(log(4,(config.grid_elements))%1 == 0)
-        gridsize_1d = config.grid_elements
-        gridsize = gridsize_1d^2
-        order = config.order
-        size = config.physicalsize
-        root = QuadTreeNode(0, 0.0, 0.0, size[1], nothing, 1)#TODO size[1] implies only square grids, for now...
-        cells = Vector{QuadTreeNode}(undef, (gridsize))
-        basis = Basis(order, 2)
-
-        tree = new(root, 
-            max_level, 
-            balance_constraint, 
-            1, 
-            [root], 
-            basis,
-            size,
-            cells,
-            -1.0,
-            0.0)
+    function AMRQuadTree(n::Int, max_level::Int=10, balance_constraint::Int=1)
+        root = QuadTreeNode(0, 0.0, 0.0, 1.0, nothing, 1)
+        tree = new(root, max_level, balance_constraint, 1, [root])
         
         # Create initial n×n grid with uncoarsenable children
-        initial_refinement_level = Int(log2(config.grid_elements))
+        initial_refinement_level = Int(log2(n))
         refine_to_level!(tree, root, initial_refinement_level, false) # Mark initial grid as uncoarsenable
-        tree.cells = get_leaf_nodes(tree)#TODO change this into a morton indexed array
-        tree.dofs = CellArrayView(tree.cells, :dofs_node)
-        tree.flux = CellArrayView(tree.cells, :flux_node)
-
-
-        for leaf in tree.cells
-            leaf.dofs_node = Array{Float64,2}(undef, (order^2, get_ndofs(eq)))
-            leaf.flux_node = similar(leaf.dofs_node, order^2 * 2, get_ndofs(eq))
-        end
         
         return tree
     end
 end
-
 
 # Get child index based on relative position
 function get_child_index(x_rel::Float64, y_rel::Float64)
@@ -233,7 +169,7 @@ function refine_to_level!(tree::AMRQuadTree, node::QuadTreeNode, target_level::I
     if node.level >= target_level
         return
     end
-    
+    print("diobello")
     # Create children
     node.children = Vector{Union{QuadTreeNode, Nothing}}(undef, 4)
     node.is_leaf = false

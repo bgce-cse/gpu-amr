@@ -21,6 +21,9 @@ struct Configuration
     cellsize::Array{Float64,1}
 
     offset::Array{Float64,1}
+    amr::Bool
+    max_level::Int
+    balance::Int
 
     function Configuration(configfile::String)
         config = YAML.load(open(configfile))
@@ -42,6 +45,8 @@ struct Configuration
         cellsize = physicalsize ./ grid_elements
 
         offset = config["simulation"]["offset"]
+        amr = config["amr"]["amr"]
+        max_level = config["amr"]["max_level"]
 
         new(
             equation_name,
@@ -58,7 +63,9 @@ struct Configuration
             grid_elements,
             physicalsize,
             cellsize,
-            offset
+            offset,
+            amr,
+            max_level
         )
     end
 end
