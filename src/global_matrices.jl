@@ -17,9 +17,9 @@ struct GlobalMatrices
     function GlobalMatrices(basis::Basis, filter::Filter, dimensions)
         faces = instances(TerraDG.Face)
 
-        normalsigns = Dict(left => -1, right => 1, top => 1, bottom => -1)
-        normalidxs = Dict(left => 1, right => 1, top => 2, bottom => 2)
-        oppositefaces = Dict(left => right, right => left, top => bottom, bottom => top)
+        normalsigns = Dict(W => -1, E => 1, N => 1, S => -1)
+        normalidxs = Dict(W => 1, E => 1, N => 2, S => 2)
+        oppositefaces = Dict(W => E, E => W, N => S, S => N)
 
         project_dofs_to_face = Dict(f => face_projection_matrix(basis, f) for f in faces)
         project_flux_to_face = Dict(f => kron(I(2), face_projection_matrix(basis, f)) for f in faces)

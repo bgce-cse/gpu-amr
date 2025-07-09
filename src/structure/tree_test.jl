@@ -275,21 +275,13 @@ function show_neighbors_at_position(tree::AMRQuadTree, x::Float64, y::Float64, d
     # Parse direction
     direction = nothing
     if dir_str == "N"
-        direction = North
+        direction = N
     elseif dir_str == "S"
-        direction = South
+        direction = S
     elseif dir_str == "E"
-        direction = East
+        direction = E
     elseif dir_str == "W"
-        direction = West
-    elseif dir_str == "NE"
-        direction = NorthEast
-    elseif dir_str == "NW"
-        direction = NorthWest
-    elseif dir_str == "SE"
-        direction = SouthEast
-    elseif dir_str == "SW"
-        direction = SouthWest
+        direction = W
     else
         println("Invalid direction: $dir_str")
         return

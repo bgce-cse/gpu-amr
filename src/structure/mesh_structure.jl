@@ -6,7 +6,7 @@ function create_struct(amr::Bool, config::Configuration, eq::Equation, scenario:
     if amr
         return AMRQuadTree(config, eq, scenario)
     else
-        return Grid(config, eq, scenario)
+        return make_grid(config, eq, scenario)
     end
 end
 

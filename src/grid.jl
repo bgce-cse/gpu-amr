@@ -50,7 +50,7 @@ end
 as long as the same order is used everywhere.
 Using the wrong order leads to very hard bugs!
 """
-@enum Face left=1 top=2 right=3 bottom=4
+@enum Face W=1 N=2 E=3 S=4
 
 """
     get_neighbor(eq, scenario, index, maxindex, offset)
@@ -160,7 +160,7 @@ end
 Returns the global positon of reference coordinates `coordinate_reference`
 for a cell with center `cellcenter` and size `cellsize`.
 """
-function globalposition(cell::Cell, coordinate_reference)
+function globalposition(cell, coordinate_reference)
     if minimum(coordinate_reference) < 0.0 || maximum(coordinate_reference) > 1.0
         throw(BoundsError())
     end
@@ -174,7 +174,7 @@ Opposite of `globalposition`.
 Returns the reference (local) positon for global coordinates
 `coordinate_global` for a cell with center `cellcenter` and size `cellsize`.
 """
-function localposition(cell::Cell, coordinate_global)
+function localposition(cell, coordinate_global)
     coordinate_reference = 1 ./cell.size .* (coordinate_global .- cell.center + 0.5 .* cell.size)
     if minimum(coordinate_reference) < 0.0 || maximum(coordinate_reference) > 1.0
         throw(BoundsError())
@@ -188,18 +188,18 @@ end
 Returns the volume of a quad `cell`.
 In 2D, it returns the area.
 """
-function volume(cell::Cell)
+function volume(cell)
     @assert all(y->y==cell.size[1], cell.size)
     prod(cell.size)
 end
 
 """
-    area(cell::Cell)
+    area(cell)
 
 Returns the area of a quad `cell`.
 In 1D, it returns the side-length.
 """
-function area(cell::Cell)
+function area(cell)
     @assert all(y->y==cell.size[1], cell.size)
     area = 1.0
     for i=2:length(cell.size)
@@ -209,11 +209,11 @@ function area(cell::Cell)
 end
 
 """
-    inverse_jacobian(cell::Cell)
+    inverse_jacobian(cell)
 
 Returns the inverse Jacobian of a quad cell of size
 `cellsize`.
 """
-function inverse_jacobian(cell::Cell)
+function inverse_jacobian(cell)
     Diagonal(1 ./ cell.size)
 end

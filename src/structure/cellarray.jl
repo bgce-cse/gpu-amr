@@ -1,6 +1,5 @@
 
-# Direction enumeration for neighbor finding
-@enum Direction North South East West 
+# Face enumeration for neighbor finding
 
 
 # Node structure for the quad tree
@@ -8,10 +7,10 @@ mutable struct QuadTreeNode
     level::Int
     x::Float64  # x coordinate of bottom-left corner TODO cahnge into the center
     y::Float64  # y coordinate of bottom-left corner
-    center::Array{Float32,1}
-    size::Float64  # size of the cell
+    center::Array{Float64,1}
+    size::Array{Float64,1}  # size of the cell
     children::Vector{Union{QuadTreeNode, Nothing}}  # 4 children (SW, SE, NW, NE)
-    neighbors::Dict{Direction, Vector{QuadTreeNode}}  # neighbors in each direction
+    neighbors::Dict{Face, Vector{QuadTreeNode}}  # neighbors in each direction
     parent::Union{QuadTreeNode, Nothing}
     is_leaf::Bool
     id::Int #TODO change it into morton index
@@ -21,11 +20,11 @@ mutable struct QuadTreeNode
     
     
     function QuadTreeNode(level, x, y, size, order, ndofs, parent=nothing, id=0, can_coarsen=true)
-        node = new(level, x, y, [x + size * 0.5, y + size * 0.5],
+        node = new(level, x, y, [x + size[1] * 0.5, y + size[2] * 0.5],
                  size, Vector{Union{QuadTreeNode, Nothing}}(nothing, 4), 
-                  Dict{Direction, Vector{QuadTreeNode}}(), parent, true, id, can_coarsen)
+                  Dict{Face, Vector{QuadTreeNode}}(), parent, true, id, can_coarsen)
         # Initialize empty neighbor lists
-        for dir in instances(Direction)
+        for dir in instances(Face)
             node.neighbors[dir] = QuadTreeNode[]
         end
         node.dofs_node = Array{Float64,2}(undef, (order^2, ndofs))

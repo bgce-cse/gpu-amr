@@ -9,7 +9,7 @@ mutable struct AMRQuadTree <: AbstractMesh
     node_counter::Int
     all_nodes::Vector{QuadTreeNode}  # Keep track of all nodes for easier access
     basis::Basis
-    size::Array{Float64, 1}
+    size::Array{Float64,1}
     cells::Vector{QuadTreeNode}
     maxeigenval::Float64
     time::Float64
@@ -26,7 +26,7 @@ mutable struct AMRQuadTree <: AbstractMesh
         gridsize = gridsize_1d^2
         order = config.order
         size = config.physicalsize
-        root = QuadTreeNode(0, 0.0, 0.0, size[1], order, get_ndofs(eq), nothing, 1)#TODO size[1] implies only square grids, for now...
+        root = QuadTreeNode(0, 0.0, 0.0, size, order, get_ndofs(eq), nothing, 1)#TODO size[1] implies only square grids, for now...
         cells = Vector{QuadTreeNode}(undef, (gridsize))
         basis = Basis(order, 2)
 
@@ -69,15 +69,15 @@ end
 
 # Get child coordinates
 function get_child_coords(parent::QuadTreeNode, child_idx::Int)
-    half_size = parent.size / 2
+    half_size = parent.size ./ 2
     if child_idx == 1  # SW
         return parent.x, parent.y
     elseif child_idx == 2  # SE
-        return parent.x + half_size, parent.y
+        return parent.x + half_size[1], parent.y
     elseif child_idx == 3  # NW
-        return parent.x, parent.y + half_size
+        return parent.x, parent.y + half_size[2]
     else  # NE
-        return parent.x + half_size, parent.y + half_size
+        return parent.x + half_size[1], parent.y + half_size[2]
     end
 end
 
@@ -128,7 +128,7 @@ end
 # Find neighbors of a node
 function find_neighbors!(tree::AMRQuadTree, node::QuadTreeNode)
     # Clear existing neighbors
-    for dir in instances(Direction)
+    for dir in instances(Face)
         empty!(node.neighbors[dir])
     end
     
@@ -159,7 +159,7 @@ function update_local_neighbors!(tree::AMRQuadTree, nodes_to_update::Vector{Quad
             push!(updated_nodes, node)
         end
         # Update immediate neighbors as well
-        for dir in instances(Direction)
+        for dir in instances(Face)
             for neighbor in node.neighbors[dir]
                 if neighbor.is_leaf && !(neighbor in updated_nodes)
                     find_neighbors!(tree, neighbor)
@@ -187,11 +187,11 @@ function refine_to_level!(tree::AMRQuadTree, node::QuadTreeNode, target_level::I
     # Create children
     node.children = Vector{Union{QuadTreeNode, Nothing}}(undef, 4)
     node.is_leaf = false
-    half_size = node.size / 2
+    half_size = node.size ./ 2
     
     for i in 1:4
         x, y = get_child_coords(node, i)
-        child_center = [x + half_size * 0.5, y + half_size * 0.5]
+        child_center = [x + half_size[1] * 0.5, y + half_size[2] * 0.5]
         tree.node_counter += 1
         idx = compute_morton_index(child_center, tree.max_level)
         child = QuadTreeNode(node.level + 1, x, y, half_size, tree.basis.order, tree.ndofs, node, idx, can_coarsen_children)
@@ -212,7 +212,7 @@ function refine_node!(tree::AMRQuadTree, node::QuadTreeNode)
     end
     
     # Check balance constraint
-    for dir in instances(Direction)
+    for dir in instances(Face)
         for neighbor in node.neighbors[dir]
             if neighbor.level < node.level - tree.balance_constraint
                 return false  # Would violate balance constraint
@@ -223,11 +223,11 @@ function refine_node!(tree::AMRQuadTree, node::QuadTreeNode)
     # Create children
     node.children = Vector{Union{QuadTreeNode, Nothing}}(undef, 4)
     node.is_leaf = false
-    half_size = node.size / 2
+    half_size = node.size ./ 2
     
     for i in 1:4
         x, y = get_child_coords(node, i)
-        child_center = [x + half_size * 0.5, y + half_size * 0.5]
+        child_center = [x + half_size[1] * 0.5, y + half_size[2] * 0.5]
         tree.node_counter += 1
         idx = compute_morton_index(child_center, tree.max_level)
         child = QuadTreeNode(node.level + 1, x, y, half_size, tree.basis.order, tree.ndofs, node, idx)
@@ -261,7 +261,7 @@ function coarsen_node!(tree::AMRQuadTree, node::QuadTreeNode)
     # Check balance constraint - ensure coarsening won't violate balance
     for child in node.children
         if child !== nothing
-            for dir in instances(Direction)
+            for dir in instances(Face)
                 for neighbor in child.neighbors[dir]
                     if neighbor.level > node.level + tree.balance_constraint
                         return false
@@ -296,7 +296,7 @@ function enforce_balance!(tree::AMRQuadTree)
         changed = false
         for node in copy(tree.all_nodes)
             if node.is_leaf
-                for dir in instances(Direction)
+                for dir in instances(Face)
                     for neighbor in node.neighbors[dir]
                         if neighbor.level < node.level - tree.balance_constraint
                             if refine_node!(tree, neighbor)
@@ -312,7 +312,7 @@ function enforce_balance!(tree::AMRQuadTree)
 end
 
 # Get neighbors of a node in a specific direction
-function get_neighbors(node::QuadTreeNode, direction::Direction)
+function get_neighbors(node::QuadTreeNode, direction::Face)
     return node.neighbors[direction]
 end
 
@@ -383,9 +383,9 @@ function print_grid(tree::AMRQuadTree)
     
     # Find the range of coordinates and levels
     min_x = minimum(node.x for node in leaf_nodes)
-    max_x = maximum(node.x + node.size for node in leaf_nodes)
+    max_x = maximum(node.x + node.size[1] for node in leaf_nodes)
     min_y = minimum(node.y for node in leaf_nodes)
-    max_y = maximum(node.y + node.size for node in leaf_nodes)
+    max_y = maximum(node.y + node.size[2] for node in leaf_nodes)
     
     # Create a reasonable resolution based on the finest level
     max_level = maximum(node.level for node in leaf_nodes)
@@ -399,8 +399,8 @@ function print_grid(tree::AMRQuadTree)
         # Map to grid coordinates
         start_x = Int(round((node.x - min_x) / (max_x - min_x) * (resolution - 1))) + 1
         start_y = Int(round((node.y - min_y) / (max_y - min_y) * (resolution - 1))) + 1
-        end_x = Int(round((node.x + node.size - min_x) / (max_x - min_x) * (resolution - 1))) + 1
-        end_y = Int(round((node.y + node.size - min_y) / (max_y - min_y) * (resolution - 1))) + 1
+        end_x = Int(round((node.x + node.size[1] - min_x) / (max_x - min_x) * (resolution - 1))) + 1
+        end_y = Int(round((node.y + node.size[2] - min_y) / (max_y - min_y) * (resolution - 1))) + 1
         
         # Clamp to bounds
         start_x = max(1, start_x)
@@ -455,8 +455,8 @@ function print_compact_grid(tree::AMRQuadTree, size::Int=32)
         # Map node to grid coordinates
         start_x = Int(floor(node.x * size)) + 1
         start_y = Int(floor(node.y * size)) + 1
-        end_x = min(size, Int(ceil((node.x + node.size) * size)))
-        end_y = min(size, Int(ceil((node.y + node.size) * size)))
+        end_x = min(size, Int(ceil((node.x + node.size[1]) * size)))
+        end_y = min(size, Int(ceil((node.y + node.size[2]) * size)))
         
         # Clamp to bounds
         start_x = max(1, start_x)

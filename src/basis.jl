@@ -189,16 +189,16 @@ end
 Return the quadrature points at the face `face` for basis `basis`.
 """
 function get_face_quadpoints(basis::Basis, face)
-    if face == left
+    if face == W
         # x = 0, y varies
         return (0.0, basis.quadpoints)
-    elseif face == right
+    elseif face == E
         # x = 1, y varies
         return (1.0, basis.quadpoints)
-    elseif face == bottom
+    elseif face == S
         # y = 0, x varies
         return (basis.quadpoints, 0.0)
-    elseif face == top
+    elseif face == N
         # y = 1, x varies
         return (basis.quadpoints, 1.0)
     else
@@ -209,7 +209,7 @@ end
 
 function face_projection_matrix(basis::Basis, face)
     n = basis.order
-    if face == left || face == right
+    if face == W || face == E
         # For vertical faces (x=0 or x=1), project along x-dimension
         # The 1D basis functions are evaluated at the fixed x-coordinate of the face
         x_face_coord = get_face_quadpoints(basis, face)[1]
