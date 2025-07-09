@@ -33,7 +33,7 @@ end
 `Grid` stores information about the grid and also information
 about the whole simulation.
 """
-mutable struct Grid
+mutable struct Grid <: AbstractMesh
     basis::Basis
     cells::Array{Cell,1}
     size::Array{Float64, 1}

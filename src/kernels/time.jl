@@ -14,7 +14,7 @@ in-place.
 abstract type TimeIntegrator end
 
 """
-    ExplicitEuler(grid::Grid)
+    ExplicitEuler(grid::AbstractMesh)
 
 Return Euler time-integrator for `grid`.
 First order accurate.
@@ -22,7 +22,7 @@ First order accurate.
 struct ExplicitEuler 
     dofsupdate::Array{Float64,3}
 
-    function ExplicitEuler(grid::Grid)
+    function ExplicitEuler(grid::AbstractMesh)
         dofsupdate = similar(grid.dofs)
         new(dofsupdate)
     end
@@ -42,7 +42,7 @@ function step(f, integrator::ExplicitEuler, grid, dt)
 end
 
 """
-    SSPRK2(grid::Grid)
+    SSPRK2(grid::AbstractMesh)
 
 Return SSPRK2 time-integrator for `grid`.
 Two-stage strong-stability preserving Runge Kutta method.
@@ -52,7 +52,7 @@ struct SSPRK2
     stage1::Array{Float64,3}
     stage2::Array{Float64,3}
 
-    function SSPRK2(grid::Grid)
+    function SSPRK2(grid::AbstractMesh)
         stage1 = similar(grid.dofs)
         stage2 = similar(grid.dofs)
         new(stage1, stage2)
@@ -81,7 +81,7 @@ function step(f, integrator::SSPRK2, grid, dt)
 end
 
 """
-    SSPRK3(grid::Grid)
+    SSPRK3(grid::AbstractMesh)
 
 Return SSPRK3 time-integrator for `grid`.
 Three-stage strong-stability preserving Runge Kutta method.
@@ -92,7 +92,7 @@ struct SSPRK3
     stage2::Array{Float64,3}
     stage3::Array{Float64,3}
 
-    function SSPRK3(grid::Grid)
+    function SSPRK3(grid::AbstractMesh)
         stage1 = similar(grid.dofs)
         stage2 = similar(grid.dofs)
         stage3 = similar(grid.dofs)
@@ -127,11 +127,11 @@ function step(f, integrator::SSPRK3, grid, dt)
 end
 
 """
-    make_timeintegrator(config::Configuration, grid::Grid)
+    make_timeintegrator(config::Configuration, grid::AbstractMesh)
 
 Returns time integrator from `config` for `grid`.
 """
-function make_timeintegrator(config::Configuration, grid::Grid)
+function make_timeintegrator(config::Configuration, grid::AbstractMesh)
     if config.timeintegrator_name == "Euler"
         return ExplicitEuler(grid)
     elseif config.timeintegrator_name == "SSPRK2"

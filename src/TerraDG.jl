@@ -5,10 +5,10 @@ using Logging
 using LinearAlgebra
 import YAML
 
-
 include("configuration.jl")
 include("basis.jl")
 include("equations.jl")
+include("structure/mesh_structure.jl")
 include("grid.jl")
 include("kernels/surface.jl")
 include("kernels/volume.jl")
@@ -18,6 +18,7 @@ include("kernels/limiting.jl")
 include("plotters.jl")
 include("error_writer.jl")
 include("global_matrices.jl")
+
 
 
 """

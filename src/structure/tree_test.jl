@@ -1,11 +1,19 @@
-include("amr_quad_tree.jl")
-include("amr_plotter.jl")
 using Random
 using WriteVTK
 using Printf
 using Logging
 using LinearAlgebra
 import YAML
+include("../basis.jl")
+include("../configuration.jl")
+include("../equations.jl")
+include("mesh_structure.jl")
+include("../grid.jl")
+include("cellarray.jl")      # Include this FIRST
+include("amr_quad_tree.jl")  # Then include this
+include("amr_plotter.jl")
+
+
 
 # Test the AMR Quad Tree
 function test_amr_quad_tree(configfile::String= "src/config/amr.yaml")
@@ -16,7 +24,7 @@ function test_amr_quad_tree(configfile::String= "src/config/amr.yaml")
     # Initialize tree with 4x4 initial grid
     println("Creating AMR Quad Tree with $(config.grid_elements)x $(config.grid_elements) initial grid...")
     amr = config.amr
-    tree = AMRQuadTree(config, eq, scenario)  # 4x4 grid, max level 8, balance constraint 2
+    tree = create_struct(amr,config, eq, scenario)  # 4x4 grid, max level 8, balance constraint 2
     plotter = AMRVTKPlotter("tree")  # will produce tree_0.vtu, tree_1.vtu, ... tree.pvd
 
     
@@ -74,8 +82,12 @@ function test_amr_quad_tree(configfile::String= "src/config/amr.yaml")
         elseif input == "p"
             print_tree(tree)
         elseif input == "d"
+            tree.dofs .= 0
             for i in eachindex(tree.cells)
-                println(tree.dofs[:,:,i])
+                println(tree.dofs[:,:,i].+tree.cells[i].id)
+            end
+            for leaf in get_leaf_nodes(tree)
+                print(leaf.center, "\n")
             end
         elseif input == "g"
             print_grid(tree)
