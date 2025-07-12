@@ -16,6 +16,8 @@ mutable struct AMRQuadTree <: AbstractMesh
     maxeigenval::Float64
     time::Float64
     ndofs::Int
+    eq::Equation
+    scenario::Scenario
     dofs::CellArrayView
     flux::CellArrayView
     
@@ -32,6 +34,7 @@ mutable struct AMRQuadTree <: AbstractMesh
         cells = Vector{QuadTreeNode}(undef, (gridsize))
         basis = Basis(order, 2)
 
+
         tree = new(root, 
             max_level, 
             balance_constraint, 
@@ -42,7 +45,9 @@ mutable struct AMRQuadTree <: AbstractMesh
             cells,
             -1.0,
             0.0,
-            get_ndofs(eq))
+            get_ndofs(eq),
+            eq,
+            scenario)
         
         # Create initial n×n grid with uncoarsenable children
         initial_refinement_level = Int(log2(config.grid_elements))
@@ -128,26 +133,127 @@ function get_direction(node1::QuadTreeNode, node2::QuadTreeNode)
     end
 end
 
-# Find neighbors of a node TODO fix boundary
+# Modified find_neighbors! function with periodic boundary conditions
+
+# Modified find_neighbors! function with periodic boundary conditions
 function find_neighbors!(tree::AMRQuadTree, node::QuadTreeNode)
     # Initialize: clear neighbors and assume boundary everywhere
     for (i, dir) in enumerate(instances(Face))
         empty!(node.neighbors[dir])
-        #print("$(i) vs $(dir)\n")
         node.facetypes[i] = boundary
     end
 
-    # Find neighbors among all leaf nodes
+    # Find neighbors among all leaf nodes (including periodic)
     for other_node in tree.all_nodes
-        if other_node != node && other_node.is_leaf && are_neighbors(node, other_node)
-            dir, pos= get_direction(node, other_node)
-
-            # Found a neighbor in this direction => mark as regular
-            node.facetypes[pos] = regular
-
-            push!(node.neighbors[dir], other_node)
+        if other_node != node && other_node.is_leaf
+            if are_neighbors(node, other_node)
+                # Regular neighbor
+                dir, pos = get_direction(node, other_node)
+                # Found a regular neighbor => mark as regular
+                node.facetypes[pos] = regular
+                push!(node.neighbors[dir], other_node)
+            else
+                # Always check for periodic neighbors
+                periodic_neighbor_dir = check_periodic_neighbor(tree, node, other_node)
+                if periodic_neighbor_dir !== nothing 
+                    dir, pos = periodic_neighbor_dir
+                    # Found a periodic neighbor => add the neighbor
+                    push!(node.neighbors[dir], other_node)
+                    # Set facetype based on boundary condition setting
+                    if is_periodic_boundary(tree.eq, tree.scenario)
+                        node.facetypes[pos] = regular  # Periodic boundaries are regular
+                    else
+                        node.facetypes[pos] = boundary  # Non-periodic boundaries stay boundary
+                    end
+                end
+            end
         end
     end
+end
+
+# New function to check if two nodes are periodic neighbors
+function check_periodic_neighbor(tree::AMRQuadTree, node1::QuadTreeNode, node2::QuadTreeNode)
+    domain_size = tree.size
+    x1, y1, s1 = node1.x, node1.y, node1.size
+    x2, y2, s2 = node2.x, node2.y, node2.size
+    
+    # Check East-West periodic boundary
+    # Node1 on east boundary, node2 on west boundary
+    if (x1 + s1[1] ≈ domain_size[1]) && (x2 ≈ 0.0)
+        # Check if they align in y-direction
+        y_overlap = !(y1 + s1[2] <= y2 || y2 + s2[2] <= y1)
+        if y_overlap
+            return (E, 3)
+        end
+    end
+    
+    # Node1 on west boundary, node2 on east boundary
+    if (x1 ≈ 0.0) && (x2 + s2[1] ≈ domain_size[1])
+        y_overlap = !(y1 + s1[2] <= y2 || y2 + s2[2] <= y1)
+        if y_overlap
+            return (W, 1)
+        end
+    end
+    
+    # Check North-South periodic boundary
+    # Node1 on north boundary, node2 on south boundary
+    if (y1 + s1[2] ≈ domain_size[2]) && (y2 ≈ 0.0)
+        # Check if they align in x-direction
+        x_overlap = !(x1 + s1[1] <= x2 || x2 + s2[1] <= x1)
+        if x_overlap
+            return (N, 2)
+        end
+    end
+    
+    # Node1 on south boundary, node2 on north boundary
+    if (y1 ≈ 0.0) && (y2 + s2[2] ≈ domain_size[2])
+        x_overlap = !(x1 + s1[1] <= x2 || x2 + s2[1] <= x1)
+        if x_overlap
+            return (S, 4)
+        end
+    end
+    
+    return nothing
+end
+
+# Alternative: More robust version with tolerance
+function check_periodic_neighbor_robust(tree::AMRQuadTree, node1::QuadTreeNode, node2::QuadTreeNode)
+    domain_size = tree.size
+    x1, y1, s1 = node1.x, node1.y, node1.size
+    x2, y2, s2 = node2.x, node2.y, node2.size
+    
+    # Tolerance for floating point comparison
+    tol = 1e-10
+    
+    # Check East-West periodic boundary
+    if (abs(x1 + s1[1] - domain_size[1]) < tol) && (abs(x2) < tol)
+        # Check y-overlap
+        if max(y1, y2) < min(y1 + s1[2], y2 + s2[2]) + tol
+            return (E, 3)
+        end
+    end
+    
+    if (abs(x1) < tol) && (abs(x2 + s2[1] - domain_size[1]) < tol)
+        if max(y1, y2) < min(y1 + s1[2], y2 + s2[2]) + tol
+            return (W, 1)
+        end
+    end
+    
+    # Check North-South periodic boundary
+    if (abs(y1 + s1[2] - domain_size[2]) < tol) && (abs(y2) < tol)
+        # Check x-overlap
+        if max(x1, x2) < min(x1 + s1[1], x2 + s2[1]) + tol
+            return (N, 2)
+        end
+    end
+    
+    if (abs(y1) < tol) && (abs(y2 + s2[2] - domain_size[2]) < tol)
+        if max(x1, x2) < min(x1 + s1[1], x2 + s2[1]) + tol
+            return (S, 4)
+        end
+    end
+    
+    return nothing
 end
 
 # Update all neighbor relationships

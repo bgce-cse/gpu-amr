@@ -1,6 +1,6 @@
 simulation:
   end_time: 1
-  grid_elements: 4
+  grid_elements: 16
   grid_size: 1.0
   offset: [0.0, 0.0]
 
@@ -10,8 +10,9 @@ solver:
   timeintegrator: SSPRK2
 
 equation:
-  equation: acoustic
-  scenario: gaussian_wave
+  equation: advection
+  scenario: planar_waves
+
   
 output:
   start: 0 #s

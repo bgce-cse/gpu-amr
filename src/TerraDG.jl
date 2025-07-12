@@ -98,7 +98,7 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
             @views cureigenval = evaluate_face_integral(eq, globals, buffers_face, cell, faces[i], du[:,:,cell.dataidx])
             
             maxeigenval = max(maxeigenval, cureigenval)
-            print(cureigenval," ", maxeigenval,"\n")
+            #print(cureigenval," ", maxeigenval,"\n")
             #print("faces $(faces[i]): ",norm(du))
         end
         @views du[:,:,cell.dataidx] = inv_massmatrix * @views du[:,:,cell.dataidx] 
@@ -142,7 +142,6 @@ function main(configfile::String)
             
             #limiter?
             # Only step up to either end or next plotting
-            print(dt, next_plotted-mesh_struct.time, config.end_time - mesh_struct.time)
             dt = min(dt, next_plotted-mesh_struct.time, config.end_time - mesh_struct.time)
             @assert dt > 0
             @info "Running timestep" timestep dt mesh_struct.time

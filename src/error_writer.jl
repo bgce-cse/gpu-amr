@@ -1,5 +1,5 @@
 """
-    evaluate_error(eq::Equation, scenario::Scenario, grid::Grid, t::Float64)
+    evaluate_error(eq::Equation, scenario::Scenario, grid::AbstractMesh, t::Float64)
 
 Prints out the L1/L2/L∞ integral norms of the error for
 equation `eq`, scenario (with analytical solution) `scenario`, grid
@@ -7,7 +7,7 @@ equation `eq`, scenario (with analytical solution) `scenario`, grid
 Error is defined as difference between analytical solution and numerical
 approximation.
 """
-function evaluate_error(eq::Equation, scenario::Scenario, grid::Grid, t::Float64)
+function evaluate_error(eq::Equation, scenario::Scenario, grid::AbstractMesh, t::Float64)
     @assert is_analytical_solution(eq, scenario)
     l1_error = similar(grid.dofs, get_ndofs(eq))
     l2_error = similar(l1_error)
