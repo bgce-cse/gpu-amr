@@ -1,6 +1,8 @@
 using DataStructures
 using NearestNeighbors
 
+directionidx = Dict(W => 1, N=>2, E=>3, S=>4)
+
 # AMR Quad Tree structure
 mutable struct AMRQuadTree <: AbstractMesh
     root::QuadTreeNode
@@ -26,7 +28,7 @@ mutable struct AMRQuadTree <: AbstractMesh
         gridsize = gridsize_1d^2
         order = config.order
         size = config.physicalsize
-        root = QuadTreeNode(0, 0.0, 0.0, size, order, get_ndofs(eq), nothing, 1)#TODO size[1] implies only square grids, for now...
+        root = QuadTreeNode(0, 0.0, 0.0, size, order, get_ndofs(eq), nothing, 1)
         cells = Vector{QuadTreeNode}(undef, (gridsize))
         basis = Basis(order, 2)
 
@@ -113,34 +115,35 @@ function get_direction(node1::QuadTreeNode, node2::QuadTreeNode)
     # Determine primary direction
     if abs(dx) > abs(dy)
         if dx > 0
-            return E
+            return E, 3
         else
-            return W
+            return W, 1
         end
     else
         if dy > 0
-            return N
+            return N, 2
         else
-            return S
+            return S,4
         end
     end
 end
 
-# Find neighbors of a node
+# Find neighbors of a node TODO fix boundary
 function find_neighbors!(tree::AMRQuadTree, node::QuadTreeNode)
     # Initialize: clear neighbors and assume boundary everywhere
-    for dir in instances(Face)
+    for (i, dir) in enumerate(instances(Face))
         empty!(node.neighbors[dir])
-        node.facetypes[Int(dir)] = boundary
+        #print("$(i) vs $(dir)\n")
+        node.facetypes[i] = boundary
     end
 
     # Find neighbors among all leaf nodes
     for other_node in tree.all_nodes
         if other_node != node && other_node.is_leaf && are_neighbors(node, other_node)
-            dir = get_direction(node, other_node)
+            dir, pos= get_direction(node, other_node)
 
             # Found a neighbor in this direction => mark as regular
-            node.facetypes[Int(dir)] = regular
+            node.facetypes[pos] = regular
 
             push!(node.neighbors[dir], other_node)
         end
@@ -347,6 +350,9 @@ end
 function get_leaf_nodes(tree::AMRQuadTree)
     leaves = filter(node -> node.is_leaf, tree.all_nodes)
     sorted_leaves = sort(leaves, by = node -> node.id)
+    for (i, leaf) in enumerate(sorted_leaves)
+        leaf.dataidx = i
+    end
     return sorted_leaves
 end
 

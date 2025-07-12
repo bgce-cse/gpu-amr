@@ -2,6 +2,7 @@ struct GlobalMatrices
     normalsigns::Dict{Face, Int64}
     normalidxs::Dict{Face, Int64}
     oppositefaces::Dict{Face, Face}
+    directionidx::Dict{Face,Int}
     project_dofs_to_face::Dict{Face,Array{Float64,2}}
     project_flux_to_face::Dict{Face,Array{Float64,2}}
     project_dofs_from_face::Dict{Face,Array{Float64,2}}
@@ -43,7 +44,7 @@ struct GlobalMatrices
         reference_derivative_matrix = derivativematrix(basis)
         filter_matrix = evaluate_filter_matrix(filter, basis)
 
-        new(normalsigns, normalidxs, oppositefaces,
+        new(normalsigns, normalidxs, oppositefaces,directionidx,
             project_dofs_to_face, project_flux_to_face, project_dofs_from_face,
             quadweights_nd,
             quadpoints_nd,

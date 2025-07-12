@@ -15,7 +15,7 @@ data arrays.
 struct Cell
     center::Array{Float64,1}
     size::Array{Float64,1}
-    neighbors::Array{Cell, 1}
+    neighbors::Dict{Face, Array{Cell,1}}
     facetypes::Array{FaceType, 1}
     dataidx::Int64
 end
@@ -90,7 +90,12 @@ function make_mesh(eq, scenario, gridsize_1d, cellsize, offset)
     linear_grid_index = LinearIndices((gridsize_1d, gridsize_1d))
     for i in CartesianIndices((gridsize_1d, gridsize_1d))
             center = offset + [i[1], i[2]] .* cellsize - cellsize ./ 2
-            neighbors = Array{Cell,1}(undef, 4)
+            neighbors = Dict{Face, Vector{QuadTreeNode}}(
+            W => Array{QuadTreeNode}(undef,1),
+            N => Array{QuadTreeNode}(undef,1),
+            E => Array{QuadTreeNode}(undef,1),
+            S => Array{QuadTreeNode}(undef,1)
+)
             facetypes = Array{FaceType,1}(undef, 4)
             cells[linear_grid_index[i]] = Cell(center, cellsize, neighbors, facetypes, linear_grid_index[i])
     end
@@ -102,7 +107,7 @@ function make_mesh(eq, scenario, gridsize_1d, cellsize, offset)
         for j=1:4
             offset = offsets[j]
             neighbor, facetype = get_neighbor(eq, scenario, i, (gridsize_1d, gridsize_1d), offset)
-            cells[lin_i].neighbors[j] = cells[linear_grid_index[neighbor]]
+            cells[lin_i].neighbors[Face(j)][1] = cells[linear_grid_index[neighbor]]
             cells[lin_i].facetypes[j] = facetype
         end
     end

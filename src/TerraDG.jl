@@ -46,20 +46,20 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
     ∇ = globals.reference_derivative_matrix
     for i in eachindex(grid.cells)
         @views cell = grid.cells[i]
-        @views data = dofs[:,:, i]
-        @views flux = grid.flux[:,:,i]        
+        @views data = dofs[:,:, cell.dataidx]
+        @views flux = grid.flux[:,:,cell.dataidx]        
         evaluate_flux(eq, data, flux)
 
         # Volume matrix is zero for FV/order=1
         if length(grid.basis.quadpoints) > 1
-            @views evaluate_volume(globals, buffers_volume, flux, grid.basis, inverse_jacobian(cell), volume(cell), du[:,:,i])
+            @views evaluate_volume(globals, buffers_volume, flux, grid.basis, inverse_jacobian(cell), volume(cell), du[:,:,cell.dataidx])
             #print("volume: ",norm(du))
         end
     end
     for i in eachindex(grid.cells)
         @views cell = grid.cells[i]
-        @views data = dofs[:,:, i]
-        @views flux = grid.flux[:,:,i]
+        @views data = dofs[:,:, cell.dataidx]
+        @views flux = grid.flux[:,:,cell.dataidx]
         elem_massmatrix = volume(cell) * reference_massmatrix
         inv_massmatrix = inv(elem_massmatrix)
 
@@ -67,14 +67,18 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
         # and store it for each cell (needed for timestep restriction later!)
         faces = [W, N, E, S]
         for (i, neigh) in enumerate(cell.neighbors)
-            @views dofsneigh = dofs[:,:,i]
-            @views fluxneigh = grid.flux[:,:,i]
-
-            # Project dofs and flux of own cell to face
-            project_to_faces(globals, data, flux, buffers_face.dofsface, buffers_face.fluxface, faces[i])
+            if !isempty(cell.neighbors[Face(i)])
+                @views dofsneigh = dofs[:,:,cell.neighbors[Face(i)][1].dataidx]
+                @views fluxneigh = grid.flux[:,:,cell.neighbors[Face(i)][1].dataidx]
+            
+                # Project dofs and flux of own cell to face
+                project_to_faces(globals, data, flux, buffers_face.dofsface, buffers_face.fluxface, faces[i])
+            end
             facetypeneigh = cell.facetypes[i] #TODO until here it works for both
             
-            if facetypeneigh == regular
+            if facetypeneigh == regular 
+            
+            
                 # Project neighbors to faces
                 # Neighbor needs to project to opposite face
                 faceneigh = globals.oppositefaces[faces[i]]
@@ -91,12 +95,13 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
                 evaluate_flux(eq, buffers_face.dofsfaceneigh, buffers_face.fluxfaceneigh)
             end
 
-            @views cureigenval = evaluate_face_integral(eq, globals, buffers_face, cell, faces[i], du[:,:,i])
-            maxeigenval = max(maxeigenval, cureigenval)
+            @views cureigenval = evaluate_face_integral(eq, globals, buffers_face, cell, faces[i], du[:,:,cell.dataidx])
             
+            maxeigenval = max(maxeigenval, cureigenval)
+            print(cureigenval," ", maxeigenval,"\n")
             #print("faces $(faces[i]): ",norm(du))
         end
-        @views du[:,:,i] = inv_massmatrix * @views du[:,:,i] 
+        @views du[:,:,cell.dataidx] = inv_massmatrix * @views du[:,:,cell.dataidx] 
             #print("mass: ",norm(du))
     end
     grid.maxeigenval = maxeigenval
@@ -137,6 +142,7 @@ function main(configfile::String)
             
             #limiter?
             # Only step up to either end or next plotting
+            print(dt, next_plotted-mesh_struct.time, config.end_time - mesh_struct.time)
             dt = min(dt, next_plotted-mesh_struct.time, config.end_time - mesh_struct.time)
             @assert dt > 0
             @info "Running timestep" timestep dt mesh_struct.time
@@ -150,8 +156,8 @@ function main(configfile::String)
         else
             # Compute initial eigenvalue (needed for dt)
             mesh_struct.maxeigenval = -1
-            for i in eachindex(mesh_struct.cells)
-                @views celldata = mesh_struct.dofs[:,:,i] 
+            for cell in mesh_struct.cells
+                @views celldata = mesh_struct.dofs[:,:,cell.dataidx] 
                 for normalidx=1:2
                     cureigenval = max_eigenval(eq, celldata, normalidx)
                     mesh_struct.maxeigenval = max(mesh_struct.maxeigenval, cureigenval)

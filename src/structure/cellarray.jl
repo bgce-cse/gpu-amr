@@ -10,7 +10,7 @@ mutable struct QuadTreeNode
     center::Array{Float64,1}
     size::Array{Float64,1}  # size of the cell
     children::Vector{Union{QuadTreeNode, Nothing}}  # 4 children (SW, SE, NW, NE)
-    neighbors::Dict{Face, Vector{QuadTreeNode}}  # neighbors in each direction
+    neighbors::Dict{Face, Array{QuadTreeNode,1}}  # neighbors in each direction
     parent::Union{QuadTreeNode, Nothing}
     is_leaf::Bool
     id::Int #TODO change it into morton index
@@ -18,16 +18,18 @@ mutable struct QuadTreeNode
     facetypes::Array{FaceType,1}
     dofs_node::Array{Float64,2}
     flux_node::Array{Float64,2}
+    dataidx::Int
     
     
     function QuadTreeNode(level, x, y, size, order, ndofs, parent=nothing, id=0, can_coarsen=true)
         facetypes = Array{FaceType,1}(undef, 4)
+     
         node = new(level, x, y, [x + size[1] * 0.5, y + size[2] * 0.5],
                  size, Vector{Union{QuadTreeNode, Nothing}}(nothing, 4), 
                   Dict{Face, Vector{QuadTreeNode}}(), parent, true, id, can_coarsen,facetypes)
         # Initialize empty neighbor lists
         for dir in instances(Face)
-            node.neighbors[dir] = QuadTreeNode[]
+            node.neighbors[dir] =  Array{QuadTreeNode,1}(undef,2)
         end
         node.dofs_node = Array{Float64,2}(undef, (order^2, ndofs))
         node.flux_node = similar(node.dofs_node, order^2 * 2, ndofs)
