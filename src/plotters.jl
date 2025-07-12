@@ -72,7 +72,7 @@ Output name is `filename`.
 mutable struct VTKPlotter
     eq::Equation
     scenario::Scenario
-    grid::Grid
+    grid::AbstractMesh
     filename::String
     collection::WriteVTK.CollectionFile
     plot_counter::Int64
@@ -80,7 +80,7 @@ mutable struct VTKPlotter
     vtkpoints::Array{Float64,2}
     cellpoints::Array{Float64,2}
 
-    function VTKPlotter(eq::Equation, scenario::Scenario, grid::Grid,
+    function VTKPlotter(eq::Equation, scenario::Scenario, grid::AbstractMesh,
                         filename::String)
         collection = paraview_collection(filename) 
         plot_counter = 0
@@ -110,9 +110,9 @@ function evaluate_dof_points(eq, grid, points, dofidx)
     num_points = size(points, 1)
     eval_data = Array{Float64, 2}(undef, (length(grid.cells)*num_points, 1))
     offset = 0
-    for cell in grid.cells
+    for (j, cell) in enumerate(grid.cells)
         for i=1:num_points
-            eval_data[offset+i,:] .= evaluate_basis(grid.basis, grid.dofs[:, dofidx, cell.dataidx], points[i,:])
+            eval_data[offset+i,:] .= evaluate_basis(grid.basis, grid.dofs[:, dofidx, j], points[i,:])
         end
         offset += num_points
     end

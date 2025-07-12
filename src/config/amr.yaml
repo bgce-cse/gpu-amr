@@ -5,19 +5,19 @@ simulation:
   offset: [0.0, 0.0]
 
 solver:
-  order: 2
+  order: 3
   courant: 0.5
   timeintegrator: SSPRK2
 
 equation:
-  equation: acoustic
-  scenario: gaussian_wave
+  equation: advection
+  scenario: planar_waves
   
 output:
   start: 0 #s
   step: 0.1 #s
 
 amr:
-  amr : true
+  amr : false
   max_level: 10
   balance_constraint: 1

@@ -20,7 +20,7 @@ mutable struct AMRQuadTree <: AbstractMesh
 
     
     function AMRQuadTree(config::Configuration, eq::Equation, scenario::Scenario, balance_constraint::Int=1)#move max level and balance constraint into config->yaml
-        @assert(log(4,(config.grid_elements))%1 == 0)
+        @assert(log(2,(config.grid_elements))%1 == 0)
         max_level = config.max_level
         gridsize_1d = config.grid_elements
         gridsize = gridsize_1d^2
@@ -48,6 +48,7 @@ mutable struct AMRQuadTree <: AbstractMesh
         tree.cells = get_leaf_nodes(tree)
         tree.dofs = CellArrayView(tree.cells, :dofs_node)
         tree.flux = CellArrayView(tree.cells, :flux_node)
+        update_all_neighbors!(tree)
         
         return tree
     end
@@ -88,12 +89,12 @@ function are_neighbors(node1::QuadTreeNode, node2::QuadTreeNode)
     x2, y2, s2 = node2.x, node2.y, node2.size
     
     # Check for overlap in x and y ranges
-    x_overlap = !(x1 + s1 <= x2 || x2 + s2 <= x1)
-    y_overlap = !(y1 + s1 <= y2 || y2 + s2 <= y1)
+    x_overlap = !(x1 + s1[1] <= x2 || x2 + s2[1] <= x1)
+    y_overlap = !(y1 + s1[2] <= y2 || y2 + s2[2] <= y1)
     
     # Check if they share an edge
-    edge_x = (x1 + s1 ≈ x2 || x2 + s2 ≈ x1) && y_overlap
-    edge_y = (y1 + s1 ≈ y2 || y2 + s2 ≈ y1) && x_overlap
+    edge_x = (x1 + s1[1] ≈ x2 || x2 + s2[1] ≈ x1) && y_overlap
+    edge_y = (y1 + s1[2] ≈ y2 || y2 + s2[2] ≈ y1) && x_overlap
     
     return edge_x || edge_y
 end
@@ -103,8 +104,8 @@ function get_direction(node1::QuadTreeNode, node2::QuadTreeNode)
     x1, y1, s1 = node1.x, node1.y, node1.size
     x2, y2, s2 = node2.x, node2.y, node2.size
     
-    center1_x, center1_y = x1 + s1/2, y1 + s1/2
-    center2_x, center2_y = x2 + s2/2, y2 + s2/2
+    center1_x, center1_y = x1 + s1[1]/2, y1 + s1[2]/2
+    center2_x, center2_y = x2 + s2[1]/2, y2 + s2[2]/2
     
     dx = center2_x - center1_x
     dy = center2_y - center1_y
@@ -112,30 +113,35 @@ function get_direction(node1::QuadTreeNode, node2::QuadTreeNode)
     # Determine primary direction
     if abs(dx) > abs(dy)
         if dx > 0
-            return East
+            return E
         else
-            return West
+            return W
         end
     else
         if dy > 0
-            return North
+            return N
         else
-            return South
+            return S
         end
     end
 end
 
 # Find neighbors of a node
 function find_neighbors!(tree::AMRQuadTree, node::QuadTreeNode)
-    # Clear existing neighbors
+    # Initialize: clear neighbors and assume boundary everywhere
     for dir in instances(Face)
         empty!(node.neighbors[dir])
+        node.facetypes[Int(dir)] = boundary
     end
-    
-    # Find all potential neighbors among leaf nodes
+
+    # Find neighbors among all leaf nodes
     for other_node in tree.all_nodes
         if other_node != node && other_node.is_leaf && are_neighbors(node, other_node)
             dir = get_direction(node, other_node)
+
+            # Found a neighbor in this direction => mark as regular
+            node.facetypes[Int(dir)] = regular
+
             push!(node.neighbors[dir], other_node)
         end
     end
@@ -322,8 +328,8 @@ function find_node_at_point(tree::AMRQuadTree, x::Float64, y::Float64)
     
     while !current.is_leaf
         # Find which child contains the point
-        rel_x = (x - current.x) / current.size
-        rel_y = (y - current.y) / current.size
+        rel_x = (x - current.x) / current.size[1]
+        rel_y = (y - current.y) / current.size[2]
         
         child_idx = get_child_index(rel_x, rel_y)
         

@@ -72,15 +72,15 @@ function evaluate_rhs(eq, scenario, filter, globals, du, dofs, grid)
 
             # Project dofs and flux of own cell to face
             project_to_faces(globals, data, flux, buffers_face.dofsface, buffers_face.fluxface, faces[i])
-            facetypeneigh = cell.neighbors[faces[i]]#TODO until here it works for both
-
+            facetypeneigh = cell.facetypes[i] #TODO until here it works for both
+            
             if facetypeneigh == regular
                 # Project neighbors to faces
                 # Neighbor needs to project to opposite face
                 faceneigh = globals.oppositefaces[faces[i]]
                 project_to_faces(globals, dofsneigh, fluxneigh, buffers_face.dofsfaceneigh, buffers_face.fluxfaceneigh, faceneigh)
             else
-                @assert(isempty(facetypeneigh))
+                @assert(facetypeneigh == boundary)
                 normalidx = globals.normalidxs[faces[i]]
 
                 # For boundary cells, we operate directly on the dofsface
@@ -122,7 +122,7 @@ function main(configfile::String)
         @views interpolate_initial_dofs(eq, scenario, mesh_struct.dofs[:,:,i],mesh_struct.cells[i],mesh_struct.basis)
     end
     
-    #plotter = VTKPlotter(eq, scenario, mesh_struct, filename) #TODO change plotter
+    plotter = VTKPlotter(eq, scenario, mesh_struct, filename) #TODO change plotter
 
     mesh_struct.time = 0
     timestep = 0
@@ -162,7 +162,7 @@ function main(configfile::String)
         if abs(mesh_struct.time - next_plotted) < 1e-10
             #limiter?
             @info "Writing output" mesh_struct.time
-            #plot(plotter)
+            plot(plotter)
             next_plotted = mesh_struct.time + config.plot_step
 
             
@@ -173,7 +173,7 @@ function main(configfile::String)
         end
         timestep += 1
     end
-    #save(plotter)
+    save(plotter)
     if is_analytical_solution(eq, scenario)
         evaluate_error(eq, scenario, mesh_struct, mesh_struct.time)
     end

@@ -281,7 +281,7 @@ end
         basis = TerraDG.Basis(n, 2)
         for func in funs
             func_proj = TerraDG.project_to_reference_basis(func, basis, 3)
-            for face in [TerraDG.top, TerraDG.bottom, TerraDG.left, TerraDG.right]
+            for face in [TerraDG.N, TerraDG.S, TerraDG.W, TerraDG.E]
                 fp = TerraDG.face_projection_matrix(basis, TerraDG.top)
                 func_proj_face = fp * func_proj
                 @test sum(func_proj)/length(func_proj) ≈ sum(func_proj_face)/length(func_proj_face)

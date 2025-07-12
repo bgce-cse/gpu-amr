@@ -15,14 +15,16 @@ mutable struct QuadTreeNode
     is_leaf::Bool
     id::Int #TODO change it into morton index
     can_coarsen::Bool # New field: indicates if this node can be coarsened
+    facetypes::Array{FaceType,1}
     dofs_node::Array{Float64,2}
     flux_node::Array{Float64,2}
     
     
     function QuadTreeNode(level, x, y, size, order, ndofs, parent=nothing, id=0, can_coarsen=true)
+        facetypes = Array{FaceType,1}(undef, 4)
         node = new(level, x, y, [x + size[1] * 0.5, y + size[2] * 0.5],
                  size, Vector{Union{QuadTreeNode, Nothing}}(nothing, 4), 
-                  Dict{Face, Vector{QuadTreeNode}}(), parent, true, id, can_coarsen)
+                  Dict{Face, Vector{QuadTreeNode}}(), parent, true, id, can_coarsen,facetypes)
         # Initialize empty neighbor lists
         for dir in instances(Face)
             node.neighbors[dir] = QuadTreeNode[]
