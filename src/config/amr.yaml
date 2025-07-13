@@ -5,13 +5,13 @@ simulation:
   offset: [0.0, 0.0]
 
 solver:
-  order: 3
+  order: 2
   courant: 0.5
   timeintegrator: SSPRK2
 
 equation:
-  equation: advection
-  scenario: planar_waves
+  equation: acoustic
+  scenario: gaussian_wave
 
   
 output:

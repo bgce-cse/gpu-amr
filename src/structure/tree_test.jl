@@ -9,8 +9,6 @@ include("../configuration.jl")
 include("../equations.jl")
 include("mesh_structure.jl")
 include("../grid.jl")
-include("cellarray.jl")      # Include this FIRST
-include("amr_quad_tree.jl")  # Then include this
 include("amr_plotter.jl")
 
 

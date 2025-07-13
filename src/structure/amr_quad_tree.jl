@@ -18,6 +18,7 @@ mutable struct AMRQuadTree <: AbstractMesh
     ndofs::Int
     eq::Equation
     scenario::Scenario
+    current_refinement_level::Int
     dofs::CellArrayView
     flux::CellArrayView
     
@@ -47,7 +48,8 @@ mutable struct AMRQuadTree <: AbstractMesh
             0.0,
             get_ndofs(eq),
             eq,
-            scenario)
+            scenario,
+            0)
         
         # Create initial n×n grid with uncoarsenable children
         initial_refinement_level = Int(log2(config.grid_elements))
@@ -353,7 +355,11 @@ function refine_node!(tree::AMRQuadTree, node::QuadTreeNode)
     # Update neighbor relationships
     update_local_neighbors!(tree, [child for child in node.children if child !== nothing])
 
-    
+    # Update the current refinement level
+    if node.children[1].level > tree.current_refinement_level
+        tree.current_refinement_level = node.children[1].level
+    end
+        
     # Check if we need to refine neighbors to maintain balance
     enforce_balance!(tree)
     
@@ -600,5 +606,3 @@ function print_compact_grid(tree::AMRQuadTree, size::Int=32)
         println()
     end
 end
-
-

@@ -13,7 +13,7 @@ mutable struct QuadTreeNode
     neighbors::Dict{Face, Array{QuadTreeNode,1}}  # neighbors in each direction
     parent::Union{QuadTreeNode, Nothing}
     is_leaf::Bool
-    id::Int #TODO change it into morton index
+    id::Int 
     can_coarsen::Bool # New field: indicates if this node can be coarsened
     facetypes::Array{FaceType,1}
     dofs_node::Array{Float64,2}
@@ -301,9 +301,3 @@ function multiply_scalar!(view::CellArrayView, value::Number)
     end
     return view
 end
-
-# Usage examples:
-# tree.dofs .= 0.0              # Fill with zeros
-# add_scalar!(tree.dofs, 1.0)   # Add 1 to all elements
-# tree.dofs[:, :, 1]            # Get data for first cell
-# println(tree.dofs[:, :, i])   # Print cell data
