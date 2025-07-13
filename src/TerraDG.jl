@@ -211,141 +211,82 @@ function main(configfile::String)
     amr = config.amr
 
     mesh_struct =  create_struct(amr, config, eq, scenario)
+
+    # if config.amr
+    #     # refine_node!(mesh_struct, )
+    #     refine_random_node!(mesh_struct)
+    # end
+
     
-    if config.amr
-        # refine_node!(mesh_struct, )
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-        refine_random_node!(mesh_struct)
-    end
-
-    integrator = make_timeintegrator(config, mesh_struct)
-
     @info "Initialising global matrices"
     globals = GlobalMatrices(mesh_struct.basis, filter, mesh_struct.basis.dimensions)
     @info "Initialised global matrices"
-
+    
     filename = "output/plot"
-
+    
     for i in eachindex(mesh_struct.cells)
         @views interpolate_initial_dofs(eq, scenario, mesh_struct.dofs[:,:,i],mesh_struct.cells[i],mesh_struct.basis)
     end
     
-    plotter = VTKPlotter(eq, scenario, mesh_struct, filename)
-
+    
     mesh_struct.time = 0
     timestep = 0
-    next_plotted = config.plot_start
-
-    #limiter? 
-
+    # Create plotter ONCE before the loop
+    global plotter = VTKPlotter(eq, scenario, mesh_struct, filename)
+    
+    # Initialize plotting variables
+    next_plotted = config.plot_step
+    mesh_changed = false
+    
+    # Stage 1: Plot initial values unrefined
+    @info "Plotting initial values (unrefined)"
+    plot(plotter)
+    
+    # Stage 2: Refine mesh
+    @info "Refining mesh"
+    refined = amr_refine!(mesh_struct, eq, scenario)
+    if refined
+        mesh_changed = true
+        @info "Mesh was refined"
+    end
+    
+    # Stage 3: Plot initial values refined
+    if mesh_changed
+        @info "Updating plotter due to mesh refinement"
+        update_plotter!(plotter, mesh_struct)
+        mesh_changed = false
+    end
+    @info "Plotting initial values (refined)"
+    plot(plotter)
+    
+    # Stage 4: Start timestepping
+    @info "Starting timestepping"
     while mesh_struct.time < config.end_time
+
+        if timestep == 100 # Refine every 50 timesteps
+            refined = amr_refine!(mesh_struct, eq, scenario)
+            if refined  # Assuming amr_refine! returns true if mesh was actually refined
+                mesh_changed = true
+            end
+        end
+
+        integrator = make_timeintegrator(config, mesh_struct)
+
         if timestep > 0
             time_start = time()
+
             print(mesh_struct.current_refinement_level)
-            dt = 1/(config.order^2+1) * (1/(2^mesh_struct.current_refinement_level)) * config.courant * 1/mesh_struct.maxeigenval
-            
-            #limiter?
+            dt = 1/(config.order^2+1) * (config.physicalsize[1]/(2^mesh_struct.current_refinement_level)) * config.courant * 1/mesh_struct.maxeigenval
+
             # Only step up to either end or next plotting
             dt = min(dt, next_plotted-mesh_struct.time, config.end_time - mesh_struct.time)
             @assert dt > 0
             @info "Running timestep" timestep dt mesh_struct.time
+
             step(integrator, mesh_struct, dt) do du, dofs, time
                 evaluate_rhs(eq, scenario, mesh_struct.basis, filter, globals, du, dofs, mesh_struct)
             end
+
             mesh_struct.time += dt
             time_end = time()
             time_elapsed = time_end - time_start
@@ -358,27 +299,58 @@ function main(configfile::String)
                 for normalidx=1:2
                     cureigenval = max_eigenval(eq, celldata, normalidx)
                     mesh_struct.maxeigenval = max(mesh_struct.maxeigenval, cureigenval)
-
                 end
             end
         end
-        if abs(mesh_struct.time - next_plotted) < 1e-10
-            #limiter?
-            @info "Writing output" mesh_struct.time
-            plot(plotter)
+
+        # Check if it's time to plot
+        if mesh_struct.time >= next_plotted - 1e-10
+            @info "Writing output" mesh_struct.time next_plotted
+
+            try
+                # If mesh changed, update the plotter
+                if mesh_changed
+                    @info "Updating plotter due to mesh refinement"
+                    update_plotter!(plotter, mesh_struct)
+                    mesh_changed = false
+                end
+
+                # Plot current state
+                plot(plotter)
+                @info "Successfully wrote VTK output for timestep" plotter.plot_counter-1
+
+            catch e
+                @error "Failed to write VTK output" exception=e
+                println("Error details: ", e)
+                # Print the stack trace
+                for (exc, bt) in Base.catch_stack()
+                    showerror(stdout, exc, bt)
+                    println()
+                end
+            end
+
             next_plotted = mesh_struct.time + config.plot_step
 
-            
-            #TODO delete if want to solve sibson for time
+            # TODO delete if want to solve sibson for time
             if config.equation_name == "sibson" 
                 break
             end
         end
+
         timestep += 1
     end
-    save(plotter)
+
+    # Final save
+    try
+        save(plotter)
+        @info "Final save completed"
+    catch e
+        @error "Failed to save final output" exception=e
+    end
+
     if is_analytical_solution(eq, scenario)
         evaluate_error(eq, scenario, mesh_struct, mesh_struct.time)
     end
+
 end
 end

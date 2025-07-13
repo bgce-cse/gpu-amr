@@ -49,7 +49,7 @@ mutable struct AMRQuadTree <: AbstractMesh
             get_ndofs(eq),
             eq,
             scenario,
-            0)
+            log(2,(config.grid_elements)))
         
         # Create initial n×n grid with uncoarsenable children
         initial_refinement_level = Int(log2(config.grid_elements))
@@ -360,6 +360,7 @@ function refine_node!(tree::AMRQuadTree, node::QuadTreeNode)
         tree.current_refinement_level = node.children[1].level
     end
         
+    interpolate_children(tree.eq, tree.basis, node)
     # Check if we need to refine neighbors to maintain balance
     enforce_balance!(tree)
     
@@ -479,130 +480,58 @@ function loop_over_leaves(tree::AMRQuadTree)
     return positions
 end
 
-# Print tree structure
-function print_tree(tree::AMRQuadTree, node::QuadTreeNode=tree.root, indent::Int=0)
-    prefix = "  " ^ indent
-    println("$(prefix)Node $(node.id): Level $(node.level), " *
-            "Pos ($(node.x), $(node.y)), Size $(node.size), " *
-            "Leaf: $(node.is_leaf), Can Coarsen: $(node.can_coarsen)") # Added can_coarsen
+function amr_refine!(tree::AMRQuadTree, eq::Equation, scenario::Scenario)
+    refined_any = false
     
-    if !node.is_leaf
-        for (i, child) in enumerate(node.children)
-            if child !== nothing
-                println("$(prefix)  Child $i:")
-                print_tree(tree, child, indent + 2)
+    # Make a copy of current cells to avoid modifying collection during iteration
+    cells_to_check = copy(tree.cells)
+    
+    for cell in cells_to_check
+        if evaluate_gradient_amr(cell)
+            success = refine_node!(tree, cell)
+            if success
+                refined_any = true
+                @info "Refined cell at level $(cell.level) -> $(cell.level + 1)"
             end
         end
+    end
+    
+    if refined_any
+        @info "AMR refinement completed. Total cells: $(length(tree.cells))"
+    end
+    
+    return refined_any
+end
+
+global count = 3
+
+function evaluate_gradient_amr(cell::QuadTreeNode)
+    if cell.dataidx % count == 0
+        true
+    else
+        false
     end
 end
 
-# Print grid representation with cell boundaries( can be commented out)
-function print_grid(tree::AMRQuadTree)
-    leaf_nodes = get_leaf_nodes(tree)
-    
-    if isempty(leaf_nodes)
-        println("No leaf nodes to display")
-        return
-    end
-    
-    # Find the range of coordinates and levels
-    min_x = minimum(node.x for node in leaf_nodes)
-    max_x = maximum(node.x + node.size[1] for node in leaf_nodes)
-    min_y = minimum(node.y for node in leaf_nodes)
-    max_y = maximum(node.y + node.size[2] for node in leaf_nodes)
-    
-    # Create a reasonable resolution based on the finest level
-    max_level = maximum(node.level for node in leaf_nodes)
-    resolution = 2^max_level * 16  # 16 chars per finest cell
-    
-    # Create character grid
-    char_grid = fill(' ', resolution, resolution)
-    
-    # Draw each cell
-    for node in leaf_nodes
-        # Map to grid coordinates
-        start_x = Int(round((node.x - min_x) / (max_x - min_x) * (resolution - 1))) + 1
-        start_y = Int(round((node.y - min_y) / (max_y - min_y) * (resolution - 1))) + 1
-        end_x = Int(round((node.x + node.size[1] - min_x) / (max_x - min_x) * (resolution - 1))) + 1
-        end_y = Int(round((node.y + node.size[2] - min_y) / (max_y - min_y) * (resolution - 1))) + 1
+function interpolate_children(eq::Equation,basis::Basis, cell::QuadTreeNode)
+    for (child_relative_idx, child) in enumerate(cell.children)
+        # if cell.center[1]> child.center[1] && cell.center[2]> child.center[2] #SW
+
+        # elseif cell.center[1]< child.center[1] && cell.center[2]> child.center[2] #SE
+
+        # elseif cell.center[1]> child.center[1] && cell.center[2]< child.center[2] #NW
+
+        # else
         
-        # Clamp to bounds
-        start_x = max(1, start_x)
-        start_y = max(1, start_y)
-        end_x = min(resolution, end_x)
-        end_y = min(resolution, end_y)
-        
-        # Fill interior with level number
-        level_char = Char('0' + min(node.level, 9))
-        for i in (start_x+1):(end_x-1)
-            for j in (start_y+1):(end_y-1)
-                char_grid[j, i] = level_char
-            end
-        end
-        
-        # Draw boundaries
-        # Horizontal lines
-        for i in start_x:end_x
-            char_grid[start_y, i] = '-'
-            char_grid[end_y, i] = '-'
-        end
-        
-        # Vertical lines
-        for j in start_y:end_y
-            char_grid[j, start_x] = '|'
-            char_grid[j, end_x] = '|'
-        end
-        
-        # Corners
-        char_grid[start_y, start_x] = '+'
-        char_grid[start_y, end_x] = '+'
-        char_grid[end_y, start_x] = '+'
-        char_grid[end_y, end_x] = '+'
-    end
-    
-    # Print the grid (flip y-axis for proper orientation)
-    println("AMR Grid (numbers = refinement levels, |/- = cell boundaries):")
-    for j in resolution:-1:1
-        for i in 1:resolution
-            print(char_grid[j, i])
-        end
-        println()
+        # end
+        interpolate_children_dofs(eq, cell.dofs_node, child.dofs_node, child, basis, child_relative_idx)
     end
 end
 
-# Compact grid visualization
-function print_compact_grid(tree::AMRQuadTree, size::Int=32)
-    leaf_nodes = get_leaf_nodes(tree)
-    grid = fill(' ', size, size)
-    
-    for node in leaf_nodes
-        # Map node to grid coordinates
-        start_x = Int(floor(node.x * size)) + 1
-        start_y = Int(floor(node.y * size)) + 1
-        end_x = min(size, Int(ceil((node.x + node.size[1]) * size)))
-        end_y = min(size, Int(ceil((node.y + node.size[2]) * size)))
-        
-        # Clamp to bounds
-        start_x = max(1, start_x)
-        start_y = max(1, start_y)
-        
-        # Fill with level indicator
-        level_char = Char('0' + min(node.level, 9))
-        for i in start_x:end_x
-            for j in start_y:end_y
-                if i <= size && j <= size
-                    grid[j, i] = level_char
-                end
-            end
-        end
-    end
-    
-    # Print grid (flip y-axis)
-    println("Compact Grid:")
-    for j in size:-1:1
-        for i in 1:size
-            print(grid[j, i], " ")
-        end
-        println()
-    end
+function relativeposition(child::QuadTreeNode, relative_idx, position)
+
+    offset_x = (relative_idx ==  1 || relative_idx == 3) ? 0.0 : 0.5
+    offset_y = (relative_idx ==  1 || relative_idx == 2) ? 0.0 : 0.5
+
+    return position.*0.5 .+ [offset_x, offset_y]
 end

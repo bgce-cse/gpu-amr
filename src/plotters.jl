@@ -139,6 +139,33 @@ function plot(plotter::VTKPlotter)
     collection_add_timestep(plotter.collection, vtkfile, grid.time)
 end
 
+function update_plotter!(plotter::VTKPlotter, grid::AbstractMesh)
+    # Update the grid reference
+    plotter.grid = grid
+    
+    # Recalculate VTK cells and points for the new mesh
+    order = grid.basis.order
+    cellpoints, num_points_per_cell = get_plot_points(order)
+    
+    # Update cellpoints
+    plotter.cellpoints = cellpoints
+    
+    # Resize arrays for new number of cells
+    plotter.vtkcells = Array{MeshCell,1}(undef, length(grid.cells))
+    plotter.vtkpoints = Array{Float64, 2}(undef, (2, length(grid.cells)*num_points_per_cell))
+    
+    # Rebuild VTK cells and points
+    for (i,cell) in enumerate(grid.cells)
+        offset = cell.center - [cell.size[1]/2, cell.size[2]/2]
+        start = (i-1) * num_points_per_cell
+        for j=1:num_points_per_cell
+            plotter.vtkpoints[:, start+j] = offset .+ cellpoints[j,:] .* cell.size
+        end
+        plotter.vtkcells[i] = MeshCell(VTKCellTypes.VTK_LAGRANGE_QUADRILATERAL, Array(start+1:start+num_points_per_cell))
+    end
+    
+    @info "Updated plotter for $(length(grid.cells)) cells"
+end
 """
     save(plotter::VTKPlotter)
 

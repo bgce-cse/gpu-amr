@@ -34,7 +34,8 @@ mutable struct Grid <: AbstractMesh
     flux::Array{Float64,3}
     maxeigenval::Float64
     time::Float64
-end
+    current_refinement_level::Int
+ end
 
 
 
@@ -128,7 +129,7 @@ function make_grid(eq::Equation, scenario::Scenario, gridsize_1d, size, order, o
     cellsize = size ./ gridsize_1d
     cells = make_mesh(eq, scenario, gridsize_1d, cellsize, offset)
     basis = Basis(order, 2)
-    Grid(basis, cells, size, dofs, flux, -1.0, 0.0)
+    Grid(basis, cells, size, dofs, flux, -1.0, 0.0, log(2,gridsize_1d))
 end
 
 """
@@ -203,8 +204,7 @@ end
     inverse_jacobian(cell)
 
 Returns the inverse Jacobian of a quad cell of size
-`cellsize`.
-"""
+`cellsize`."""
 function inverse_jacobian(cell)
     Diagonal(1 ./ cell.size)
 end
