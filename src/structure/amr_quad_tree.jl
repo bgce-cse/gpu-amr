@@ -22,9 +22,7 @@ mutable struct AMRQuadTree <: AbstractMesh
     dofs::CellArrayView
     flux::CellArrayView
     
-
-    
-    function AMRQuadTree(config::Configuration, eq::Equation, scenario::Scenario, balance_constraint::Int=1)#move max level and balance constraint into config->yaml
+    function AMRQuadTree(config::Configuration, eq::Equation, scenario::Scenario, balance_constraint::Int=1)
         @assert(log(2,(config.grid_elements))%1 == 0)
         max_level = config.max_level
         gridsize_1d = config.grid_elements
@@ -34,7 +32,6 @@ mutable struct AMRQuadTree <: AbstractMesh
         root = QuadTreeNode(0, 0.0, 0.0, size, order, get_ndofs(eq), nothing, 1)
         cells = Vector{QuadTreeNode}(undef, (gridsize))
         basis = Basis(order, 2)
-
 
         tree = new(root, 
             max_level, 
@@ -63,9 +60,8 @@ mutable struct AMRQuadTree <: AbstractMesh
     end
 end
 
-
-# Get child index based on relative position
-function get_child_index(x_rel::Float64, y_rel::Float64)
+# Get child index based on relative position - optimized with @inline
+@inline function get_child_index(x_rel::Float64, y_rel::Float64)
     if x_rel < 0.5 && y_rel < 0.5
         return 1  # SW
     elseif x_rel >= 0.5 && y_rel < 0.5
@@ -77,8 +73,8 @@ function get_child_index(x_rel::Float64, y_rel::Float64)
     end
 end
 
-# Get child coordinates
-function get_child_coords(parent::QuadTreeNode, child_idx::Int)
+# Get child coordinates - optimized with @inline
+@inline function get_child_coords(parent::QuadTreeNode, child_idx::Int)
     half_size = parent.size ./ 2
     if child_idx == 1  # SW
         return parent.x, parent.y
@@ -91,8 +87,8 @@ function get_child_coords(parent::QuadTreeNode, child_idx::Int)
     end
 end
 
-# Check if two nodes are neighbors
-function are_neighbors(node1::QuadTreeNode, node2::QuadTreeNode)
+# Check if two nodes are neighbors - optimized with @inline
+@inline function are_neighbors(node1::QuadTreeNode, node2::QuadTreeNode)
     # Check if nodes share an edge or corner
     x1, y1, s1 = node1.x, node1.y, node1.size
     x2, y2, s2 = node2.x, node2.y, node2.size
@@ -108,8 +104,8 @@ function are_neighbors(node1::QuadTreeNode, node2::QuadTreeNode)
     return edge_x || edge_y
 end
 
-# Determine direction from node1 to node2
-function get_direction(node1::QuadTreeNode, node2::QuadTreeNode)
+# Determine direction from node1 to node2 - optimized with @inline
+@inline function get_direction(node1::QuadTreeNode, node2::QuadTreeNode)
     x1, y1, s1 = node1.x, node1.y, node1.size
     x2, y2, s2 = node2.x, node2.y, node2.size
     
@@ -136,17 +132,15 @@ function get_direction(node1::QuadTreeNode, node2::QuadTreeNode)
 end
 
 # Modified find_neighbors! function with periodic boundary conditions
-
-# Modified find_neighbors! function with periodic boundary conditions
 function find_neighbors!(tree::AMRQuadTree, node::QuadTreeNode)
     # Initialize: clear neighbors and assume boundary everywhere
-    for (i, dir) in enumerate(instances(Face))
+    @inbounds for (i, dir) in enumerate(instances(Face))
         empty!(node.neighbors[dir])
         node.facetypes[i] = boundary
     end
 
     # Find neighbors among all leaf nodes (including periodic)
-    for other_node in tree.all_nodes
+    @inbounds for other_node in tree.all_nodes
         if other_node != node && other_node.is_leaf
             if are_neighbors(node, other_node)
                 # Regular neighbor
@@ -173,8 +167,8 @@ function find_neighbors!(tree::AMRQuadTree, node::QuadTreeNode)
     end
 end
 
-# New function to check if two nodes are periodic neighbors
-function check_periodic_neighbor(tree::AMRQuadTree, node1::QuadTreeNode, node2::QuadTreeNode)
+# New function to check if two nodes are periodic neighbors - optimized with @inline
+@inline function check_periodic_neighbor(tree::AMRQuadTree, node1::QuadTreeNode, node2::QuadTreeNode)
     domain_size = tree.size
     x1, y1, s1 = node1.x, node1.y, node1.size
     x2, y2, s2 = node2.x, node2.y, node2.size
@@ -260,7 +254,7 @@ end
 
 # Update all neighbor relationships
 function update_all_neighbors!(tree::AMRQuadTree)
-    for node in tree.all_nodes
+    @inbounds for node in tree.all_nodes
         if node.is_leaf
             find_neighbors!(tree, node)
         end
@@ -270,7 +264,7 @@ end
 
 function update_local_neighbors!(tree::AMRQuadTree, nodes_to_update::Vector{QuadTreeNode})
     updated_nodes = Set{QuadTreeNode}()
-    for node in nodes_to_update
+    @inbounds for node in nodes_to_update
         if node.is_leaf
             find_neighbors!(tree, node)
             push!(updated_nodes, node)
@@ -289,7 +283,7 @@ function update_local_neighbors!(tree::AMRQuadTree, nodes_to_update::Vector{Quad
 end
 
 # Update the mesh 
-function update_tree_views!(tree::AMRQuadTree)
+@inline function update_tree_views!(tree::AMRQuadTree)
     tree.cells = get_leaf_nodes(tree)
     tree.dofs = CellArrayView(tree.cells, :dofs_node)
     tree.flux = CellArrayView(tree.cells, :flux_node)
@@ -306,7 +300,7 @@ function refine_to_level!(tree::AMRQuadTree, node::QuadTreeNode, target_level::I
     node.is_leaf = false
     half_size = node.size ./ 2
     
-    for i in 1:4
+    @inbounds for i in 1:4
         x, y = get_child_coords(node, i)
         child_center = [x + half_size[1] * 0.5, y + half_size[2] * 0.5]
         tree.node_counter += 1
@@ -330,7 +324,7 @@ function refine_node!(tree::AMRQuadTree, node::QuadTreeNode)
     
     # Check balance constraint
     for dir in instances(Face)
-        for neighbor in node.neighbors[dir]
+        @inbounds for neighbor in node.neighbors[dir]
             if neighbor.level < node.level - tree.balance_constraint
                 return false  # Would violate balance constraint
             end
@@ -342,7 +336,7 @@ function refine_node!(tree::AMRQuadTree, node::QuadTreeNode)
     node.is_leaf = false
     half_size = node.size ./ 2
     
-    for i in 1:4
+    @inbounds for i in 1:4
         x, y = get_child_coords(node, i)
         child_center = [x + half_size[1] * 0.5, y + half_size[2] * 0.5]
         tree.node_counter += 1
@@ -374,14 +368,14 @@ function coarsen_node!(tree::AMRQuadTree, node::QuadTreeNode)
     end
     
     # Check if all children are leaves
-    for child in node.children
+    @inbounds for child in node.children
         if child !== nothing && !child.is_leaf
             return false
         end
     end
     
     # Check balance constraint - ensure coarsening won't violate balance
-    for child in node.children
+    @inbounds for child in node.children
         if child !== nothing
             for dir in instances(Face)
                 for neighbor in child.neighbors[dir]
@@ -394,7 +388,7 @@ function coarsen_node!(tree::AMRQuadTree, node::QuadTreeNode)
     end
     
     # Remove children from all_nodes
-    for child in node.children
+    @inbounds for child in node.children
         if child !== nothing
             filter!(n -> n.id != child.id, tree.all_nodes)
         end
@@ -406,7 +400,6 @@ function coarsen_node!(tree::AMRQuadTree, node::QuadTreeNode)
     
     # Update neighbor relationships
     update_all_neighbors!(tree)
-
     
     return true
 end
@@ -416,7 +409,8 @@ function enforce_balance!(tree::AMRQuadTree)
     changed = true
     while changed
         changed = false
-        for node in copy(tree.all_nodes)
+        nodes_copy = copy(tree.all_nodes)
+        @inbounds for node in nodes_copy
             if node.is_leaf
                 for dir in instances(Face)
                     for neighbor in node.neighbors[dir]
@@ -434,7 +428,7 @@ function enforce_balance!(tree::AMRQuadTree)
 end
 
 # Get neighbors of a node in a specific direction
-function get_neighbors(node::QuadTreeNode, direction::Face)
+@inline function get_neighbors(node::QuadTreeNode, direction::Face)
     return node.neighbors[direction]
 end
 
@@ -463,18 +457,17 @@ end
 function get_leaf_nodes(tree::AMRQuadTree)
     leaves = filter(node -> node.is_leaf, tree.all_nodes)
     sorted_leaves = sort(leaves, by = node -> node.id)
-    for (i, leaf) in enumerate(sorted_leaves)
+    @inbounds for (i, leaf) in enumerate(sorted_leaves)
         leaf.dataidx = i
     end
     return sorted_leaves
 end
 
-
 # New function: Loop over leaves and their positions
 function loop_over_leaves(tree::AMRQuadTree)
     leaf_nodes = get_leaf_nodes(tree)
     positions = []
-    for node in leaf_nodes
+    @inbounds for node in leaf_nodes
         push!(positions, (node.x, node.y, node.size))
     end
     return positions
@@ -486,7 +479,7 @@ function amr_refine!(tree::AMRQuadTree, eq::Equation, scenario::Scenario)
     # Make a copy of current cells to avoid modifying collection during iteration
     cells_to_check = copy(tree.cells)
     
-    for cell in cells_to_check
+    @inbounds for cell in cells_to_check
         if evaluate_gradient_amr(cell)
             success = refine_node!(tree, cell)
             if success
@@ -505,7 +498,7 @@ end
 
 global count = 3
 
-function evaluate_gradient_amr(cell::QuadTreeNode)
+@inline function evaluate_gradient_amr(cell::QuadTreeNode)
     if cell.dataidx % count == 0
         true
     else
@@ -514,7 +507,7 @@ function evaluate_gradient_amr(cell::QuadTreeNode)
 end
 
 function interpolate_children(eq::Equation,basis::Basis, cell::QuadTreeNode)
-    for (child_relative_idx, child) in enumerate(cell.children)
+    @inbounds for (child_relative_idx, child) in enumerate(cell.children)
         # if cell.center[1]> child.center[1] && cell.center[2]> child.center[2] #SW
 
         # elseif cell.center[1]< child.center[1] && cell.center[2]> child.center[2] #SE
@@ -528,10 +521,8 @@ function interpolate_children(eq::Equation,basis::Basis, cell::QuadTreeNode)
     end
 end
 
-function relativeposition(child::QuadTreeNode, relative_idx, position)
-
+@inline function relativeposition(child::QuadTreeNode, relative_idx, position)
     offset_x = (relative_idx ==  1 || relative_idx == 3) ? 0.0 : 0.5
     offset_y = (relative_idx ==  1 || relative_idx == 2) ? 0.0 : 0.5
-
     return position.*0.5 .+ [offset_x, offset_y]
 end

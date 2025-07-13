@@ -242,28 +242,31 @@ function main(configfile::String)
     @info "Plotting initial values (unrefined)"
     plot(plotter)
     
-    # Stage 2: Refine mesh
-    @info "Refining mesh"
-    refined = amr_refine!(mesh_struct, eq, scenario)
-    if refined
-        mesh_changed = true
-        @info "Mesh was refined"
+
+    if amr
+        # Stage 2: Refine mesh
+        @info "Refining mesh"
+        refined = amr_refine!(mesh_struct, eq, scenario)
+        if refined
+            mesh_changed = true
+            @info "Mesh was refined"
+        end
+        
+        # Stage 3: Plot initial values refined
+        if mesh_changed
+            @info "Updating plotter due to mesh refinement"
+            update_plotter!(plotter, mesh_struct)
+            mesh_changed = false
+        end
+        @info "Plotting initial values (refined)"
+        plot(plotter)
     end
-    
-    # Stage 3: Plot initial values refined
-    if mesh_changed
-        @info "Updating plotter due to mesh refinement"
-        update_plotter!(plotter, mesh_struct)
-        mesh_changed = false
-    end
-    @info "Plotting initial values (refined)"
-    plot(plotter)
     
     # Stage 4: Start timestepping
     @info "Starting timestepping"
     while mesh_struct.time < config.end_time
 
-        if timestep == 100 # Refine every 50 timesteps
+        if timestep == 100 && amr # Refine every 50 timesteps
             refined = amr_refine!(mesh_struct, eq, scenario)
             if refined  # Assuming amr_refine! returns true if mesh was actually refined
                 mesh_changed = true
