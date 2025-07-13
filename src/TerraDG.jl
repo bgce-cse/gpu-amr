@@ -211,12 +211,6 @@ function main(configfile::String)
     amr = config.amr
 
     mesh_struct =  create_struct(amr, config, eq, scenario)
-
-    # if config.amr
-    #     # refine_node!(mesh_struct, )
-    #     refine_random_node!(mesh_struct)
-    # end
-
     
     @info "Initialising global matrices"
     globals = GlobalMatrices(mesh_struct.basis, filter, mesh_struct.basis.dimensions)
@@ -246,7 +240,7 @@ function main(configfile::String)
     if amr
         # Stage 2: Refine mesh
         @info "Refining mesh"
-        refined = amr_refine!(mesh_struct, eq, scenario)
+        refined = amr_update!(mesh_struct, eq, scenario)
         if refined
             mesh_changed = true
             @info "Mesh was refined"
@@ -266,8 +260,8 @@ function main(configfile::String)
     @info "Starting timestepping"
     while mesh_struct.time < config.end_time
 
-        if timestep == 100 && amr # Refine every 50 timesteps
-            refined = amr_refine!(mesh_struct, eq, scenario)
+        if timestep % 50 == 49 && amr # Refine every 50 timesteps
+            refined = amr_update!(mesh_struct, eq, scenario)
             if refined  # Assuming amr_refine! returns true if mesh was actually refined
                 mesh_changed = true
             end

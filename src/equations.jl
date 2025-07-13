@@ -18,8 +18,20 @@ end
 
 function interpolate_children_dofs(eq::Equation, parent_dofs, child_dofs, child, basis, relative_idx)
     child_dofs .= project_to_reference_basis(basis, get_ndofs(eq)) do px, py
-        rel_pos = relativeposition(child, relative_idx, (px, py)) 
+        rel_pos = relative_child_position(relative_idx, (px, py)) 
         evaluate_basis(basis, parent_dofs, rel_pos)
+    end
+end
+
+function interpolate_parent_dofs(eq::Equation, parent, basis)
+    parent_dofs = parent.dofs_node
+    parent_dofs .= project_to_reference_basis(basis, get_ndofs(eq)) do px, py
+        rel_pos, child_idx = relative_parent_position((px, py)) 
+        evaluate_basis(basis, parent.children[child_idx].dofs_node, rel_pos)
+
+        # for child in parent.children
+        #     evaluate_basis(basis, child.dofs_node, rel_pos)
+        # end
     end
 end
 

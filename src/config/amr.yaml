@@ -5,7 +5,7 @@ simulation:
   offset: [0.0, 0.0]
 
 solver:
-  order: 3
+  order: 2
   courant: 0.5
   timeintegrator: SSPRK2
 
@@ -16,10 +16,10 @@ equation:
   
 output:
   start: 0 #s
-  step: 0.1 #s
+  step: 0.05 #s
 
 amr:
   amr : true
-  max_level: 7
+  max_level: 6
 
   balance_constraint: 1

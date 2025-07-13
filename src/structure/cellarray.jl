@@ -19,18 +19,25 @@ mutable struct QuadTreeNode
     dofs_node::Array{Float64,2}
     flux_node::Array{Float64,2}
     dataidx::Int
+    # dofs_gradient::similar{dofs_node}
     
     
     function QuadTreeNode(level, x, y, size, order, ndofs, parent=nothing, id=0, can_coarsen=true)
         facetypes = Array{FaceType,1}(undef, 4)
-     
-        node = new(level, x, y, [x + size[1] * 0.5, y + size[2] * 0.5],
-                 size, Vector{Union{QuadTreeNode, Nothing}}(nothing, 4), 
-                  Dict{Face, Vector{QuadTreeNode}}(), parent, true, id, can_coarsen,facetypes)
-        # Initialize empty neighbor lists
+        
+        # FIXED: Properly initialize children vector
+        children = Vector{Union{QuadTreeNode, Nothing}}(undef, 4)
+        fill!(children, nothing)
+        
+        # FIXED: Initialize neighbors dictionary with empty vectors
+        neighbors = Dict{Face, Vector{QuadTreeNode}}()
         for dir in instances(Face)
-            node.neighbors[dir] =  Array{QuadTreeNode,1}(undef,2)
+            neighbors[dir] = QuadTreeNode[]  # Empty vector, not pre-allocated
         end
+        
+        node = new(level, x, y, [x + size[1] * 0.5, y + size[2] * 0.5],
+                 size, children, neighbors, parent, true, id, can_coarsen, facetypes)
+        
         node.dofs_node = Array{Float64,2}(undef, (order^2, ndofs))
         node.flux_node = similar(node.dofs_node, order^2 * 2, ndofs)
         return node

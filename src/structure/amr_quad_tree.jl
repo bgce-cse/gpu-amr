@@ -212,45 +212,45 @@ end
     return nothing
 end
 
-# Alternative: More robust version with tolerance
-function check_periodic_neighbor_robust(tree::AMRQuadTree, node1::QuadTreeNode, node2::QuadTreeNode)
-    domain_size = tree.size
-    x1, y1, s1 = node1.x, node1.y, node1.size
-    x2, y2, s2 = node2.x, node2.y, node2.size
+# # Alternative: More robust version with tolerance
+# function check_periodic_neighbor_robust(tree::AMRQuadTree, node1::QuadTreeNode, node2::QuadTreeNode)
+#     domain_size = tree.size
+#     x1, y1, s1 = node1.x, node1.y, node1.size
+#     x2, y2, s2 = node2.x, node2.y, node2.size
     
-    # Tolerance for floating point comparison
-    tol = 1e-10
+#     # Tolerance for floating point comparison
+#     tol = 1e-10
     
-    # Check East-West periodic boundary
-    if (abs(x1 + s1[1] - domain_size[1]) < tol) && (abs(x2) < tol)
-        # Check y-overlap
-        if max(y1, y2) < min(y1 + s1[2], y2 + s2[2]) + tol
-            return (E, 3)
-        end
-    end
+#     # Check East-West periodic boundary
+#     if (abs(x1 + s1[1] - domain_size[1]) < tol) && (abs(x2) < tol)
+#         # Check y-overlap
+#         if max(y1, y2) < min(y1 + s1[2], y2 + s2[2]) + tol
+#             return (E, 3)
+#         end
+#     end
     
-    if (abs(x1) < tol) && (abs(x2 + s2[1] - domain_size[1]) < tol)
-        if max(y1, y2) < min(y1 + s1[2], y2 + s2[2]) + tol
-            return (W, 1)
-        end
-    end
+#     if (abs(x1) < tol) && (abs(x2 + s2[1] - domain_size[1]) < tol)
+#         if max(y1, y2) < min(y1 + s1[2], y2 + s2[2]) + tol
+#             return (W, 1)
+#         end
+#     end
     
-    # Check North-South periodic boundary
-    if (abs(y1 + s1[2] - domain_size[2]) < tol) && (abs(y2) < tol)
-        # Check x-overlap
-        if max(x1, x2) < min(x1 + s1[1], x2 + s2[1]) + tol
-            return (N, 2)
-        end
-    end
+#     # Check North-South periodic boundary
+#     if (abs(y1 + s1[2] - domain_size[2]) < tol) && (abs(y2) < tol)
+#         # Check x-overlap
+#         if max(x1, x2) < min(x1 + s1[1], x2 + s2[1]) + tol
+#             return (N, 2)
+#         end
+#     end
     
-    if (abs(y1) < tol) && (abs(y2 + s2[2] - domain_size[2]) < tol)
-        if max(x1, x2) < min(x1 + s1[1], x2 + s2[1]) + tol
-            return (S, 4)
-        end
-    end
+#     if (abs(y1) < tol) && (abs(y2 + s2[2] - domain_size[2]) < tol)
+#         if max(x1, x2) < min(x1 + s1[1], x2 + s2[1]) + tol
+#             return (S, 4)
+#         end
+#     end
     
-    return nothing
-end
+#     return nothing
+# end
 
 # Update all neighbor relationships
 function update_all_neighbors!(tree::AMRQuadTree)
@@ -361,41 +361,49 @@ function refine_node!(tree::AMRQuadTree, node::QuadTreeNode)
     return true
 end
 
-# Coarsen a node (remove its children)
+
+# Fixed coarsen_node! function
 function coarsen_node!(tree::AMRQuadTree, node::QuadTreeNode)
-    if node.is_leaf || !node.can_coarsen # Added check for can_coarsen
+    if node.is_leaf || !node.can_coarsen
         return false
     end
     
-    # Check if all children are leaves
-    @inbounds for child in node.children
-        if child !== nothing && !child.is_leaf
-            return false
+    # Check if all children are leaves and exist
+    children_to_remove = QuadTreeNode[]
+    for child in node.children
+        if child === nothing
+            continue
         end
+        if !child.is_leaf
+            return false  # Cannot coarsen if any child is not a leaf
+        end
+        push!(children_to_remove, child)
+    end
+    
+    # If no children to remove, nothing to do
+    if isempty(children_to_remove)
+        return false
     end
     
     # Check balance constraint - ensure coarsening won't violate balance
-    @inbounds for child in node.children
-        if child !== nothing
-            for dir in instances(Face)
-                for neighbor in child.neighbors[dir]
-                    if neighbor.level > node.level + tree.balance_constraint
-                        return false
-                    end
+    for child in children_to_remove
+        for dir in instances(Face)
+            for neighbor in child.neighbors[dir]
+                if neighbor.level > node.level + tree.balance_constraint
+                    return false
                 end
             end
         end
     end
     
-    # Remove children from all_nodes
-    @inbounds for child in node.children
-        if child !== nothing
-            filter!(n -> n.id != child.id, tree.all_nodes)
-        end
-    end
+    # Interpolate parent data from children before removing them
+    interpolate_parent(tree.eq, tree.basis, node)
     
-    # Remove children
-    node.children = Vector{Union{QuadTreeNode, Nothing}}(nothing, 4)
+    # Remove children from all_nodes using object identity
+    filter!(n -> !(n in children_to_remove), tree.all_nodes)
+    
+    # FIXED: Properly clear children array
+    fill!(node.children, nothing)
     node.is_leaf = true
     
     # Update neighbor relationships
@@ -403,6 +411,8 @@ function coarsen_node!(tree::AMRQuadTree, node::QuadTreeNode)
     
     return true
 end
+
+
 
 # Enforce balance constraint
 function enforce_balance!(tree::AMRQuadTree)
@@ -432,26 +442,26 @@ end
     return node.neighbors[direction]
 end
 
-# Find node at a specific point
-function find_node_at_point(tree::AMRQuadTree, x::Float64, y::Float64)
-    current = tree.root
+# # Find node at a specific point
+# function find_node_at_point(tree::AMRQuadTree, x::Float64, y::Float64)
+#     current = tree.root
     
-    while !current.is_leaf
-        # Find which child contains the point
-        rel_x = (x - current.x) / current.size[1]
-        rel_y = (y - current.y) / current.size[2]
+#     while !current.is_leaf
+#         # Find which child contains the point
+#         rel_x = (x - current.x) / current.size[1]
+#         rel_y = (y - current.y) / current.size[2]
         
-        child_idx = get_child_index(rel_x, rel_y)
+#         child_idx = get_child_index(rel_x, rel_y)
         
-        if current.children[child_idx] === nothing
-            break
-        end
+#         if current.children[child_idx] === nothing
+#             break
+#         end
         
-        current = current.children[child_idx]
-    end
+#         current = current.children[child_idx]
+#     end
     
-    return current
-end
+#     return current
+# end
 
 # Get all leaf nodes
 function get_leaf_nodes(tree::AMRQuadTree)
@@ -473,56 +483,85 @@ function loop_over_leaves(tree::AMRQuadTree)
     return positions
 end
 
-function amr_refine!(tree::AMRQuadTree, eq::Equation, scenario::Scenario)
-    refined_any = false
+function amr_update!(tree::AMRQuadTree, eq::Equation, scenario::Scenario)
+    modified_any = false
+    cells_to_refine = QuadTreeNode[]
+    cells_to_coarsen = QuadTreeNode[]
     
-    # Make a copy of current cells to avoid modifying collection during iteration
-    cells_to_check = copy(tree.cells)
-    
-    @inbounds for cell in cells_to_check
-        if evaluate_gradient_amr(cell)
-            success = refine_node!(tree, cell)
-            if success
-                refined_any = true
-                @info "Refined cell at level $(cell.level) -> $(cell.level + 1)"
+    @inbounds for cell in tree.cells
+        if evaluate_gradient_amr(cell,tree)
+            push!(cells_to_refine, cell)
+        else
+            if cell.parent !== nothing
+                push!(cells_to_coarsen, cell.parent)
             end
         end
     end
-    
-    if refined_any
-        @info "AMR refinement completed. Total cells: $(length(tree.cells))"
+
+    for cell in cells_to_refine
+        modified_any |= refine_node!(tree, cell)
     end
-    
-    return refined_any
+    for parent in unique(cells_to_coarsen)
+        modified_any |= coarsen_node!(tree, parent)
+    end
+
+    update_tree_views!(tree)
+    return modified_any
 end
 
-global count = 3
-
-@inline function evaluate_gradient_amr(cell::QuadTreeNode)
-    if cell.dataidx % count == 0
-        true
-    else
-        false
+@inline function evaluate_gradient_amr(
+    cell::QuadTreeNode,
+    tree::AMRQuadTree,
+    threshold_factor::Float64 = 1.2
+)
+    if !cell.is_leaf || cell.level >= tree.max_level
+        return false
     end
+
+    # Compute average absolute value across all entries of dofs_node
+    avg_cell_dof = sum(abs, cell.dofs_node) / length(cell.dofs_node)
+
+    if avg_cell_dof < 1e-9
+        return false
+    end
+
+    total_jump_squared = 0.0
+
+    # Sum the squared L2 norm of the jump with each neighbor
+    for dir in instances(Face)
+        for neighbor in get_neighbors(cell, dir)
+
+            jump = cell.dofs_node .- neighbor.dofs_node
+
+            total_jump_squared += sum(abs2, jump)
+        end
+    end
+
+    indicator = sqrt(total_jump_squared)
+
+    # Refine if the indicator exceeds the scaled threshold
+    return indicator > threshold_factor * avg_cell_dof
 end
 
 function interpolate_children(eq::Equation,basis::Basis, cell::QuadTreeNode)
     @inbounds for (child_relative_idx, child) in enumerate(cell.children)
-        # if cell.center[1]> child.center[1] && cell.center[2]> child.center[2] #SW
-
-        # elseif cell.center[1]< child.center[1] && cell.center[2]> child.center[2] #SE
-
-        # elseif cell.center[1]> child.center[1] && cell.center[2]< child.center[2] #NW
-
-        # else
-        
-        # end
         interpolate_children_dofs(eq, cell.dofs_node, child.dofs_node, child, basis, child_relative_idx)
     end
 end
 
-@inline function relativeposition(child::QuadTreeNode, relative_idx, position)
+function interpolate_parent(eq::Equation,basis::Basis, cell::QuadTreeNode)
+    @inbounds interpolate_parent_dofs(eq, cell, basis)
+end
+
+@inline function relative_child_position(relative_idx, position)
     offset_x = (relative_idx ==  1 || relative_idx == 3) ? 0.0 : 0.5
     offset_y = (relative_idx ==  1 || relative_idx == 2) ? 0.0 : 0.5
     return position.*0.5 .+ [offset_x, offset_y]
+end
+
+@inline function relative_parent_position(position)
+    offset_x = (position[1] < 0.5) ? 0.0 : -1
+    offset_y = (position[2] < 0.5) ? 0.0 : -1
+    child_idx = 1 + 2*(offset_x == -1) + 1*(offset_y == -1)
+    return position.*2.0 .+ [offset_x, offset_y], child_idx
 end
