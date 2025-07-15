@@ -10,7 +10,7 @@ solver:
   timeintegrator: SSPRK2
 
 equation:
-  equation: acoustic
+  equation: acoustic  
   scenario: gaussian_wave
 
   

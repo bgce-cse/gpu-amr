@@ -512,37 +512,37 @@ end
 @inline function evaluate_gradient_amr(
     cell::QuadTreeNode,
     tree::AMRQuadTree,
-    threshold_factor::Float64 = 1.2
+    threshold::Float64 = 0.01
 )
     if !cell.is_leaf || cell.level >= tree.max_level
         return false
     end
 
-    # Compute average absolute value across all entries of dofs_node
-    avg_cell_dof = sum(abs, cell.dofs_node) / length(cell.dofs_node)
-
-    if avg_cell_dof < 1e-9
-        return false
-    end
-
-    total_jump_squared = 0.0
-
-    # Sum the squared L2 norm of the jump with each neighbor
+    # Compute gradient using finite differences with neighbors
+    grad_magnitude_squared = 0.0
+    h = 1.0 / (2^cell.level)  # Cell size
+    
     for dir in instances(Face)
-        for neighbor in get_neighbors(cell, dir)
-
-            jump = cell.dofs_node .- neighbor.dofs_node
-
-            total_jump_squared += sum(abs2, jump)
+        neighbors = get_neighbors(cell, dir)
+        if !isempty(neighbors)
+            neighbor = neighbors[1]  # Take first neighbor
+            
+            # Compute gradient in this direction
+            grad_dir = (neighbor.dofs_node .- cell.dofs_node) / h
+            grad_magnitude_squared += sum(abs2, grad_dir)
         end
     end
-
-    indicator = sqrt(total_jump_squared)
-
-    # Refine if the indicator exceeds the scaled threshold
-    return indicator > threshold_factor * avg_cell_dof
+    
+    # Normalize by solution magnitude to make it scale-invariant
+    solution_magnitude = sqrt(sum(abs2, cell.dofs_node))
+    if solution_magnitude < 1e-12
+        return false
+    end
+    
+    gradient_indicator = sqrt(grad_magnitude_squared) / solution_magnitude
+    
+    return gradient_indicator > threshold
 end
-
 function interpolate_children(eq::Equation,basis::Basis, cell::QuadTreeNode)
     @inbounds for (child_relative_idx, child) in enumerate(cell.children)
         interpolate_children_dofs(eq, cell.dofs_node, child.dofs_node, child, basis, child_relative_idx)
@@ -560,8 +560,15 @@ end
 end
 
 @inline function relative_parent_position(position)
-    offset_x = (position[1] < 0.5) ? 0.0 : -1
-    offset_y = (position[2] < 0.5) ? 0.0 : -1
-    child_idx = 1 + 2*(offset_x == -1) + 1*(offset_y == -1)
-    return position.*2.0 .+ [offset_x, offset_y], child_idx
+    ix = position[1] >= 0.5
+    iy = position[2] >= 0.5
+    child_idx = 1 + ix + 2*iy
+    
+    # Map from parent's reference frame to child's reference frame
+    # Subtract quadrant offset and scale up by 2
+    offset_x = ix ? 0.5 : 0.0
+    offset_y = iy ? 0.5 : 0.0
+    child_position = 2.0 .* (position .- (offset_x, offset_y))
+    
+    return child_position, child_idx
 end
