@@ -1,7 +1,7 @@
 simulation:
   end_time: 1
   grid_elements: 16
-  grid_size: 1.0
+  grid_size: 2.0
   offset: [0.0, 0.0]
 
 solver:
@@ -20,6 +20,6 @@ output:
 
 amr:
   amr : true
-  max_level: 6
+  max_level: 7
 
   balance_constraint: 1

@@ -483,18 +483,45 @@ function loop_over_leaves(tree::AMRQuadTree)
     return positions
 end
 
-function amr_update!(tree::AMRQuadTree, eq::Equation, scenario::Scenario)
+function amr_update!(tree::AMRQuadTree, eq::Equation, scenario::Scenario; refine_ratio::Float64 = 0.6)
     modified_any = false
     cells_to_refine = QuadTreeNode[]
     cells_to_coarsen = QuadTreeNode[]
-    
-    @inbounds for cell in tree.cells
-        if evaluate_gradient_amr(cell,tree)
-            push!(cells_to_refine, cell)
-        else
-            if cell.parent !== nothing
-                push!(cells_to_coarsen, cell.parent)
+    indicators = zeros(Float64, length(tree.cells))
+
+    # 1. Compute indicator for all cells and find the maximum
+    max_indicator = 0.0
+    @inbounds for (i, cell) in enumerate(tree.cells)
+        indicator = 0.0
+        if cell.is_leaf && cell.level < tree.max_level
+            grad_magnitude_squared = 0.0
+            h = 1.0 / (2^cell.level)
+            for dir in instances(Face)
+                neighbors = get_neighbors(cell, dir)
+                if !isempty(neighbors)
+                    neighbor = neighbors[1]
+                    grad_dir = (neighbor.dofs_node .- cell.dofs_node) / h
+                    grad_magnitude_squared += sum(abs2, grad_dir)
+                end
             end
+            solution_magnitude = sqrt(sum(abs2, cell.dofs_node))
+            if solution_magnitude > 1e-12
+                indicator = sqrt(grad_magnitude_squared) / solution_magnitude
+            end
+        end
+        indicators[i] = indicator
+        max_indicator = max(max_indicator, indicator)
+    end
+
+    threshold = refine_ratio * max_indicator
+
+    # 2. Decide which cells to refine/coarsen
+    @inbounds for (i, cell) in enumerate(tree.cells)
+        indicator = indicators[i]
+        if indicator >= threshold && cell.is_leaf && cell.level < tree.max_level
+            push!(cells_to_refine, cell)
+        elseif indicator < threshold && cell.is_leaf && cell.parent !== nothing
+            push!(cells_to_coarsen, cell.parent)
         end
     end
 
@@ -509,40 +536,6 @@ function amr_update!(tree::AMRQuadTree, eq::Equation, scenario::Scenario)
     return modified_any
 end
 
-@inline function evaluate_gradient_amr(
-    cell::QuadTreeNode,
-    tree::AMRQuadTree,
-    threshold::Float64 = 0.01
-)
-    if !cell.is_leaf || cell.level >= tree.max_level
-        return false
-    end
-
-    # Compute gradient using finite differences with neighbors
-    grad_magnitude_squared = 0.0
-    h = 1.0 / (2^cell.level)  # Cell size
-    
-    for dir in instances(Face)
-        neighbors = get_neighbors(cell, dir)
-        if !isempty(neighbors)
-            neighbor = neighbors[1]  # Take first neighbor
-            
-            # Compute gradient in this direction
-            grad_dir = (neighbor.dofs_node .- cell.dofs_node) / h
-            grad_magnitude_squared += sum(abs2, grad_dir)
-        end
-    end
-    
-    # Normalize by solution magnitude to make it scale-invariant
-    solution_magnitude = sqrt(sum(abs2, cell.dofs_node))
-    if solution_magnitude < 1e-12
-        return false
-    end
-    
-    gradient_indicator = sqrt(grad_magnitude_squared) / solution_magnitude
-    
-    return gradient_indicator > threshold
-end
 function interpolate_children(eq::Equation,basis::Basis, cell::QuadTreeNode)
     @inbounds for (child_relative_idx, child) in enumerate(cell.children)
         interpolate_children_dofs(eq, cell.dofs_node, child.dofs_node, child, basis, child_relative_idx)
