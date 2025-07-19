@@ -147,7 +147,6 @@ end
 Return the mass-matrix for a `dimensions`-dimensional
 tensor-product basis built up from the 1d-basis `basis`.
 """
-#for the referece element the volume is multiplied afterwards TODO can also be a vector
 function massmatrix(basis::Basis, dimensions)
 
     M1 = Diagonal(basis.quadweights)
@@ -221,7 +220,89 @@ function face_projection_matrix(basis::Basis, face)
         return kron(phi_y_at_face', I(n))
     end
 end
+"""
+Handle projection when neighbor is smaller than current cell.
+"""
+function project_smaller_neighbor!(
+    basis, cell, sub_neigh, dofsneigh, fluxneigh, 
+    buffers_face, faceneigh,face_dir
+)
+    face_points = get_face_quadpoints(basis, faceneigh)
+    
+    if Face(face_dir) == N || Face(face_dir) == S
+        # North/South faces
+        mask = (cell.center[1] < sub_neigh.center[1]) ? (face_points[1] .>= 0.5) : (face_points[1] .< 0.5)
+        offset = (cell.center[1] < sub_neigh.center[1]) ? -1.0 : 0.0
+        masked_indices = findall(mask)
+        points = (face_points[1] .* 2 .+ offset, face_points[2])
 
+        for (masked_idx, real_idx) in enumerate(masked_indices)
+            buffers_face.dofsfaceneigh[real_idx, :] = evaluate_basis(basis, dofsneigh, [points[1][real_idx] points[2]])
+        end
+
+        for (masked_idx, real_idx) in enumerate(masked_indices)
+            buffers_face.fluxfaceneigh[real_idx, :] = evaluate_basis(basis, fluxneigh[1:size(fluxneigh,1)÷2, :], [points[1][real_idx], points[2]])
+            buffers_face.fluxfaceneigh[real_idx + basis.order, :] = evaluate_basis(basis, fluxneigh[size(fluxneigh,1)÷2+1:end, :], [points[1][real_idx], points[2]])
+        end
+    else
+        # East/West faces
+        mask = (cell.center[2] < sub_neigh.center[2]) ? (face_points[2] .>= 0.5) : (face_points[2] .< 0.5)
+        offset = (cell.center[2] < sub_neigh.center[2]) ? -1.0 : 0.0
+        masked_indices = findall(mask)
+        points = (face_points[1], face_points[2] .* 2 .+ offset)
+
+        for (masked_idx, real_idx) in enumerate(masked_indices)
+            buffers_face.dofsfaceneigh[real_idx, :] = evaluate_basis(basis, dofsneigh, [points[1], points[2][real_idx]])
+        end
+
+        for (masked_idx, real_idx) in enumerate(masked_indices)
+            buffers_face.fluxfaceneigh[real_idx, :] = evaluate_basis(basis, fluxneigh[1:size(fluxneigh,1)÷2, :], [points[1], points[2][real_idx]])
+            buffers_face.fluxfaceneigh[real_idx + basis.order, :] = evaluate_basis(basis, fluxneigh[size(fluxneigh,1)÷2+1:end, :], [points[1], points[2][real_idx]])
+        end
+    end
+end
+
+"""
+Handle projection when neighbor is larger than current cell.
+"""
+function project_larger_neighbor!(
+    basis, cell, sub_neigh, dofsneigh, fluxneigh, 
+    buffers_face, faceneigh, face_dir
+)
+    face_points = get_face_quadpoints(basis, faceneigh)
+
+    if Face(face_dir) == N || Face(face_dir) == S
+        # North/South faces
+        offset = (cell.center[1] < sub_neigh.center[1]) ? 0.0 : 0.5
+        points = (face_points[1] ./ 2 .+ offset, face_points[2])
+        
+        # Evaluate basis functions and copy into existing matrix
+        for idx in 1:basis.order
+            buffers_face.dofsfaceneigh[idx, :] = evaluate_basis(basis, dofsneigh, [points[1][idx], points[2]])
+        end
+        
+        # Evaluate fluxes and copy into existing matrix
+        for idx in 1:basis.order
+            buffers_face.fluxfaceneigh[idx, :] = evaluate_basis(basis, fluxneigh[1:size(fluxneigh,1)÷2, :], [points[1][idx], points[2]])
+            buffers_face.fluxfaceneigh[idx + basis.order, :] = evaluate_basis(basis, fluxneigh[size(fluxneigh,1)÷2+1:end, :], [points[1][idx], points[2]])
+        end
+    else
+        # East/West faces
+        offset = (cell.center[2] < sub_neigh.center[2]) ? 0.0 : 0.5
+        points = (face_points[1], face_points[2] ./ 2 .+ offset)
+        
+        # Evaluate basis functions and copy into existing matrix
+        for idx in 1:basis.order
+            buffers_face.dofsfaceneigh[idx, :] = evaluate_basis(basis, dofsneigh, [points[1], points[2][idx]])
+        end
+        
+        # Evaluate fluxes and copy into existing matrix
+        for idx in 1:basis.order
+            buffers_face.fluxfaceneigh[idx, :] = evaluate_basis(basis, fluxneigh[1:size(fluxneigh,1)÷2, :], [points[1], points[2][idx]])
+            buffers_face.fluxfaceneigh[idx + basis.order, :] = evaluate_basis(basis, fluxneigh[size(fluxneigh,1)÷2+1:end, :], [points[1], points[2][idx]])
+        end
+    end
+end
 """
     evaluate_m_to_n_vandermonde_basis(basis) 
 

@@ -1,38 +1,29 @@
-
-# Face enumeration for neighbor finding
-
-
-# Node structure for the quad tree
 mutable struct QuadTreeNode
     level::Int
-    x::Float64  # x coordinate of bottom-left corner TODO cahnge into the center
-    y::Float64  # y coordinate of bottom-left corner
+    x::Float64
+    y::Float64
     center::Array{Float64,1}
-    size::Array{Float64,1}  # size of the cell
-    children::Vector{Union{QuadTreeNode, Nothing}}  # 4 children (SW, SE, NW, NE)
-    neighbors::Dict{Face, Array{QuadTreeNode,1}}  # neighbors in each direction
+    size::Array{Float64,1}
+    children::Vector{Union{QuadTreeNode, Nothing}}
+    neighbors::Dict{Face, Array{QuadTreeNode,1}}
     parent::Union{QuadTreeNode, Nothing}
     is_leaf::Bool
     id::Int 
-    can_coarsen::Bool # New field: indicates if this node can be coarsened
+    can_coarsen::Bool
     facetypes::Array{FaceType,1}
     dofs_node::Array{Float64,2}
     flux_node::Array{Float64,2}
     dataidx::Int
-    # dofs_gradient::similar{dofs_node}
-    
     
     function QuadTreeNode(level, x, y, size, order, ndofs, parent=nothing, id=0, can_coarsen=true)
         facetypes = Array{FaceType,1}(undef, 4)
         
-        # FIXED: Properly initialize children vector
         children = Vector{Union{QuadTreeNode, Nothing}}(undef, 4)
         fill!(children, nothing)
         
-        # FIXED: Initialize neighbors dictionary with empty vectors
         neighbors = Dict{Face, Vector{QuadTreeNode}}()
         for dir in instances(Face)
-            neighbors[dir] = QuadTreeNode[]  # Empty vector, not pre-allocated
+            neighbors[dir] = QuadTreeNode[]
         end
         
         node = new(level, x, y, [x + size[1] * 0.5, y + size[2] * 0.5],
@@ -45,7 +36,8 @@ mutable struct QuadTreeNode
 end
 
 """
-Interleaves bits of two 32-bit unsigned integers to produce a Morton index.
+Interleaves bits of two 32-bit unsigned integers to produce a Morton index (Z-order curve).
+The Morton index provides a spatial ordering that preserves locality in 2D space.
 """
 function morton2D(x::UInt32, y::UInt32)::UInt64
     function split_by_1bits(n::UInt32)::UInt64
@@ -61,6 +53,10 @@ function morton2D(x::UInt32, y::UInt32)::UInt64
     return (split_by_1bits(y) << 1) | split_by_1bits(x)
 end
 
+"""
+Computes the Morton index for a given center coordinate at the specified maximum level.
+Maps continuous coordinates to discrete grid indices and generates the corresponding Morton code.
+"""
 function compute_morton_index(center::AbstractVector{<:Real}, max_level::Int)
     N = 2^max_level
     dx = 1 / N
@@ -71,14 +67,16 @@ function compute_morton_index(center::AbstractVector{<:Real}, max_level::Int)
     return morton2D(UInt32(ix_eff), UInt32(iy_eff))
 end
 
-
-# Simplified CellArrayView that works reliably with broadcasting
+"""
+Array-like view into QuadTree node data that allows indexing across multiple cells
+as if they were a single 3D array. Provides efficient access to either dofs_node
+or flux_node fields across all cells in the tree.
+"""
 struct CellArrayView <: AbstractArray{Float64,3}
     cells_nodes::Vector{QuadTreeNode}
-    field::Symbol  # :dofs_node or :flux_node
+    field::Symbol
 end
 
-# Required AbstractArray interface
 function Base.size(view::CellArrayView)
     if isempty(view.cells_nodes)
         return (0, 0, 0)
@@ -92,11 +90,12 @@ function Base.IndexStyle(::Type{CellArrayView})
     return IndexLinear()
 end
 
-# Linear indexing
+"""
+Linear indexing for CellArrayView - converts 1D index to (node, doftype, cell) coordinates.
+"""
 function Base.getindex(view::CellArrayView, i::Int)
     n_nodes, n_doftypes, n_cells = size(view)
     
-    # Convert linear index to (node, doftype, cell)
     cell = div(i - 1, n_nodes * n_doftypes) + 1
     remainder = (i - 1) % (n_nodes * n_doftypes)
     doftype = div(remainder, n_nodes) + 1
@@ -106,10 +105,12 @@ function Base.getindex(view::CellArrayView, i::Int)
     return data[node, doftype]
 end
 
+"""
+Linear index assignment for CellArrayView.
+"""
 function Base.setindex!(view::CellArrayView, value, i::Int)
     n_nodes, n_doftypes, n_cells = size(view)
     
-    # Convert linear index to (node, doftype, cell)
     cell = div(i - 1, n_nodes * n_doftypes) + 1
     remainder = (i - 1) % (n_nodes * n_doftypes)
     doftype = div(remainder, n_nodes) + 1
@@ -119,33 +120,38 @@ function Base.setindex!(view::CellArrayView, value, i::Int)
     data[node, doftype] = value
 end
 
-# Cartesian indexing: view[node, doftype, cell]
+"""
+Cartesian indexing: view[node, doftype, cell] - direct access to specific element.
+"""
 function Base.getindex(view::CellArrayView, node::Int, doftype::Int, cell::Int)
     data = getfield(view.cells_nodes[cell], view.field)
     return data[node, doftype]
 end
 
+"""
+Cartesian index assignment for CellArrayView.
+"""
 function Base.setindex!(view::CellArrayView, value, node::Int, doftype::Int, cell::Int)
     data = getfield(view.cells_nodes[cell], view.field)
     data[node, doftype] = value
 end
 
-# Support for ranges and colons
+"""
+Multi-dimensional indexing with support for ranges and colons.
+Allows slicing operations like view[:, 1:3, :] similar to regular arrays.
+"""
 function Base.getindex(view::CellArrayView, nodes::Union{Int, Colon, AbstractRange}, 
                       doftypes::Union{Int, Colon, AbstractRange}, 
                       cells::Union{Int, Colon, AbstractRange})
-    # Convert to actual indices
     n_nodes, n_doftypes, n_cells = size(view)
     node_idx = nodes isa Colon ? (1:n_nodes) : nodes
     dof_idx = doftypes isa Colon ? (1:n_doftypes) : doftypes
     cell_idx = cells isa Colon ? (1:n_cells) : cells
     
-    # Handle scalar indexing
     if isa(node_idx, Int) && isa(dof_idx, Int) && isa(cell_idx, Int)
         return view[node_idx, dof_idx, cell_idx]
     end
     
-    # Create result array
     result_size = (length(node_idx), length(dof_idx), length(cell_idx))
     result = Array{Float64}(undef, result_size)
     
@@ -160,17 +166,18 @@ function Base.getindex(view::CellArrayView, nodes::Union{Int, Colon, AbstractRan
     return result
 end
 
+"""
+Multi-dimensional assignment with support for ranges, colons, and broadcasting.
+"""
 function Base.setindex!(view::CellArrayView, value, 
                        nodes::Union{Int, Colon, AbstractRange}, 
                        doftypes::Union{Int, Colon, AbstractRange}, 
                        cells::Union{Int, Colon, AbstractRange})
-    # Convert to actual indices
     n_nodes, n_doftypes, n_cells = size(view)
     node_idx = nodes isa Colon ? (1:n_nodes) : nodes
     dof_idx = doftypes isa Colon ? (1:n_doftypes) : doftypes
     cell_idx = cells isa Colon ? (1:n_cells) : cells
     
-    # Handle broadcasting
     if isa(value, Number)
         for cell in cell_idx
             for dof in dof_idx
@@ -180,7 +187,6 @@ function Base.setindex!(view::CellArrayView, value,
             end
         end
     else
-        # Handle array assignment
         for (k, cell) in enumerate(cell_idx)
             for (j, dof) in enumerate(dof_idx)
                 for (i, node) in enumerate(node_idx)
@@ -191,10 +197,8 @@ function Base.setindex!(view::CellArrayView, value,
     end
 end
 
-# Simple broadcasting support - use default Julia broadcasting
 Base.broadcastable(view::CellArrayView) = view
 
-# Additional useful methods for array-like behavior
 function Base.similar(view::CellArrayView, ::Type{T}, dims::Tuple{Int,Int,Int}) where T
     return Array{T}(undef, dims)
 end
@@ -207,7 +211,9 @@ function Base.similar(view::CellArrayView)
     return Array{Float64}(undef, size(view))
 end
 
-# Common array operations
+"""
+Fills all elements in the view with the specified value.
+"""
 function Base.fill!(view::CellArrayView, value)
     for cell in view.cells_nodes
         data = getfield(cell, view.field)
@@ -216,7 +222,9 @@ function Base.fill!(view::CellArrayView, value)
     return view
 end
 
-# Reduction operations
+"""
+Computes the sum of all elements across all cells in the view.
+"""
 function Base.sum(view::CellArrayView)
     total = 0.0
     for cell in view.cells_nodes
@@ -226,6 +234,9 @@ function Base.sum(view::CellArrayView)
     return total
 end
 
+"""
+Finds the maximum value across all cells in the view.
+"""
 function Base.maximum(view::CellArrayView)
     max_val = -Inf
     for cell in view.cells_nodes
@@ -235,6 +246,9 @@ function Base.maximum(view::CellArrayView)
     return max_val
 end
 
+"""
+Finds the minimum value across all cells in the view.
+"""
 function Base.minimum(view::CellArrayView)
     min_val = Inf
     for cell in view.cells_nodes
@@ -244,67 +258,13 @@ function Base.minimum(view::CellArrayView)
     return min_val
 end
 
-# Norm operations
-function norm(view::CellArrayView, p::Real=2)
-    if p == 2
-        total = 0.0
-        for cell in view.cells_nodes
-            data = getfield(cell, view.field)
-            total += sum(abs2, data)
-        end
-        return sqrt(total)
-    else
-        return norm(collect(view), p)
-    end
-end
-
-# Convert to regular array when needed
+"""
+Converts the CellArrayView to a regular Julia array by copying all data.
+"""
 function Base.collect(view::CellArrayView)
     result = Array{Float64}(undef, size(view))
     for (i, val) in enumerate(view)
         result[i] = val
     end
     return result
-end
-
-# Efficient conversion to Array{Float64,3}
-function to_array(view::CellArrayView)
-    n_nodes, n_doftypes, n_cells = size(view)
-    result = Array{Float64,3}(undef, n_nodes, n_doftypes, n_cells)
-    
-    for (i, cell) in enumerate(view.cells_nodes)
-        data = getfield(cell, view.field)
-        result[:, :, i] = data
-    end
-    
-    return result
-end
-
-# Update from Array{Float64,3}
-function from_array!(view::CellArrayView, arr::Array{Float64,3})
-    @assert size(arr) == size(view) "Array dimensions must match"
-    
-    for (i, cell) in enumerate(view.cells_nodes)
-        data = getfield(cell, view.field)
-        data[:, :] = arr[:, :, i]
-    end
-    
-    return view
-end
-
-# Convenient functions for common operations
-function add_scalar!(view::CellArrayView, value::Number)
-    for cell in view.cells_nodes
-        data = getfield(cell, view.field)
-        data .+= value
-    end
-    return view
-end
-
-function multiply_scalar!(view::CellArrayView, value::Number)
-    for cell in view.cells_nodes
-        data = getfield(cell, view.field)
-        data .*= value
-    end
-    return view
 end

@@ -25,6 +25,7 @@ struct GlobalMatrices
         project_dofs_to_face = Dict(f => face_projection_matrix(basis, f) for f in faces)
         project_flux_to_face = Dict(f => kron(I(2), face_projection_matrix(basis, f)) for f in faces)
         project_dofs_from_face = Dict(f => face_projection_matrix(basis, f)' for f in faces)
+        directionidx = Dict(W => 1, N => 2, E => 3, S => 4)
 
         quadweights_nd = kron(basis.quadweights, basis.quadweights)
 

@@ -1,14 +1,25 @@
-# TerraDG.jl
+# TerraDG Framework - Adaptive Mesh Refinement
 
-This is a simple DG Teaching Code. It provides a mesh, plotters, some tests
-as well as a framework for the numerical scheme.
+The TerraDG framework now features a fully integrated Adaptive Mesh Refinement (AMR) system built on a QuadTree data structure with comprehensive documentation and testing. 
 
-In most files the missing implementation is marked with a TODO, others a simply
-empty. In the course you fill in these missing pieces.
+## Key Features
 
-Currently the tests do not pass successfully, at the end of the course, all tests
-should and you will have written some tests of your own.
+- **Hierarchical mesh refinement** driven by solution gradient analysis for optimal computational efficiency
+- **Seamless integration** with existing TerraDG codebase - no disruption to current workflows
+- **Runtime configurability** via YAML settings - easily toggle AMR on/off without code changes
+- **Balance constraints** to maintain mesh quality
 
+## Technical Implementation
+
+The AMR system utilizes a QuadTree approach that dynamically refines mesh resolution in regions of high solution gradients while maintaining computational efficiency in smoother areas. This selective refinement strategy significantly reduces computational overhead while preserving solution accuracy.
+
+## Usage
+
+AMR functionality can be controlled through the configuration YAML file
+
+**Configuration parameters**:
+   - `amr`: Boolean to enable or disable AMR without recompilation
+   - `max_level`: Maximum allowed refinement level
 
 **Workflow:**
 
@@ -48,23 +59,13 @@ mode. You can enter it by typing ?, followed by some function.
 
 You can exit these specials modes by typing backspace in the empty command prompt.
 
-
-**Building the TerraDG Documentation:**
-
-To build the documentation run 
-
-    julia --project=. --color=yes docs/make.jl 
-
-in the root of the repository.
-
-The documentation will then be built in a subdirectory docs/build,
-you can open the documentation, eg. in your browser by opening the index.html
-
 **Running TerraDG**
 
 Using julia REPL (Terminal)
 
     TerraDG.main("path-to-config")
     
+
+
 
 

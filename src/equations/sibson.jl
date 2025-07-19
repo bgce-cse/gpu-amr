@@ -20,7 +20,6 @@ function is_analytical_solution(equation::Sibson, scenario::ConcentricWaves)
 end
 
 function evaluate_flux(eq::Sibson, celldofs, cellflux)
-    # TODO how to implement it 
     # velocity = 1.0
     # cellflux .= vcat([velocity .* celldofs for _ in 1:size(cellflux, 1)]...)
 end
