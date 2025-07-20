@@ -1,6 +1,6 @@
 simulation:
   end_time: 1
-  grid_elements: 30
+  grid_elements: 16
   grid_size: 1.0
   offset: [0.0, 0.0]
 
@@ -16,3 +16,7 @@ equation:
 output:
   start: 0 #s
   step: 0.1 #s
+
+amr:
+  amr : true
+  max_level: 7

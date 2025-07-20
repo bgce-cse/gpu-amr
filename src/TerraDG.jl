@@ -53,6 +53,7 @@ function evaluate_rhs(eq, scenario, basis, filter, globals, du, dofs, grid)
             @views evaluate_volume(globals, buffers_volume, flux, grid.basis, inverse_jacobian(cell), volume(cell), du[:,:,cell.dataidx])
         end
     end
+    gradients = Array{Float64}(undef, length(grid.cells))
     for i in eachindex(grid.cells)
         @views cell = grid.cells[i]
         @views data = dofs[:,:, cell.dataidx]
@@ -148,7 +149,7 @@ function main(configfile::String)
     if amr
 
         @info "Refining mesh"
-        refined = amr_update!(mesh_struct, eq, scenario)
+        refined = amr_update!(mesh_struct, eq, scenario,globals)
         if refined
             mesh_changed = true
             @info "Mesh was refined"
@@ -169,7 +170,7 @@ function main(configfile::String)
     while mesh_struct.time < config.end_time
 
         if timestep % 20 == 19 && amr # Refine every 20 timesteps
-            refined = amr_update!(mesh_struct, eq, scenario)
+            refined = amr_update!(mesh_struct, eq, scenario,globals)
             if refined 
                 mesh_changed = true
             end

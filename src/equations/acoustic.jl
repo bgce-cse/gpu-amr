@@ -9,7 +9,7 @@ function get_initial_values(eq::Acoustic, scenario::GaussianWave, global_positio
     v = 0.0
     pressure = exp(-100*(x-0.5)^2 - 100*(y-0.5)^2)
     rho = 1.0
-    K = x <= 0.5 ? 0.2 : 1.0
+    K = 0.5
 
     return [u, v, pressure, rho, K]
 end

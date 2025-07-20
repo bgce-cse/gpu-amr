@@ -32,7 +32,7 @@ function evaluate_error(eq::Equation, scenario::Scenario, grid::AbstractMesh, t:
                 for var=1:get_ndofs(eq)
                     value = evaluate_basis(grid.basis, grid.dofs[:,var, cell.dataidx], (x,y))
 
-                    error = abs(value - analytical[var])
+                    error = abs(value[1] - analytical[var])
                     l1_error[var] += weight * error
                     l2_error[var] += weight * error^2
                     linf_error[var] = max(linf_error[var], error)

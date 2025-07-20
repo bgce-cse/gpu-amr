@@ -368,60 +368,75 @@ function loop_over_leaves(tree::AMRQuadTree)
 end
 
 """
-Perform adaptive mesh refinement based on solution gradients.
+    amr_update!(tree::AMRQuadTree, eq::Equation, scenario::Scenario, globals::GlobalMatrices; 
+                refine_ratio::Float64 = 0.3,     coarsen_ratio::Float64 = 0.25)
+
+Perform adaptive mesh refinement based on acoustic wave solution gradients.
 Refines cells with high gradients and coarsens cells with low gradients.
 Returns true if any modifications were made.
 """
-function amr_update!(tree::AMRQuadTree, eq::Equation, scenario::Scenario; refine_ratio::Float64 = 0.6)
-    modified_any = false
-    cells_to_refine = QuadTreeNode[]
-    cells_to_coarsen = QuadTreeNode[]
-    indicators = zeros(Float64, length(tree.cells))
+function amr_update!(tree::AMRQuadTree, eq::Equation, scenario::Scenario, globals::GlobalMatrices; 
+                     threshold::Float64 = 0.3)    
+    leaf_nodes = get_leaf_nodes(tree)
+    n_leaves = length(leaf_nodes)
+    if n_leaves == 0 return false end
+    
+    # Calculate refinement indicators
+    indicators = [calculate_refinement_indicator(cell,globals) for cell in leaf_nodes]
+    indicators .= (indicators.-minimum(indicators))/(maximum(indicators)-minimum(indicators))
 
-    max_indicator = 0.0
-    @inbounds for (i, cell) in enumerate(tree.cells)
-        indicator = 0.0
-        if cell.is_leaf && cell.level < tree.max_level
-            grad_magnitude_squared = 0.0
-            h = 1.0 / (2^cell.level)
-            for dir in instances(Face)
-                neighbors = get_neighbors(cell, dir)
-                if !isempty(neighbors)
-                    neighbor = neighbors[1]
-                    grad_dir = (neighbor.dofs_node .- cell.dofs_node) / h
-                    grad_magnitude_squared += sum(abs2, grad_dir)
-                end
-            end
-            solution_magnitude = sqrt(sum(abs2, cell.dofs_node))
-            if solution_magnitude > 1e-12
-                indicator = sqrt(grad_magnitude_squared) / solution_magnitude
+    average = sum(indicators)/length(indicators)
+    
+    
+    mesh_changed = false
+    
+    # Refinement phase
+    @inbounds for (i, cell) in enumerate(leaf_nodes)
+        if indicators[i] >= average + threshold
+            if refine_node!(tree, cell)
+                mesh_changed = true
             end
         end
-        indicators[i] = indicator
-        max_indicator = max(max_indicator, indicator)
-    end
+    end    
 
-    threshold = refine_ratio * max_indicator
-
-    @inbounds for (i, cell) in enumerate(tree.cells)
-        indicator = indicators[i]
-        if indicator >= threshold && cell.is_leaf && cell.level < tree.max_level
-            push!(cells_to_refine, cell)
-        elseif indicator < threshold && cell.is_leaf && cell.parent !== nothing
-            push!(cells_to_coarsen, cell.parent)
+    # Coarsening phase
+    @inbounds for (i, cell) in enumerate(leaf_nodes)
+        if indicators[i] < average
+            if coarsen_node!(tree, cell.parent)
+                mesh_changed = true
+            end
         end
-    end
-
-    for cell in cells_to_refine
-        modified_any |= refine_node!(tree, cell)
-    end
-    for parent in unique(cells_to_coarsen)
-        modified_any |= coarsen_node!(tree, parent)
-    end
-
-    update_tree_views!(tree)
-    return modified_any
+    end    
+    return mesh_changed
 end
+
+"""
+    calculate_refinement_indicator(cell::QuadTreeNode)
+
+Calculate simple refinement indicator based on DOF gradients in cell.
+"""
+@inline function calculate_refinement_indicator(cell::QuadTreeNode,globals::GlobalMatrices)
+    faces = globals.project_dofs_to_face
+dofs_N = faces[N] * cell.dofs_node
+dofs_S = faces[S] * cell.dofs_node
+dofs_E = faces[E] * cell.dofs_node
+dofs_W = faces[W] * cell.dofs_node
+
+# Assumes size = (face_nodes, ndofs)
+n_face_nodes, ndofs = size(dofs_N)
+
+max_norm = 0.0
+@inbounds for j in 1:ndofs
+    jump_y = (dofs_N[:, j] .- dofs_S[:, j])./cell.size[1]
+    jump_x = (dofs_E[:, j] .- dofs_W[:, j])./cell.size[2]
+    val = norm([sum(jump_x),sum(jump_y)])
+    max_norm = max(max_norm, val)
+end
+
+return max_norm
+
+end
+
 
 """
 Interpolate solution from parent to children during refinement.
