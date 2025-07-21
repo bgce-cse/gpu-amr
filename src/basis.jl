@@ -101,8 +101,7 @@ Evaluate the `basis` with coefficients
 `coeffs` at point `x`.
 """
 function evaluate_basis(basis::Basis, coeffs, x)
-
-    # C is the coefficient matrix
+    
     C = reshape(coeffs,size(basis,1),size(basis,2))
     sum([C[i,j]*lagrange_1d(basis.quadpoints,i,x[1])*lagrange_1d(basis.quadpoints,j,x[2]) for i in 1:size(basis,1) for j in 1:size(basis,2)])
     
@@ -213,17 +212,20 @@ quadrature nodes of the face.
 function face_projection_matrix(basis::Basis, face)
     n = basis.order
     if face == left || face == right
-        # For vertical faces (x=0 or x=1), project along x-dimension
-        x_face_coord = get_face_quadpoints(basis, face)[1]
-        phi_x_at_face = [lagrange_1d(basis.quadpoints, i, x_face_coord) for i in 1:n]
-        return kron(I(n), phi_x_at_face')
-    else 
-        # For horizontal faces (y=0 or y=1), project along y-dimension
-        y_face_coord = get_face_quadpoints(basis, face)[2]
-        phi_y_at_face = [lagrange_1d(basis.quadpoints, j, y_face_coord) for j in 1:n]
-        return kron(phi_y_at_face', I(n))
+            # For vertical faces (x=0 or x=1), project along x-dimension
+            # The 1D basis functions are evaluated at the fixed x-coordinate of the face
+            x_face_coord = get_face_quadpoints(basis, face)[1]
+            phi_x_at_face = [lagrange_1d(basis.quadpoints, i, x_face_coord) for i in 1:n]
+            return kron(I(n), phi_x_at_face')
+        else 
+            # For horizontal faces (y=0 or y=1), project along y-dimension
+            # The 1D basis functions are evaluated at the fixed y-coordinate of the face
+            y_face_coord = get_face_quadpoints(basis, face)[2]
+            phi_y_at_face = [lagrange_1d(basis.quadpoints, j, y_face_coord) for j in 1:n]
+            return kron(phi_y_at_face', I(n))
+        end
+
     end
-end
 
 
 """

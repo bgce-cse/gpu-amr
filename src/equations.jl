@@ -186,7 +186,7 @@ macro declare_dofs(eq, dof_names, num_params=0)
     quote $(expressions...) end
 end
 
-#TODO is there a way to include all files in equations/?
+
 include("equations/advection.jl")
 include("equations/sibson.jl")
 
@@ -196,7 +196,6 @@ include("equations/sibson.jl")
 Returns equation object for configuration `config`.
 """
 function make_equation(config::Configuration)
-    #TODO create list instead of a bunch of conditions
     if config.equation_name == "advection"
         return Advection()
     elseif config.equation_name =="sibson"
@@ -212,7 +211,6 @@ end
 Returns scenario object for configuration `config`.
 """
 function make_scenario(config::Configuration)
-    #TODO create list instead of a bunch of conditions
     if config.scenario_name == "planar_waves"
         return PlanarWaves()
     elseif config.scenario_name == "concentric_waves"
