@@ -1,13 +1,5 @@
 # TerraDG.jl
-
-This is a simple DG Teaching Code. It provides a mesh, plotters, some tests
-as well as a framework for the numerical scheme.
-
-In most files the missing implementation is marked with a TODO, others a simply
-empty. In the course you fill in these missing pieces.
-
-Currently the tests do not pass successfully, at the end of the course, all tests
-should and you will have written some tests of your own.
+On this problem sheet, we aim to implement and test a first-order DG scheme.
 
 
 **Workflow:**
