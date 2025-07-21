@@ -1,5 +1,5 @@
 using TerraDG
 
 
-configfile = "./advection.yaml"
+configfile = "./config/advection.yaml"
 TerraDG.main(configfile)

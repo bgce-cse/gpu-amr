@@ -11,7 +11,7 @@ It then interpolates this on the `basis`.
 """
 function interpolate_initial_dofs(eq::Equation, scenario::Scenario, celldofs, cell, basis)
     celldofs .= project_to_reference_basis(basis, get_ndofs(eq)) do px, py
-        pxg, pyg = globalposition(cell, (px, py))
+        pxg, pyg = globalposition(cell, (px, py)) #this fetch the coordinate from the global domain based on the local 
         get_initial_values(eq, scenario, (pxg, pyg))
     end
 end
@@ -186,7 +186,9 @@ macro declare_dofs(eq, dof_names, num_params=0)
     quote $(expressions...) end
 end
 
+
 include("equations/advection.jl")
+include("equations/sibson.jl")
 
 """
     make_equation(config::Configuration)
@@ -196,6 +198,8 @@ Returns equation object for configuration `config`.
 function make_equation(config::Configuration)
     if config.equation_name == "advection"
         return Advection()
+    elseif config.equation_name =="sibson"
+        return Sibson()
     else
         error(string("Unknown equation name: ", config.equation_name))
     end
@@ -209,6 +213,8 @@ Returns scenario object for configuration `config`.
 function make_scenario(config::Configuration)
     if config.scenario_name == "planar_waves"
         return PlanarWaves()
+    elseif config.scenario_name == "concentric_waves"
+        return ConcentricWaves()
     else
         error(string("Unknown scenario name: ", scenario_name))
     end

@@ -35,6 +35,4 @@ Evaluates the volume term of our pde.
 """
 function evaluate_volume(globals, buffers, flux_coeff, basis, inverse_jacobian, volume, celldu)
     quadweights = globals.quadweights_nd
-
-    # TODO Update celldu
 end

@@ -1,5 +1,6 @@
 # TerraDG.jl
-On this problem sheet, we aim to implement and test a first-order DG scheme.
+In this worksheet we implement a high-order basis, as well as projections to that basis and
+quadrature.
 
 
 **Workflow:**

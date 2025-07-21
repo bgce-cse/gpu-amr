@@ -16,16 +16,19 @@ function get_initial_values(eq::Advection, scenario::PlanarWaves, global_positio
     return [ρ1, ρ2, ρ3]
 end
 
-
 function is_analytical_solution(equation::Advection, scenario::PlanarWaves)
     true
 end
 
 function evaluate_flux(eq::Advection, celldofs, cellflux)
-        
     velocity = 1.0
-    cellflux .= vcat([velocity .* celldofs for _ in 1:size(cellflux, 1)]...)
 
+
+    fx = velocity .* celldofs   
+    fy = velocity .* celldofs   
+
+
+    cellflux .= vcat(fx, fy)
 end
 
 function max_eigenval(eq::Advection, celldata, normalidx)
