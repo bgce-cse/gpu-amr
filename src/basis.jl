@@ -100,6 +100,7 @@ end
 Evaluate the `basis` with coefficients
 `coeffs` at point `x`.
 """
+
 function evaluate_basis(basis::Basis, coeffs, x)
     n   = basis.order
     pts = basis.quadpoints
@@ -107,10 +108,10 @@ function evaluate_basis(basis::Basis, coeffs, x)
     phi = [lagrange_1d(pts, i, x[1]) for i in 1:n]
     psi = [lagrange_1d(pts, j, x[2]) for j in 1:n]
     
-    s = 0.0
+    s = zeros(size(coeffs, 2))
     for (idx, cart_idx) in enumerate(CartesianIndices((n, n)))
         i, j = Tuple(cart_idx)
-        s += coeffs[idx] * phi[i] * psi[j]
+        s .+= coeffs[idx, :] .* phi[i] .* psi[j]
     end
     
     return s

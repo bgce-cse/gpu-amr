@@ -61,7 +61,7 @@ function limit_slopes(globals, limiter, dofs, cell)
     # compute neighbor slopes
     dx_inv = 1 / cell.size[1]
     dy_inv = 1 / cell.size[2]
-    #divide b and c by dx
+
     limiter.center_s[1,:] .*= dx_inv
     limiter.center_s[2,:] .*= dy_inv
     
