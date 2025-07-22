@@ -376,23 +376,24 @@ Refines cells with high gradients and coarsens cells with low gradients.
 Returns true if any modifications were made.
 """
 function amr_update!(tree::AMRQuadTree, eq::Equation, scenario::Scenario, globals::GlobalMatrices; 
-                     threshold::Float64 = 0.3)    
+                     threshold::Float64 = 0.0)  
+    @assert(threshold<=1 && threshold >=0) 
     leaf_nodes = get_leaf_nodes(tree)
     n_leaves = length(leaf_nodes)
     if n_leaves == 0 return false end
     
     # Calculate refinement indicators
-    indicators = [calculate_refinement_indicator(cell,globals) for cell in leaf_nodes]
+    indicators = [calculate_refinement_indicator(tree.basis,cell,globals) for cell in leaf_nodes]
     indicators .= (indicators.-minimum(indicators))/(maximum(indicators)-minimum(indicators))
 
-    average = sum(indicators)/length(indicators)
+    average = sum(indicators)/length(indicators)-threshold
     
     
     mesh_changed = false
     
     # Refinement phase
     @inbounds for (i, cell) in enumerate(leaf_nodes)
-        if indicators[i] >= average + threshold
+        if indicators[i] >= average
             if refine_node!(tree, cell)
                 mesh_changed = true
             end
@@ -415,25 +416,20 @@ end
 
 Calculate simple refinement indicator based on DOF gradients in cell.
 """
-@inline function calculate_refinement_indicator(cell::QuadTreeNode,globals::GlobalMatrices)
+@inline function calculate_refinement_indicator(basis::Basis,cell::QuadTreeNode,globals::GlobalMatrices)
     faces = globals.project_dofs_to_face
-dofs_N = faces[N] * cell.dofs_node
-dofs_S = faces[S] * cell.dofs_node
-dofs_E = faces[E] * cell.dofs_node
-dofs_W = faces[W] * cell.dofs_node
+    dofs_N = faces[N] * cell.dofs_node
+    dofs_S = faces[S] * cell.dofs_node
+    dofs_E = faces[E] * cell.dofs_node
+    dofs_W = faces[W] * cell.dofs_node
+    invlen = 1/length(dofs_N[:, 3])
 
-# Assumes size = (face_nodes, ndofs)
-n_face_nodes, ndofs = size(dofs_N)
+    dy = (sum(dofs_N[:, 3] .- dofs_S[:, 3]))*invlen /cell.size[2]
+    dx = (sum(dofs_E[:, 3] .- dofs_W[:, 3]))*invlen /cell.size[1]
 
-max_norm = 0.0
-@inbounds for j in 1:ndofs
-    jump_y = (dofs_N[:, j] .- dofs_S[:, j])./cell.size[1]
-    jump_x = (dofs_E[:, j] .- dofs_W[:, j])./cell.size[2]
-    val = norm([sum(jump_x),sum(jump_y)])
-    max_norm = max(max_norm, val)
-end
+    grad = norm([dx,dy])
 
-return max_norm
+return grad
 
 end
 
