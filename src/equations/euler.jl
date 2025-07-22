@@ -87,7 +87,6 @@ function max_eigenval(eq::Euler, celldata, normalidx; gamma=1.4)
 end
 
 function evaluate_boundary(eq::Euler, scenario::ShockTube, face, normalidx, dofsface, dofsfaceneigh)
-    # dofsface and dofsfaceneigh have shape (num_2d_quadpoints, dofs)
     dofsfaceneigh .= dofsface
     dofsfaceneigh[:, normalidx] .= -dofsface[:, normalidx]
 end

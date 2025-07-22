@@ -23,7 +23,7 @@ struct Configuration
     offset::Array{Float64,1}
     amr::Bool
     max_level::Int
-    balance::Int
+    variable_to_track::Int
 
     function Configuration(configfile::String)
         config = YAML.load(open(configfile))
@@ -47,6 +47,7 @@ struct Configuration
         offset = config["simulation"]["offset"]
         amr = config["amr"]["amr"]
         max_level = config["amr"]["max_level"]
+        variable_to_track = config["amr"]["tracking_variable"]
 
         new(
             equation_name,
@@ -65,7 +66,8 @@ struct Configuration
             cellsize,
             offset,
             amr,
-            max_level
+            max_level,
+            variable_to_track
         )
     end
 end

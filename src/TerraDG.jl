@@ -118,6 +118,7 @@ function main(configfile::String)
     eq = make_equation(config)
     scenario = make_scenario(config)
     amr = config.amr
+    
 
     mesh_struct =  create_struct(amr, config, eq, scenario)
     
@@ -149,7 +150,7 @@ function main(configfile::String)
     if amr
 
         @info "Refining mesh"
-        refined = amr_update!(mesh_struct, eq, scenario,globals)
+        refined = amr_update!(mesh_struct, eq, scenario, globals,config)
         if refined
             mesh_changed = true
             @info "Mesh was refined"
@@ -170,7 +171,7 @@ function main(configfile::String)
     while mesh_struct.time < config.end_time
 
         if timestep % 20 == 19 && amr # Refine every 20 timesteps
-            refined = amr_update!(mesh_struct, eq, scenario,globals)
+            refined = amr_update!(mesh_struct, eq, scenario,globals, config)
             if refined 
                 mesh_changed = true
             end

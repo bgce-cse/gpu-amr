@@ -29,9 +29,6 @@ function interpolate_parent_dofs(eq::Equation, parent, basis)
         rel_pos, child_idx = relative_parent_position((px, py)) 
         evaluate_basis(basis, parent.children[child_idx].dofs_node, rel_pos)
 
-        # for child in parent.children
-        #     evaluate_basis(basis, child.dofs_node, rel_pos)
-        # end
     end
 end
 

@@ -101,15 +101,18 @@ Evaluate the `basis` with coefficients
 `coeffs` at point `x`.
 """
 function evaluate_basis(basis::Basis, coeffs, x)
-    n = basis.order
-    φ = [lagrange_1d(basis.quadpoints, i, x[1]) for i in 1:n]
-    ψ = [lagrange_1d(basis.quadpoints, j, x[2]) for j in 1:n]
+    n   = basis.order
+    pts = basis.quadpoints
     
-    s = zeros(size(coeffs, 2))  # Initialize with same dimensions as coeffs columns
-    for j in 1:n, i in 1:n
-        index = i + (j - 1) * n
-        s .+= coeffs[index, :] .* φ[i] .* ψ[j]
+    phi = [lagrange_1d(pts, i, x[1]) for i in 1:n]
+    psi = [lagrange_1d(pts, j, x[2]) for j in 1:n]
+    
+    s = 0.0
+    for (idx, cart_idx) in enumerate(CartesianIndices((n, n)))
+        i, j = Tuple(cart_idx)
+        s += coeffs[idx] * phi[i] * psi[j]
     end
+    
     return s
 end
 
@@ -124,17 +127,15 @@ and returns a vector with size `ndofs`.
 The corresponding coefficients are returned.
 """
 function project_to_reference_basis(fun, basis::Basis, ndofs::Integer)
-    n = basis.order
+    n   = basis.order
     pts = basis.quadpoints
 
-    M = zeros(n * n, ndofs)
+    M = zeros(n*n, ndofs)
 
-    for j in 1:n
-        for i in 1:n
-            x, y = pts[i], pts[j]
-            row = i + (j - 1) * n  # column-major layout
-            M[row, :] = fun(x, y)
-        end
+    for (row, idx) in enumerate(CartesianIndices((n, n)))
+        i, j = Tuple(idx)       
+        x, y = pts[i], pts[j]   
+        M[row, :] = fun(x, y)        
     end
 
     return M
@@ -174,8 +175,8 @@ function derivativematrix(basis::Basis)
     D1 = [ lagrange_diff(pts, j, pts[i]) 
            for i in 1:n, j in 1:n]
 
-    Dx = kron(I(n), D1)'   # size n^2 × n^2
-    Dy = kron(D1, I(n))'   # size n^2 × n^2
+    Dx = kron(I(n), D1)' 
+    Dy = kron(D1, I(n))' 
     
     hcat(Dx,Dy)
 end
@@ -272,16 +273,13 @@ function project_larger_neighbor!(
     face_points = get_face_quadpoints(basis, faceneigh)
 
     if Face(face_dir) == N || Face(face_dir) == S
-        # North/South faces
         offset = (cell.center[1] < sub_neigh.center[1]) ? 0.0 : 0.5
         points = (face_points[1] ./ 2 .+ offset, face_points[2])
         
-        # Evaluate basis functions and copy into existing matrix
         for idx in 1:basis.order
             buffers_face.dofsfaceneigh[idx, :] = evaluate_basis(basis, dofsneigh, [points[1][idx], points[2]])
         end
         
-        # Evaluate fluxes and copy into existing matrix
         for idx in 1:basis.order
             buffers_face.fluxfaceneigh[idx, :] = evaluate_basis(basis, fluxneigh[1:size(fluxneigh,1)÷2, :], [points[1][idx], points[2]])
             buffers_face.fluxfaceneigh[idx + basis.order, :] = evaluate_basis(basis, fluxneigh[size(fluxneigh,1)÷2+1:end, :], [points[1][idx], points[2]])
@@ -291,12 +289,10 @@ function project_larger_neighbor!(
         offset = (cell.center[2] < sub_neigh.center[2]) ? 0.0 : 0.5
         points = (face_points[1], face_points[2] ./ 2 .+ offset)
         
-        # Evaluate basis functions and copy into existing matrix
         for idx in 1:basis.order
             buffers_face.dofsfaceneigh[idx, :] = evaluate_basis(basis, dofsneigh, [points[1], points[2][idx]])
         end
         
-        # Evaluate fluxes and copy into existing matrix
         for idx in 1:basis.order
             buffers_face.fluxfaceneigh[idx, :] = evaluate_basis(basis, fluxneigh[1:size(fluxneigh,1)÷2, :], [points[1], points[2][idx]])
             buffers_face.fluxfaceneigh[idx + basis.order, :] = evaluate_basis(basis, fluxneigh[size(fluxneigh,1)÷2+1:end, :], [points[1], points[2][idx]])

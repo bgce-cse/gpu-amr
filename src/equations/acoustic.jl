@@ -9,7 +9,7 @@ function get_initial_values(eq::Acoustic, scenario::GaussianWave, global_positio
     v = 0.0
     pressure = exp(-100*(x-0.5)^2 - 100*(y-0.5)^2)
     rho = 1.0
-    K = 0.5
+    K = 1
 
     return [u, v, pressure, rho, K]
 end
@@ -19,7 +19,6 @@ function is_analytical_solution(equation::Acoustic, scenario::GaussianWave)
 end
 
 function evaluate_flux(eq::Acoustic, celldofs, cellflux)
-    # Extract variables
     u = celldofs[:,1]  # x-velocity
     v = celldofs[:,2]  # y-velocity
     pressure = celldofs[:,3] 
@@ -31,14 +30,11 @@ function evaluate_flux(eq::Acoustic, celldofs, cellflux)
     
     pressure_flux_x = K .* u  
     pressure_flux_y = K .* v 
-    
-    # Zero entries for variables that don't have flux in certain directions
     zero_entries = zeros(length(u))
 
     fx = [momentum_flux_x zero_entries pressure_flux_x zero_entries zero_entries]
     fy = [zero_entries momentum_flux_y pressure_flux_y zero_entries zero_entries]
     
-    # Stack x and y fluxes
     cellflux .= vcat(fx, fy)
 end
 
@@ -51,7 +47,6 @@ function max_eigenval(eq::Acoustic, celldata, normalidx)
 end
 
 function evaluate_boundary(eq::Acoustic, scenario::GaussianWave, face, normalidx, dofsface, dofsfaceneigh)
-    # dofsface and dofsfaceneigh have shape (num_2d_quadpoints, dofs)
     dofsfaceneigh .= dofsface
     dofsfaceneigh[:, normalidx] .= -dofsface[:, normalidx]
 end

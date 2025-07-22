@@ -20,3 +20,4 @@ output:
 amr:
   amr : true
   max_level: 6
+  tracking_variable: 1

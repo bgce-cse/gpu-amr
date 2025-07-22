@@ -1,6 +1,3 @@
-using DataStructures
-using NearestNeighbors
-
 """
 Adaptive Mesh Refinement QuadTree data structure for finite element methods.
 Maintains a hierarchical grid with automatic refinement and coarsening based on solution gradients.
@@ -44,6 +41,7 @@ mutable struct AMRQuadTree <: AbstractMesh
         initial_refinement_level = Int(log2(config.grid_elements))
         refine_to_level!(tree, root, initial_refinement_level, false)
         tree.cells = get_leaf_nodes(tree)
+        for cells in tree.cells cells.can_coarsen = true end
         tree.dofs = CellArrayView(tree.cells, :dofs_node)
         tree.flux = CellArrayView(tree.cells, :flux_node)
         update_all_neighbors!(tree)
@@ -262,7 +260,8 @@ function refine_node!(tree::AMRQuadTree, node::QuadTreeNode)
         child_center = [x + half_size[1] * 0.5, y + half_size[2] * 0.5]
         tree.node_counter += 1
         idx = compute_morton_index(child_center, tree.max_level)
-        child = QuadTreeNode(node.level + 1, x, y, half_size, tree.basis.order, tree.ndofs, node, idx)
+        child = QuadTreeNode(node.level + 1, x, y, half_size, tree.basis.order, 
+                           tree.ndofs, node, idx, true)
         node.children[i] = child
         push!(tree.all_nodes, child)
     end
@@ -276,7 +275,6 @@ function refine_node!(tree::AMRQuadTree, node::QuadTreeNode)
 
     return true
 end
-
 """
 Coarsen a node by removing its children and making it a leaf again.
 Returns true if coarsening was successful.
@@ -305,7 +303,7 @@ function coarsen_node!(tree::AMRQuadTree, node::QuadTreeNode)
     filter!(n -> !(n in children_to_remove), tree.all_nodes)
     fill!(node.children, nothing)
     node.is_leaf = true
-    update_all_neighbors!(tree)
+     update_local_neighbors!(tree, [node])
 
     return true
 end
@@ -375,62 +373,79 @@ Perform adaptive mesh refinement based on acoustic wave solution gradients.
 Refines cells with high gradients and coarsens cells with low gradients.
 Returns true if any modifications were made.
 """
-function amr_update!(tree::AMRQuadTree, eq::Equation, scenario::Scenario, globals::GlobalMatrices; 
-                     threshold::Float64 = 0.0)  
-    @assert(threshold<=1 && threshold >=0) 
+function amr_update!(tree::AMRQuadTree, eq::Equation, scenario::Scenario, globals::GlobalMatrices,config::Configuration;
+                     T_refine::Float64 = 0.4, T_coarsen::Float64 = 0.2)
+    @assert(T_refine > T_coarsen, "T_refine must be greater than T_coarsen")
+    
     leaf_nodes = get_leaf_nodes(tree)
     n_leaves = length(leaf_nodes)
-    if n_leaves == 0 return false end
-    
-    # Calculate refinement indicators
-    indicators = [calculate_refinement_indicator(tree.basis,cell,globals) for cell in leaf_nodes]
-    indicators .= (indicators.-minimum(indicators))/(maximum(indicators)-minimum(indicators))
+    if n_leaves == 0 
+        return false 
+    end
+    tracker = config.variable_to_track
 
-    average = sum(indicators)/length(indicators)-threshold
+    indicators = [calculate_total_variation(tree.basis, cell, globals, tracker) for cell in leaf_nodes]
     
+
+    mean = sum(indicators) / length(indicators)
+    var = sqrt(sum((x - mean)^2 for x in indicators) / length(indicators))
+    
+
+    if var ≈ 0.0
+        return false
+    end
+    
+
+    refine_threshold = mean + T_refine * var
+    coarsen_threshold = mean + T_coarsen * var
     
     mesh_changed = false
     
-    # Refinement phase
+
     @inbounds for (i, cell) in enumerate(leaf_nodes)
-        if indicators[i] >= average
+        if indicators[i] >= refine_threshold
             if refine_node!(tree, cell)
                 mesh_changed = true
             end
         end
-    end    
+    end
+    
 
-    # Coarsening phase
     @inbounds for (i, cell) in enumerate(leaf_nodes)
-        if indicators[i] < average
+        if indicators[i] < coarsen_threshold
             if coarsen_node!(tree, cell.parent)
                 mesh_changed = true
+            else
             end
         end
-    end    
+    end
+    
     return mesh_changed
 end
 
 """
-    calculate_refinement_indicator(cell::QuadTreeNode)
+    calculate_total_variation(basis::Basis, cell::QuadTreeNode, globals::GlobalMatrices)
 
-Calculate simple refinement indicator based on DOF gradients in cell.
+Calculate total variation indicator using L1 norm of gradients.
+This is computed efficiently using Gaussian quadrature over collocated quadrature points.
 """
-@inline function calculate_refinement_indicator(basis::Basis,cell::QuadTreeNode,globals::GlobalMatrices)
+@inline function calculate_total_variation(basis::Basis, cell::QuadTreeNode, globals::GlobalMatrices,tracker)
     faces = globals.project_dofs_to_face
+
     dofs_N = faces[N] * cell.dofs_node
     dofs_S = faces[S] * cell.dofs_node
     dofs_E = faces[E] * cell.dofs_node
     dofs_W = faces[W] * cell.dofs_node
-    invlen = 1/length(dofs_N[:, 3])
-
-    dy = (sum(dofs_N[:, 3] .- dofs_S[:, 3]))*invlen /cell.size[2]
-    dx = (sum(dofs_E[:, 3] .- dofs_W[:, 3]))*invlen /cell.size[1]
-
-    grad = norm([dx,dy])
-
-return grad
-
+    
+    n_face_nodes = size(dofs_N, 1)
+    invlen = 1.0 / n_face_nodes
+    
+    dx = (sum(dofs_E[:, tracker]) - sum(dofs_W[:, tracker])) * invlen / cell.size[1]
+    dy = (sum(dofs_N[:, tracker]) - sum(dofs_S[:, tracker])) * invlen / cell.size[2]
+    
+    tv = norm([dx,dy])
+    
+    return tv
 end
 
 
