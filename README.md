@@ -20,6 +20,7 @@ AMR functionality can be controlled through the configuration YAML file
 **Configuration parameters**:
    - `amr`: Boolean to enable or disable AMR without recompilation
    - `max_level`: Maximum allowed refinement level
+   - `tracking_variable`: DOF to track for mesh update indicator
 
 **Workflow:**
 

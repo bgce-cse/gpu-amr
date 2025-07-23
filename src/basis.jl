@@ -274,6 +274,7 @@ function project_larger_neighbor!(
     face_points = get_face_quadpoints(basis, faceneigh)
 
     if Face(face_dir) == N || Face(face_dir) == S
+        # North/South faces
         offset = (cell.center[1] < sub_neigh.center[1]) ? 0.0 : 0.5
         points = (face_points[1] ./ 2 .+ offset, face_points[2])
         

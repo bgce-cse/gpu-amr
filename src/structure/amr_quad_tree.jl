@@ -1,5 +1,5 @@
 """
-Adaptive Mesh Refinement QuadTree data structure for finite element methods.
+Adaptive Mesh Refinement QuadTree data structure.
 Maintains a hierarchical grid with automatic refinement and coarsening based on solution gradients.
 """
 mutable struct AMRQuadTree <: AbstractMesh
@@ -386,22 +386,18 @@ function amr_update!(tree::AMRQuadTree, eq::Equation, scenario::Scenario, global
 
     indicators = [calculate_total_variation(tree.basis, cell, globals, tracker) for cell in leaf_nodes]
     
-
     mean = sum(indicators) / length(indicators)
     var = sqrt(sum((x - mean)^2 for x in indicators) / length(indicators))
     
-
     if var ≈ 0.0
         return false
     end
     
-
     refine_threshold = mean + T_refine * var
     coarsen_threshold = mean + T_coarsen * var
     
     mesh_changed = false
     
-
     @inbounds for (i, cell) in enumerate(leaf_nodes)
         if indicators[i] >= refine_threshold
             if refine_node!(tree, cell)
@@ -410,7 +406,6 @@ function amr_update!(tree::AMRQuadTree, eq::Equation, scenario::Scenario, global
         end
     end
     
-
     @inbounds for (i, cell) in enumerate(leaf_nodes)
         if indicators[i] < coarsen_threshold
             if coarsen_node!(tree, cell.parent)
@@ -447,7 +442,6 @@ This is computed efficiently using Gaussian quadrature over collocated quadratur
     
     return tv
 end
-
 
 """
 Interpolate solution from parent to children during refinement.

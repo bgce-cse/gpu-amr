@@ -69,7 +69,6 @@ function limit_slopes(globals, limiter, dofs, cell)
     limiter.neigh_s[1,:] .= (limiter.center_avg .- limiter.neigh_avg[left]) .* dx_inv
     limiter.neigh_s[2,:] .= (limiter.neigh_avg[right] .- limiter.center_avg) .* dx_inv
 
-
     limiter.neigh_s[3,:] .= (limiter.center_avg .- limiter.neigh_avg[bottom]) .* dy_inv
     limiter.neigh_s[4,:] .= (limiter.neigh_avg[top] .- limiter.center_avg) .* dy_inv
 
