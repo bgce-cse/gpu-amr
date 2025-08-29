@@ -1,0 +1,6 @@
+-I./include
+-std=c++20
+-Wall
+-Wextra
+-Wconversion
+-Werror

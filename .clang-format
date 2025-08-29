@@ -1,0 +1,15 @@
+AlignAfterOpenBracket: BlockIndent
+AlignOperands: true
+AllowAllArgumentsOnNextLine: true
+AllowShortIfStatementsOnASingleLine: true
+AlwaysBreakTemplateDeclarations: Yes
+BasedOnStyle: Microsoft
+BinPackArguments: false
+BreakConstructorInitializers: BeforeComma
+ColumnLimit: 80
+IndentWidth: 4
+Language: Cpp
+MaxEmptyLinesToKeep: 1
+PointerAlignment: Left
+TabWidth: 4
+UseTab: Never

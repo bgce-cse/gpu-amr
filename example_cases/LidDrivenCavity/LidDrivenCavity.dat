@@ -1,0 +1,94 @@
+#--------------------------------------------
+#           geometry file            
+#--------------------------------------------
+geo_file     LidDrivenCavity.pgm
+
+
+#--------------------------------------------
+#            size of the domain             
+#--------------------------------------------
+xlength      5
+ylength      5
+
+#--------------------------------------------
+#               time steps
+# dt: time step size
+# t_end: final time
+# tau: safety factor for time step size control
+#--------------------------------------------
+dt           0.05
+t_end        50.0
+tau          0.5
+
+#--------------------------------------------
+#               output
+# dt_value: time interval for writing files
+#--------------------------------------------
+dt_value     0.5
+
+#--------------------------------------------
+#               pressure
+# itermax: maximum number of pressure iterations
+# eps: tolerance for pressure iteration (residual < eps)
+# omg: relaxation factor for SOR
+# gamma: upwind differencing factor
+#--------------------------------------------
+itermax      100
+eps          0.01
+omg          1.7
+gamma        0.5
+
+#--------------------------------------------
+#     kinematic viscosity
+#--------------------------------------------
+nu           0.01
+
+#--------------------------------------------
+#     temperatue parameters
+#--------------------------------------------
+beta         0.00021
+alpha        0.000142857
+
+#--------------------------------------------
+#        gravity / external forces
+#--------------------------------------------
+GX           0.0
+GY           0.0
+
+#--------------------------------------------
+#         initial pressure
+#--------------------------------------------
+PI          0.0
+
+#--------------------------------------------
+#         initial velocities
+#--------------------------------------------
+UI          0.0
+VI          0.0
+TI          0.0
+
+
+#--------------------------------------------
+#         boundary conditions
+#--------------------------------------------
+top_bc_type      moving_wall
+top_bc_value     1.0
+
+bottom_bc_type   no_slip
+bottom_bc_value  0.0
+
+left_bc_type     no_slip
+left_bc_value    0.0
+
+right_bc_type    no_slip
+right_bc_value   0.0
+
+
+#--------------------------------------------
+#         adaptive mesh
+#--------------------------------------------
+reconstruction_frequency    1.0
+vorticity_lower_limit       0.001
+vorticity_upper_limit       1.0
+initial_min_refinement      5
+max_tree_depth              8
