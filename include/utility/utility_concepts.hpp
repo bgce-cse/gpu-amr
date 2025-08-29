@@ -24,4 +24,10 @@ concept RandomDistribution = requires(T t) {
 template <typename T>
 concept Duration = requires(T t) { std::chrono::duration_cast<std::chrono::seconds>(t); };
 
+template <typename T, typename... Ts>
+concept is_any = std::disjunction_v<std::is_same<T, Ts>...>;
+
+template <typename T, typename... Ts>
+concept are_same = std::conjunction_v<std::is_same<T, Ts>...>;
+
 } // namespace utility::concepts
