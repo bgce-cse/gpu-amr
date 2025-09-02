@@ -11,7 +11,7 @@
 #include <type_traits>
 
 #ifndef NDEBUG
-#    define AMR_CONTANERS_CHECKBOUNDS
+#    define AMR_CONTAINERS_CHECKBOUNDS
 #endif
 
 namespace amr::containers
@@ -42,7 +42,7 @@ struct static_vector
     [[nodiscard]]
     constexpr auto operator[](size_type const idx) const noexcept -> const_reference
     {
-#ifdef AMR_CONTANERS_CHECKBOUNDS
+#ifdef AMR_CONTAINERS_CHECKBOUNDS
         assert_in_bounds(idx);
 #endif
         return data_[idx];
@@ -90,7 +90,7 @@ struct static_vector
         return std::end(data_);
     }
 
-#ifdef AMR_CONTANERS_CHECKBOUNDS
+#ifdef AMR_CONTAINERS_CHECKBOUNDS
     constexpr auto assert_in_bounds(size_type const idx) const noexcept -> void
     {
         assert(idx < s_size);

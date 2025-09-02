@@ -1,5 +1,5 @@
-#ifndef AMR_INLUDED_STATIC_TENSOR
-#define AMR_INLUDED_STATIC_TENSOR
+#ifndef AMR_INCLUDED_STATIC_TENSOR
+#define AMR_INCLUDED_STATIC_TENSOR
 
 #include "utility/utility_concepts.hpp"
 #include <algorithm>
@@ -7,9 +7,10 @@
 #include <cassert>
 #include <functional>
 #include <type_traits>
+#include <utility>
 
 #ifndef NDEBUG
-#    define AMR_CONTANERS_CHECKBOUNDS
+#    define AMR_CONTAINERS_CHECKBOUNDS
 #endif
 
 namespace amr::containers
@@ -22,6 +23,8 @@ class static_tensor
 {
 public:
     using value_type      = std::remove_cv_t<T>;
+    // TODO: This can be dangerous, maybe hardcode a type once we know what we
+    // need
     using size_type       = std::common_type_t<decltype(N), decltype(Ns)...>;
     using index_t         = size_type;
     using const_iterator  = value_type const*;
@@ -44,7 +47,7 @@ public:
         return strides;
     }();
     inline static constexpr size_type s_flat_size =
-        std::ranges::fold_left(s_sizes, size_type{ 1 }, std::multiplies{});
+    (N * ... * Ns);
 
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::is_standard_layout_v<T>);
@@ -77,17 +80,18 @@ public:
         return s_strides[i];
     }
 
-    template <class... I>
-        requires(sizeof...(I) == s_rank) &&
-                (std::is_same_v<std::remove_cvref_t<I>, index_t> && ...)
-    [[nodiscard]] constexpr static auto linear_index(I&&... idxs) noexcept -> index_t
+    [[nodiscard]]
+    constexpr static auto linear_index(index_t const (&idxs)[s_rank]) noexcept -> index_t
     {
-        index_t idx_v[s_rank] = { static_cast<index_t>(idxs)... };
-        auto    linear_idx    = index_t{};
+#ifdef AMR_CONTAINERS_CHECKBOUNDS
+        assert_in_bounds(idxs);
+#endif
+        auto linear_idx = index_t{};
         for (auto d = size_type{}; d < s_rank; ++d)
         {
-            linear_idx += idx_v[d] * s_strides[d];
+            linear_idx += idxs[d] * s_strides[d];
         }
+        assert(linear_idx < flat_size());
         return linear_idx;
     }
 
@@ -97,7 +101,18 @@ public:
     [[nodiscard]]
     constexpr auto operator[](I&&... idxs) const noexcept -> const_reference
     {
-        return data_[linear_index(static_cast<index_t>(idxs)...)];
+        index_t indices[s_rank] = { static_cast<index_t>(idxs)... };
+        return data_[linear_index(indices)];
+    }
+
+    template <class... I>
+        requires(sizeof...(I) == rank()) && (std::integral<std::remove_cvref_t<I>> && ...)
+    [[nodiscard]]
+    constexpr auto operator[](I&&... idxs) noexcept -> reference
+    {
+        return const_cast<reference>(
+            std::as_const(*this).operator[](std::forward<decltype(idxs)>(idxs)...)
+        );
     }
 
     [[nodiscard]]
@@ -137,8 +152,8 @@ public:
     }
 
 private:
-#ifdef AMR_CONTANERS_CHECKBOUNDS
-    auto assert_in_bounds(index_t const (&idxs)[s_rank]) const noexcept -> void
+#ifdef AMR_CONTAINERS_CHECKBOUNDS
+    static auto assert_in_bounds(index_t const (&idxs)[s_rank]) noexcept -> void
     {
         for (auto d = size_type{}; d != s_rank; ++d)
         {

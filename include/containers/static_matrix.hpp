@@ -1,5 +1,5 @@
-#ifndef AMR_INLUDED_STATIC_MATRIX
-#define AMR_INLUDED_STATIC_MATRIX
+#ifndef AMR_INCLUDED_STATIC_MATRIX
+#define AMR_INCLUDED_STATIC_MATRIX
 
 #include <algorithm>
 #include <array>
@@ -15,7 +15,7 @@
 #include <type_traits>
 
 #ifndef NDEBUG
-#    define AMR_CONTANERS_CHECKBOUNDS
+#    define AMR_CONTAINERS_CHECKBOUNDS
 #endif
 
 #define LU_DETERTMINANT_TOL 1e-7
@@ -70,7 +70,7 @@ public:
     constexpr auto operator[](const size_type j, const size_type i) const noexcept
         -> const_reference
     {
-#ifdef AMR_CONTANERS_CHECKBOUNDS
+#ifdef AMR_CONTAINERS_CHECKBOUNDS
         assert_in_bounds(j, i);
 #endif
         return data_[j * N + i];
@@ -112,7 +112,7 @@ public:
         return std::end(data_);
     }
 
-#ifdef AMR_CONTANERS_CHECKBOUNDS
+#ifdef AMR_CONTAINERS_CHECKBOUNDS
     constexpr auto assert_in_bounds(size_type const j, size_type const i) const noexcept
         -> void
     {
