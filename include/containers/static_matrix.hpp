@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <utility>
 #include <type_traits>
 
 #ifndef NDEBUG
@@ -27,7 +28,7 @@ template <typename T, std::integral auto N, std::integral auto M>
 class static_matrix
 {
 public:
-    using value_type      = T;
+    using value_type      = std::remove_cv_t<T>;
     using size_type       = std::common_type_t<decltype(M), decltype(N)>;
     using const_iterator  = value_type const*;
     using iterator        = value_type*;
@@ -62,10 +63,7 @@ public:
     [[nodiscard]]
     constexpr auto operator[](const size_type j, const size_type i) noexcept -> reference
     {
-#ifdef AMR_CONTANERS_CHECKBOUNDS
-        assert_in_bounds(j, i);
-#endif
-        return value_[j * N + i];
+        return const_cast<reference>(std::as_const(*this).operator[](i,j));
     }
 
     [[nodiscard]]
@@ -73,79 +71,45 @@ public:
         -> const_reference
     {
 #ifdef AMR_CONTANERS_CHECKBOUNDS
-        if constexpr (M == 1)
-        {
-            assert_in_bounds(1, j);
-        }
-        else if constexpr (N == 1)
-        {
-            assert_in_bounds(j, 1);
-        }
+        assert_in_bounds(j, i);
 #endif
-        return value_[j * N + i];
-    }
-
-    [[nodiscard]]
-    constexpr auto operator[](const size_type j) noexcept -> reference
-        requires(M == 1 || N == 1)
-    {
-#ifdef AMR_CONTANERS_CHECKBOUNDS
-        if constexpr (M == 1)
-        {
-            assert_in_bounds(1, j);
-        }
-        else if constexpr (N == 1)
-        {
-            assert_in_bounds(j, 1);
-        }
-#endif
-        return value_[j];
-    }
-
-    [[nodiscard]]
-    constexpr auto operator[](const size_type j) const noexcept -> const_reference
-        requires(M == 1 || N == 1)
-    {
-#ifdef AMR_CONTANERS_CHECKBOUNDS
-        assert_in_bounds(j, 1);
-#endif
-        return value_[j];
+        return data_[j * N + i];
     }
 
     [[nodiscard]]
     constexpr auto cbegin() const noexcept -> const_iterator
     {
-        return std::cbegin(value_);
+        return std::cbegin(data_);
     }
 
     [[nodiscard]]
     constexpr auto cend() const noexcept -> const_iterator
     {
-        return std::cend(value_);
+        return std::cend(data_);
     }
 
     [[nodiscard]]
     constexpr auto begin() const noexcept -> const_iterator
     {
-        return std::begin(value_);
+        return std::begin(data_);
     }
 
     [[nodiscard]]
     constexpr auto end() const noexcept -> const_iterator
     {
-        return std::end(value_);
+        return std::end(data_);
     }
 
     [[nodiscard]]
     constexpr auto begin() noexcept -> iterator
     {
-        return std::begin(value_);
+        return std::begin(data_);
     }
 
     [[nodiscard]]
     constexpr auto end() noexcept -> iterator
     {
-        return std::end(value_);
+        return std::end(data_);
     }
 
 #ifdef AMR_CONTANERS_CHECKBOUNDS
@@ -164,9 +128,9 @@ public:
 
     constexpr auto operator<=>(static_matrix const&) const noexcept = default;
 
-public:
+private:
     // TODO: Alignment, maybe padding
-    value_type value_[s_flat_size];
+    value_type data_[s_flat_size];
 };
 
 template <typename T, std::integral auto N, std::integral auto M>

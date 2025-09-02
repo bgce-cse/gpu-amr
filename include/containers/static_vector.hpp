@@ -20,7 +20,7 @@ namespace amr::containers
 template <typename T, std::integral auto N>
 struct static_vector
 {
-    using value_type      = T;
+    using value_type      = std::remove_cv_t<T>;
     using size_type       = std::size_t;
     using const_iterator  = value_type const*;
     using iterator        = value_type*;
@@ -40,57 +40,54 @@ struct static_vector
     }
 
     [[nodiscard]]
-    constexpr auto operator[](size_type const idx) const noexcept -> value_type const&
+    constexpr auto operator[](size_type const idx) const noexcept -> const_reference
     {
 #ifdef AMR_CONTANERS_CHECKBOUNDS
         assert_in_bounds(idx);
 #endif
-        return value_[idx];
+        return data_[idx];
     }
 
     [[nodiscard]]
-    constexpr auto operator[](size_type const idx) noexcept -> value_type&
+    constexpr auto operator[](size_type const idx) noexcept -> reference
     {
-#ifdef AMR_CONTANERS_CHECKBOUNDS
-        assert_in_bounds(idx);
-#endif
-        return value_[idx];
+        return const_cast<T&>(std::as_const(*this).operator[](idx));
     }
 
     [[nodiscard]]
     constexpr auto cbegin() const noexcept -> const_iterator
     {
-        return std::cbegin(value_);
+        return std::cbegin(data_);
     }
 
     [[nodiscard]]
     constexpr auto cend() const noexcept -> const_iterator
     {
-        return std::cend(value_);
+        return std::cend(data_);
     }
 
     [[nodiscard]]
     constexpr auto begin() const noexcept -> const_iterator
     {
-        return std::begin(value_);
+        return std::begin(data_);
     }
 
     [[nodiscard]]
     constexpr auto end() const noexcept -> const_iterator
     {
-        return std::end(value_);
+        return std::end(data_);
     }
 
     [[nodiscard]]
     constexpr auto begin() noexcept -> iterator
     {
-        return std::begin(value_);
+        return std::begin(data_);
     }
 
     [[nodiscard]]
     constexpr auto end() noexcept -> iterator
     {
-        return std::end(value_);
+        return std::end(data_);
     }
 
 #ifdef AMR_CONTANERS_CHECKBOUNDS
@@ -107,7 +104,7 @@ struct static_vector
     constexpr auto operator<=>(static_vector const&) const noexcept = default;
 
 public:
-    value_type value_[s_size];
+    value_type data_[s_size];
 };
 
 template <typename Value_Type, std::integral auto N>
