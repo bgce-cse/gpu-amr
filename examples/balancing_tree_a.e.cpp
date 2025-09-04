@@ -1,6 +1,6 @@
 #include "containers/static_vector.hpp"
 #include "morton/morton_id.hpp"
-#include "ndtree/flat_ndtree.hpp"
+#include "ndtree/ndtree.hpp"
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/print_tree_a.hpp"
 #include "utility/random.hpp"
@@ -68,7 +68,7 @@ int main()
     std::cout << "Hello balancing world\n";
 
     using index_t = amr::ndt::morton::morton_id<8u, 2u>;
-    using tree_t  = amr::ndt::tree::flat_ndtree<cell, index_t>;
+    using tree_t  = amr::ndt::tree::ndtree<cell, index_t>;
     tree_t h(100000000); // Provide initial capacity
 
     ndt::print::vtk_print vtk_printer("balancing_tree_a");

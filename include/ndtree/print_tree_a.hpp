@@ -53,7 +53,7 @@ private:
         std::vector<std::array<uint32_t, 3>> points;
         std::vector<size_t>                  cell_indices;
 
-        // For flat_ndtree: iterate over all valid indices
+        // For ndtree: iterate over all valid indices
 
         for (size_t i = 0; i < tree.size(); ++i)
         {

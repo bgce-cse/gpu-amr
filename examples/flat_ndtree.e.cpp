@@ -1,4 +1,4 @@
-#include "ndtree/flat_ndtree.hpp"
+#include "ndtree/ndtree.hpp"
 #include "containers/static_vector.hpp"
 #include "morton/morton_id.hpp"
 #include "ndtree/ndhierarchy.hpp"
@@ -73,7 +73,7 @@ int main()
     rngf::seed<typename S1::type>();
 
     using index_t       = amr::ndt::morton::morton_id<7u, 2u>;
-    using tree_t        = amr::ndt::tree::flat_ndtree<cell, index_t>;
+    using tree_t        = amr::ndt::tree::ndtree<cell, index_t>;
     const auto capacity = 100;
     tree_t     tree(capacity);
 

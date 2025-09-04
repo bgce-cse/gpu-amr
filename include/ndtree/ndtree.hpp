@@ -1,507 +1,438 @@
 #ifndef AMR_INCLUDED_NDTREE
 #define AMR_INCLUDED_NDTREE
 
-#include "allocators/free_list_buffer_allocator.hpp"
 #include "ndconcepts.hpp"
 #include "ndhierarchy.hpp"
 #include "utility/compile_time_utility.hpp"
 #include "utility/constexpr_functions.hpp"
 #include <algorithm>
+#include <cassert>
 #include <concepts>
 #include <cstdint>
-#include <optional>
+#include <cstdlib>
+#include <numeric>
+#include <system_error>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
 
 #ifndef NDEBUG
 #    define AMR_NDTREE_CHECKBOUNDS
+#    define AMR_NDTREE_ENABLE_CHECKS
+// #    define AMR_NDTREE_CHECK_NEIGHBORS
+// #    define AMR_NDTREE_CHECK_BALANCING
 #endif
 
 namespace amr::ndt::tree
 {
 
-template <typename T, concepts::NodeIndex Node_Index>
+template <concepts::DeconstructibleType T, concepts::NodeIndex Node_Index>
 class ndtree
 {
 public:
     using value_type                  = T;
-    using pointer                     = value_type*;
-    using const_pointer               = value_type const*;
     using node_index_t                = Node_Index;
+    using size_type                   = std::size_t;
+    using linear_index_t              = size_type;
     using node_index_directon_t       = typename node_index_t::direction_t;
     static constexpr auto s_nd_fanout = node_index_t::nd_fanout();
 
+    template <typename Type>
+    using value_t = std::remove_pointer_t<std::remove_cvref_t<Type>>;
+    template <typename Type>
+    using pointer_t = Type*;
+    template <typename Type>
+    using const_pointer_t = Type const*;
+    template <typename Type>
+    using reference_t = Type&;
+    template <typename Type>
+    using const_reference_t = Type const&;
+
     static_assert(s_nd_fanout > 1);
 
-    static constexpr auto s_block_size = sizeof(value_type) * s_nd_fanout;
-    using allocator_t =
-        allocator::free_list_buffer_allocator<s_block_size, alignof(value_type)>;
+    template <typename>
+    struct deconstructed_buffers_impl;
 
-    struct cell_pointer
+    template <typename... Ts>
+        requires concepts::detail::type_map_tuple_impl<std::tuple<Ts...>>
+    struct deconstructed_buffers_impl<std::tuple<Ts...>>
     {
-        struct metadata
-        {
-            bool alive;
-            int  refine_flag; // 1 for refine, 2 for coarsen
-        };
-
-        pointer  ptr;
-        metadata data;
+        using type = std::tuple<pointer_t<typename Ts::type>...>;
     };
 
-    struct block_pointer
+    using deconstructed_buffers_t =
+        typename deconstructed_buffers_impl<typename T::deconstructed_types_map_t>::type;
+
+    template <typename>
+    struct deconstructed_types_impl;
+
+    template <typename... Ts>
+        requires concepts::detail::type_map_tuple_impl<std::tuple<Ts...>>
+    struct deconstructed_types_impl<std::tuple<Ts...>>
     {
-        using cell_metadata = typename cell_pointer::metadata;
-
-        struct block_metadata
-        {
-            constexpr block_metadata(cell_metadata const& init) noexcept
-                : cell_data{ utility::compile_time_utility::
-                                 array_factory<cell_metadata, s_nd_fanout>(init) }
-            {
-            }
-
-            [[nodiscard]]
-            constexpr auto operator[](std::integral auto const i) const noexcept
-                -> cell_metadata
-            {
-#ifdef AMR_NDTREE_CHECKBOUNDS
-                assert_in_bounds(i);
-#endif
-                return cell_data[i];
-            }
-
-            std::array<cell_metadata, s_nd_fanout> cell_data;
-        };
-
-        constexpr block_pointer(node_index_t i, pointer p) noexcept
-            : id(i)
-            , ptr{ p }
-            , metadata(cell_metadata{ true, 0 })
-        {
-        }
-
-        node_index_t   id;
-        pointer        ptr;
-        block_metadata metadata;
-
-        [[nodiscard]]
-        constexpr auto operator[](std::integral auto const i) const noexcept
-            -> cell_pointer
-        {
-#ifdef AMR_NDTREE_CHECKBOUNDS
-            assert_in_bounds(i);
-#endif
-            return cell_pointer{ ptr + i, metadata.cell_data[i] };
-        }
-
-    public:
-        constexpr auto kill_cell(std::integral auto const i) noexcept -> void
-        {
-#ifdef AMR_NDTREE_CHECKBOUNDS
-            assert_in_bounds(i);
-#endif
-            assert(metadata.cell_data[i].alive);
-            metadata.cell_data[i].alive = false;
-        }
-
-        constexpr auto revive_cell(std::integral auto const i) noexcept -> void
-        {
-#ifdef AMR_NDTREE_CHECKBOUNDS
-            assert_in_bounds(i);
-#endif
-            assert(!metadata.cell_data[i].alive);
-            metadata.cell_data[i].alive = true;
-        }
-
-        [[nodiscard]]
-        constexpr auto alive_any() const noexcept -> bool
-        {
-            return std::ranges::any_of(
-                metadata.cell_data, [](auto const& e) { return e.alive; }
-            );
-        }
-
-        [[nodiscard]]
-        constexpr auto alive_all() const noexcept -> bool
-        {
-            return std::ranges::all_of(
-                metadata.cell_data, [](auto const& e) { return e.alive; }
-            );
-        }
-
-        [[nodiscard]]
-        constexpr auto coarsen_all() const noexcept -> bool
-        {
-            return std::ranges::all_of(
-                metadata.cell_data, [](auto const& e) { return e.refine_flag == 2; }
-            );
-        }
-
-        [[nodiscard]]
-        static constexpr auto size() noexcept -> decltype(s_nd_fanout)
-        {
-            return s_nd_fanout;
-        }
-
-        [[nodiscard]]
-        constexpr auto operator<(block_pointer const& other) const -> bool
-        {
-            return id < other.id;
-        }
-
-    private:
-#ifdef AMR_NDTREE_CHECKBOUNDS
-        static auto assert_in_bounds(std::integral auto const idx) noexcept -> void
-        {
-            if constexpr (std::is_signed_v<decltype(idx)>)
-            {
-                assert(idx >= 0);
-            }
-            assert(idx < s_nd_fanout);
-        }
-#endif
+        using type = std::tuple<value_t<typename Ts::type>...>;
     };
 
-    using index_map_t                = std::vector<block_pointer>;
+    using deconstructed_types_t =
+        typename deconstructed_types_impl<typename T::deconstructed_types_map_t>::type;
+
+    enum struct RefinementStatus : char
+    {
+        Stable  = 0,
+        Refine  = 1,
+        Coarsen = 2,
+    };
+
+    using refine_status_t = RefinementStatus;
+
+    using linear_index_map_t         = pointer_t<node_index_t>;
+    using linear_index_array_t       = pointer_t<linear_index_t>;
+    using flat_refine_status_array_t = pointer_t<refine_status_t>;
+    using index_map_t                = std::unordered_map<node_index_t, linear_index_t>;
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
 
 public:
-    ndtree() noexcept
-        : m_allocator()
-        , m_blocks()
+    ndtree(size_type size) noexcept
+        : m_size{}
+
     {
-        const auto p = (pointer)m_allocator.allocate_one();
-        m_blocks.emplace_back(node_index_t::root(), p);
-    }
-
-    [[nodiscard]]
-    auto fragment(node_index_t const& node_id) -> block_pointer
-    {
-        auto bp = find_block(node_index_t::parent_of(node_id));
-        assert(bp.has_value());
-
-        bp.value()->kill_cell(node_index_t::offset_of(node_id));
-
-        /*
-         * TODO: Reuse this block if it is not alive anymore
-        const auto alive = bp->alive();
-        if (alive)
-        {
-        }
-        else
-        {
-
-        }
-          */
-        const auto p      = reinterpret_cast<pointer>(m_allocator.allocate_one());
-        const auto new_bp = block_pointer(node_id, p);
-        m_blocks.emplace_back(new_bp);
-        return new_bp;
-    }
-
-    auto fragment(std::vector<node_index_t>& to_refine)
-    {
-        std::cout << "[fragment] to_refine vector contains " << to_refine.size()
-                  << " entries:\n";
-        for (size_t i = 0; i < to_refine.size(); ++i)
-        {
-            std::cout << "  [" << i << "] id = " << to_refine[i].id() << std::endl;
-        }
-        for (size_t idx = 0; idx < to_refine.size(); idx++)
-        {
-            [[maybe_unused]]
-            auto _ = fragment(to_refine[idx]);
-        }
-    }
-
-    auto test_get_neighbor()
-    {
-        // iterate over all block and return neighbors of all cells
-        for (size_t idx = 0; idx < m_blocks.size(); ++idx)
-        {
-            auto& block = m_blocks[idx];
-
-            for (int i = 0; i < 4; i++)
+        std::apply(
+            [size](auto&... b)
             {
-                if (block.metadata.cell_data[i].alive)
-                {
-                    auto cell_id = node_index_t::child_of(block.id, i);
-                    auto result  = get_neighbors(cell_id, node_index_directon_t::right);
-                    std::cout << "I am cell " << cell_id.id()
-                              << " and my neighbors are :  " << std::endl;
-                    if (result)
-                    {
-                        // result is a pair: {neighbor_id, std::vector<offsets>}
-                        auto [neighbor_id, offsets] = *result;
-                        std::cout << "Neighbor block id: " << neighbor_id.id()
-                                  << std::endl;
-                        for (auto offset : offsets)
-                        {
-                            std::cout << "Neighbor cell offset: " << offset << std::endl;
-                        }
-                    }
-                    else
-                    {
-                        std::cout << "No neighbor in that direction." << std::endl;
-                    }
-                }
+                ((void)(b = (pointer_t<value_t<decltype(b)>>)
+                            std::malloc(size * sizeof(value_t<decltype(b)>))),
+                 ...);
+            },
+            m_data_buffers
+        );
+        m_linear_index_map =
+            (pointer_t<node_index_t>)std::malloc(size * sizeof(node_index_t));
+        m_reorder_buffer =
+            (pointer_t<linear_index_t>)std::malloc(size * sizeof(linear_index_t));
+        m_refine_status_buffer =
+            (pointer_t<refine_status_t>)std::malloc(size * sizeof(refine_status_t));
+        std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
+
+        append(node_index_t::root());
+    }
+
+    ~ndtree() noexcept
+    {
+        std::free(m_refine_status_buffer);
+        std::free(m_reorder_buffer);
+        std::free(m_linear_index_map);
+        std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_data_buffers);
+    }
+
+public:
+    [[nodiscard]]
+    auto size() const noexcept -> size_type
+    {
+        return m_size;
+    }
+
+    template <concepts::TypeMap Map_Type>
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
+    auto get(linear_index_t const idx) noexcept -> reference_t<typename Map_Type::type>
+    {
+        assert(idx < m_size);
+        return std::get<Map_Type::index()>(m_data_buffers)[idx];
+    }
+
+    template <concepts::TypeMap Map_Type>
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
+    auto get(linear_index_t const idx) const noexcept
+        -> const_reference_t<typename Map_Type::type>
+    {
+        assert(idx < m_size);
+        return std::get<Map_Type::index()>(m_data_buffers)[idx];
+    }
+
+    auto fragment(node_index_t const node_id) -> void
+    {
+        const auto it = find_index(node_id);
+        assert(it.has_value());
+        auto const start_to = m_size;
+        for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
+        {
+            auto child_id = node_index_t::child_of(node_id, i);
+            assert(!find_index(child_id).has_value());
+            append(child_id);
+            assert(m_index_map[child_id] == back_idx());
+            assert(m_linear_index_map[back_idx()] == child_id);
+        }
+        const auto from = it.value()->second;
+        interpolate_node(from, start_to);
+        m_index_map.erase(it.value());
+#ifdef AMR_NDTREE_ENABLE_CHECKS
+        check_index_map();
+#endif
+    }
+
+    auto recombine(node_index_t const parent_node_id) -> void
+    {
+        assert(!find_index(parent_node_id).has_value());
+
+        const auto child_0    = node_index_t::child_of(parent_node_id, 0);
+        const auto child_0_it = find_index(child_0);
+        assert(child_0_it.has_value());
+
+        const auto start = child_0_it.value()->second;
+        append(parent_node_id);
+        assert(m_linear_index_map[back_idx()] == parent_node_id);
+        restrict_nodes(start, back_idx());
+
+        for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
+        {
+            const auto child_i    = node_index_t::child_of(parent_node_id, i);
+            auto       child_i_it = find_index(child_i);
+            assert(child_i_it.has_value());
+            assert(child_i_it.value()->second == start + i);
+            m_index_map.erase(child_i_it.value());
+        }
+    }
+
+    auto fragment() -> void
+    {
+        assert(is_sorted());
+        for (auto const& node_id : m_to_refine)
+        {
+            fragment(node_id);
+        }
+        sort_buffers();
+    }
+
+    auto recombine() -> void
+    {
+        assert(is_sorted());
+        for (const auto& node_id : m_to_coarsen)
+        {
+            recombine(node_id);
+        }
+        sort_buffers();
+    }
+
+    template <typename Fn>
+    auto update_refine_flags(Fn&& fn) noexcept(
+        noexcept(fn(std::declval<linear_index_t&>()))
+    )
+    {
+        for (linear_index_t i = 0; i < m_size; ++i)
+        {
+            m_refine_status_buffer[i] = fn(m_linear_index_map[i]);
+        }
+    }
+
+    auto apply_refine_coarsen() -> void
+    {
+        m_to_refine.clear();
+        m_to_coarsen.clear();
+        std::vector<node_index_t> parent_morton_idx;
+        for (linear_index_t i = 0; i < m_size; ++i)
+        {
+            const auto node_id = m_linear_index_map[i];
+            if (node_id.id() == 0)
+            {
+                continue;
+            }
+            const auto parent_id = node_index_t::parent_of(node_id);
+            parent_morton_idx.push_back(parent_id);
+        }
+        std::sort(parent_morton_idx.begin(), parent_morton_idx.end());
+        parent_morton_idx.erase(
+            std::unique(parent_morton_idx.begin(), parent_morton_idx.end()),
+            parent_morton_idx.end()
+        );
+
+        for (linear_index_t i = 0; i < m_size; ++i)
+        {
+            if (is_refine_elegible(i))
+            {
+                const auto node_id = m_linear_index_map[i];
+                m_to_refine.push_back(node_id);
+            }
+        }
+        for (auto parent_id : parent_morton_idx)
+        {
+            if (is_coarsen_elegible(parent_id))
+            {
+                m_to_coarsen.push_back(parent_id.id());
             }
         }
     }
 
     auto get_neighbors(node_index_t const& node_id, node_index_directon_t dir)
-        -> std::optional<
-            std::pair<node_index_t, std::vector<typename node_index_t::offset_t>>>
+        -> std::optional<std::vector<node_index_t>>
     {
-        // std::cout << "[get_neighbors] Called for cell id: " << node_id.id()
-        //           << " in direction: " << static_cast<int>(dir) << std::endl;
+        std::vector<node_index_t> neighbor_vector;
 
-        auto parent_id = node_index_t::parent_of(node_id.id());
-        // std::cout << "[get_neighbors] Parent id: " << parent_id.id() << std::endl;
+        auto cell_it = find_index(node_id);
+        assert(cell_it.has_value() && "[get_neighbors] this cell cannot be found");
 
-        auto bp_node = find_block(parent_id);
-        if (!bp_node.has_value())
-        {
-            std::cout << "[get_neighbors] Parent block not found!" << std::endl;
-            assert(false);
-        }
+#ifdef AMR_NDTREE_CHECK_NEIGHBORS
+        std::cout << "[get_neighbors] node_id: " << node_id.id() << " dir: " << int(dir)
+                  << "\n";
+#endif
 
-        auto offset = node_index_t::offset_of(node_id.id());
-        // std::cout << "[get_neighbors] Offset in parent: " << offset << std::endl;
-
-        if (!bp_node.value()->metadata.cell_data[offset].alive)
-        {
-            std::cout << "[get_neighbors] Cell is not alive in parent block!"
-                      << std::endl;
-            assert(false);
-            return std::nullopt;
-        }
-
-        std::vector<typename node_index_t::offset_t> index_vector;
         auto direct_neighbor = node_index_t::neighbour_at(node_id, dir);
 
-        if (!direct_neighbor)
+        if (!direct_neighbor) // adjacent to boundary case
         {
-            // std::cout << "[get_neighbors] No direct neighbor exists in that direction."
-            //           << std::endl;
+#ifdef AMR_NDTREE_CHECK_NEIGHBORS
+            std::cout << "  [get_neighbors] No direct neighbor (boundary case)\n";
+#endif
             return std::nullopt;
         }
-        // std::cout << "[get_neighbors] Direct neighbor id: "
-        //           << direct_neighbor.value().id() << std::endl;
 
-        auto d_neighbor = find_block(direct_neighbor.value());
-        if (d_neighbor.has_value())
+#ifdef AMR_NDTREE_CHECK_NEIGHBORS
+        std::cout << "  [get_neighbors] Direct neighbor candidate: "
+                  << direct_neighbor.value().id() << "\n";
+#endif
+        auto direct_neighbor_it = find_index(direct_neighbor.value().id());
+
+        if (direct_neighbor_it.has_value()) // neighbor on same level case
         {
-            // std::cout << "[get_neighbors] Direct neighbor block found!" << std::endl;
-            typename node_index_t::offset_t offset0, offset1;
-            switch (dir)
-            {
-                case node_index_directon_t::left:
-                    offset0 = 1;
-                    offset1 = 3;
-                    break;
-                case node_index_directon_t::right:
-                    offset0 = 0;
-                    offset1 = 2;
-                    break;
-                case node_index_directon_t::bottom:
-                    offset0 = 2;
-                    offset1 = 3;
-                    break;
-                case node_index_directon_t::top:
-                    offset0 = 0;
-                    offset1 = 1;
-                    break;
-                default: break;
-            }
-            // std::cout << "[get_neighbors] Neighbor cell offsets: " << offset0 << ", "
-            //           << offset1 << std::endl;
-            index_vector.push_back(offset0);
-            index_vector.push_back(offset1);
-            return std::make_optional(
-                std::make_pair(direct_neighbor.value(), index_vector)
-            );
+#ifdef AMR_NDTREE_CHECK_NEIGHBORS
+            std::cout << "  [get_neighbors] Found neighbor on same level: "
+                      << direct_neighbor.value().id() << "\n";
+#endif
+            neighbor_vector.push_back(direct_neighbor.value());
+            return neighbor_vector;
         }
 
         auto neighbor_parent = node_index_t::parent_of(direct_neighbor.value());
-        // std::cout << "[get_neighbors] Checking neighbor's parent id: "
-        //           << neighbor_parent.id() << std::endl;
-        auto p_neighbor = find_block(neighbor_parent);
-        if (p_neighbor.has_value())
+#ifdef AMR_NDTREE_CHECK_NEIGHBORS
+        std::cout << "  [get_neighbors] Checking parent of direct neighbor: "
+                  << neighbor_parent.id() << "\n";
+#endif
+        auto neighbor_parent_it = find_index(neighbor_parent.id());
+        if (neighbor_parent_it.has_value()) // neighbor on lower level case
         {
-            // std::cout << "[get_neighbors] Parent of direct neighbor found!" <<
-            // std::endl;
-            auto neighbor_offset = node_index_t::offset_of(direct_neighbor.value());
-            // std::cout << "[get_neighbors] Offset in neighbor's parent: "
-            //           << neighbor_offset << std::endl;
-            index_vector.push_back(neighbor_offset);
-            return std::make_optional(std::make_pair(neighbor_parent, index_vector));
+#ifdef AMR_NDTREE_CHECK_NEIGHBORS
+            std::cout << "  [get_neighbors] Found neighbor on lower level (parent): "
+                      << neighbor_parent.id() << "\n";
+#endif
+            neighbor_vector.push_back(neighbor_parent);
+            return neighbor_vector;
         }
 
-        auto neighbor_grandparent = node_index_t::parent_of(neighbor_parent);
-        // std::cout << "[get_neighbors] Checking neighbor's grandparent id: "
-        //           << neighbor_grandparent.id() << std::endl;
-        auto gp_neighbor = find_block(neighbor_grandparent);
-        if (gp_neighbor.has_value())
+        typename node_index_t::offset_t offset0, offset1;
+        switch (dir)
         {
-            // std::cout << "[get_neighbors] Grandparent of direct neighbor found!"
-            //           << std::endl;
-            auto neighbor_parent_offset = node_index_t::offset_of(neighbor_parent);
-            // std::cout << "[get_neighbors] Offset in neighbor's grandparent: "
-            //           << neighbor_parent_offset << std::endl;
-            index_vector.push_back(neighbor_parent_offset);
-            return std::make_optional(std::make_pair(neighbor_grandparent, index_vector));
+            case node_index_directon_t::left:
+                offset0 = 1;
+                offset1 = 3;
+                break;
+            case node_index_directon_t::right:
+                offset0 = 0;
+                offset1 = 2;
+                break;
+            case node_index_directon_t::bottom:
+                offset0 = 0;
+                offset1 = 1;
+                break;
+            case node_index_directon_t::top:
+                offset0 = 2;
+                offset1 = 3;
+                break;
+            default: break;
+        }
+        auto child0 = node_index_t::child_of(direct_neighbor.value(), offset0);
+        auto child1 = node_index_t::child_of(direct_neighbor.value(), offset1);
+#ifdef AMR_NDTREE_CHECK_NEIGHBORS
+        std::cout << "  [get_neighbors] Checking children of direct neighbor: "
+                  << child0.id() << ", " << child1.id() << "\n";
+#endif
+        auto child_0_it = find_index(child0.id());
+        auto child_1_it = find_index(child1.id());
+
+        if (child_0_it.has_value() && child_1_it.has_value())
+        {
+#ifdef AMR_NDTREE_CHECK_NEIGHBORS
+            std::cout << "  [get_neighbors] Found neighbor children: " << child0.id()
+                      << ", " << child1.id() << "\n";
+#endif
+            neighbor_vector.push_back(child0);
+            neighbor_vector.push_back(child1);
+            return neighbor_vector;
         }
 
-        // std::cout << "[get_neighbors] No neighbor found after all checks!" <<
-        // std::endl;
-        assert(false);
+#ifdef AMR_NDTREE_CHECK_NEIGHBORS
+        std::cout << "  [get_neighbors] No neighbor found (unexpected case)\n";
+#endif
+        assert(false && "none of the four cases in get neighbor was met");
     }
 
-    [[nodiscard]]
-    auto apply_refine_coarsen()
-        -> std::pair<std::vector<node_index_t>, std::vector<node_index_t>>
-
-    // supposed to return vecitd of cells to refine and vecotr fo block to coarsen, THis
-    // is then given t another fucntion ensuring the balancing.
+    auto balancing()
     {
-        // std::cout << "Total blocks before refinement: " << m_blocks.size() <<
-        // std::endl;
-        std::vector<node_index_t> to_coarsen;
-        std::vector<node_index_t> to_refine;
-        for (size_t idx = 0; idx < m_blocks.size(); ++idx)
-        {
-            auto& block = m_blocks[idx];
-            if (block.coarsen_all() && block.alive_all())
-            {
-                // std::cout << "Servus aus der coarseing if " << std::endl;
-                to_coarsen.push_back(block.id);
-                // [[maybe_unused]] auto _ = recombine(block.id);
-            }
-
-            // std::cout << "Block " << idx << " id: " <<  block.id.id() << std::endl;
-
-            auto [coords, level] = node_index_t::decode(block.id.id());
-            // std::cout << "Block " << idx << " level: " << (int)level << " coords: " <<
-            // coords[0] << "," << coords[1] << std::endl;
-
-            if (level >= node_index_t::max_depth())
-            {
-                // std::cout << "ERROR: Block at invalid level!" << std::endl;
-                continue;
-            }
-
-            for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
-            {
-                block = m_blocks[idx];
-
-                if (block.metadata.cell_data[i].refine_flag == 1 &&
-                    block.metadata.cell_data[i].alive)
-                {
-                    auto child_id = node_index_t::child_of(block.id, i);
-                    to_refine.push_back(child_id.id());
-                    // std::cout << "About to fragment child at level " << (int)level + 1
-                    // << std::endl;
-                    // [[maybe_unused]]
-                    // auto _ = fragment(child_id);
-                }
-            }
-        }
-        return { to_refine, to_coarsen };
-
-        // Erase from highest to lowest to avoid shifting issues
-        // for (auto idx = to_coarsen.size(); idx-- > 0;)
-        // {
-        //     // std::cout << "calling recombine for " << to_coarsen[idx].id() <<
-        //     std::endl;
-        //     [[maybe_unused]]
-        //     auto _ = recombine(to_coarsen[idx]);
-        // }
-    }
-
-    auto balancing(
-        std::vector<node_index_t>& to_refine,
-        std::vector<node_index_t>& to_coarsen
-    )
-    {
-        // check if balancing condition is violated.
-        // first refinement
-        std::vector<node_index_t> blocks_to_remove;
-
         constexpr node_index_directon_t directions[] = { node_index_directon_t::left,
                                                          node_index_directon_t::right,
                                                          node_index_directon_t::top,
                                                          node_index_directon_t::bottom };
 
-        for (size_t i = 0; i < to_refine.size(); i++)
+        // Refinement balancing
+        for (size_t i = 0; i < m_to_refine.size(); i++)
         {
-            auto cell_id         = to_refine[i];
+            auto cell_id         = m_to_refine[i];
             auto [coords, level] = node_index_t::decode(cell_id.id());
+#ifdef AMR_NDTREE_CHECK_BALANCING
             std::cout << "[balancing] Refinement  Checking cell " << cell_id.id()
                       << " at level " << (int)level << " coords: (" << coords[0] << ","
                       << coords[1] << ")\n";
+#endif
             for (auto direction : directions)
             {
-                auto result = get_neighbors(cell_id.id(), direction);
-                if (!result)
+                auto neighbor_opt = get_neighbors(cell_id, direction);
+                if (!neighbor_opt.has_value())
                 {
-                    std::cout << "  No neighbor in direction "
-                              << static_cast<int>(direction) << "\n";
+#ifdef AMR_NDTREE_CHECK_BALANCING
+                    std::cout << "boundary in this direction " << std::endl;
+#endif
                     continue;
                 }
-                auto [neighbor_id, offsets]  = *result;
-                auto [__, level_bp_neighbor] = node_index_t::decode(neighbor_id.id());
-                std::cout << "  Neighbor in direction " << static_cast<int>(direction)
-                          << ": id=" << neighbor_id.id()
-                          << " bp level=" << (int)level_bp_neighbor << " offsets: ";
-                // for (auto off : offsets)
-                //     std::cout << off << " ";
-                // std::cout << "\n";
-                if (level_bp_neighbor < level - 1)
+                for (const auto& neighbor : neighbor_opt.value())
                 {
-                    std::cout
-                        << "    [balancing] Balancing violation! Refining neighbor cell "
+                    auto [__, level_bp_neighbor] = node_index_t::decode(neighbor.id());
 
-                        << node_index_t::child_of(neighbor_id, offsets[0]).id() << "\n";
-                    // balancing condition violated
-                    // push this cell to refinement cells (it will be checked itself later
-                    // as it is appended at the end of the vector)
-                    auto new_id = node_index_t::child_of(neighbor_id, offsets[0]).id();
-                    if (std::find_if(
-                            to_refine.begin(),
-                            to_refine.end(),
-                            [&](const node_index_t& n) { return n.id() == new_id; }
-                        ) == to_refine.end())
+                    if (level_bp_neighbor < level)
                     {
-                        to_refine.push_back(
-                            node_index_t::child_of(neighbor_id, offsets[0])
-                        );
+#ifdef AMR_NDTREE_CHECK_BALANCING
+                        std::cout << "    [balancing] Balancing violation! Refining "
+                                     "neighbor cell "
+                                  << neighbor.id() << "\n";
+#endif
+                        if (std::find_if(
+                                m_to_refine.begin(),
+                                m_to_refine.end(),
+                                [&](const node_index_t& n)
+                                { return n.id() == neighbor.id(); }
+                            ) == m_to_refine.end())
+                        {
+                            m_to_refine.push_back(neighbor);
+                        }
                     }
                 }
             }
         }
-        std::vector<node_index_t> parents_of_to_refine;
-        for (auto child_cell : to_refine)
-        {
-            auto parent_block = node_index_t::parent_of(child_cell.id());
-            parents_of_to_refine.push_back(parent_block.id());
-        }
 
-        // check coarsening after refining - if there is a conflict refinment wins and the
-        // cell needs to be removed from coarsening
-        for (size_t i = 0; i < to_coarsen.size(); i++)
+        // Coarsening balancing
+        std::vector<node_index_t> blocks_to_remove;
+        for (size_t i = 0; i < m_to_coarsen.size(); i++)
         {
-            auto block_id        = to_coarsen[i];
-            auto [coords, level] = node_index_t::decode(block_id.id());
-            // std::cout << "[balancing] Coarsening  Checking block " << block_id.id()
-            //           << " at level " << (int)level << " coords: (" << coords[0] << ","
-            //           << coords[1] << ")\n";
+            auto parent_id       = m_to_coarsen[i];
+            auto [coords, level] = node_index_t::decode(parent_id.id());
+#ifdef AMR_NDTREE_CHECK_BALANCING
+            std::cout << "[balancing] Coarsening Checking parent " << parent_id.id()
+                      << " at level " << (int)level << " coords: (" << coords[0] << ","
+                      << coords[1] << ")\n";
+#endif
 
             for (auto direction : directions)
             {
-                auto offset0 = 0;
-                auto offset1 = 0;
-
+                // For each direction, check the two children on the face
+                typename node_index_t::offset_t offset0 = 0, offset1 = 0;
                 switch (direction)
                 {
                     case node_index_directon_t::left:
@@ -522,217 +453,380 @@ public:
                         break;
                     default: break;
                 }
-                std::vector<int> offsets;
-                offsets.push_back(offset0);
-                offsets.push_back(offset1);
+                std::vector<typename node_index_t::offset_t> offsets = { offset0,
+                                                                         offset1 };
                 for (auto offset : offsets)
                 {
-                    auto child_cell = node_index_t::child_of(block_id.id(), offset);
-                    auto result     = get_neighbors(child_cell.id(), direction);
+                    auto child_cell = node_index_t::child_of(parent_id.id(), offset);
+                    [[maybe_unused]] auto [child_coords, child_level] =
+                        node_index_t::decode(child_cell.id());
+#ifdef AMR_NDTREE_CHECK_BALANCING
+                    std::cout << "  [coarsen] Checking child " << child_cell.id()
+                              << " (offset " << int(offset) << ") at level "
+                              << int(child_level) << " coords: (" << child_coords[0]
+                              << "," << child_coords[1] << ")\n";
+#endif
+
+                    auto result = get_neighbors(child_cell, direction);
                     if (!result)
                     {
-                        // std::cout << "  No neighbor in direction "
-                        //           << static_cast<int>(direction) << "\n";
+#ifdef AMR_NDTREE_CHECK_BALANCING
+                        std::cout << "    [coarsen] No neighbor in direction "
+                                  << int(direction) << "\n";
+#endif
                         continue;
                     }
-                    auto [neighbor_id, neighbor_offsets] = *result;
-                    auto [__, level_bp_neighbor] = node_index_t::decode(neighbor_id.id());
-                    // std::cout << "  Neighbor in direction " <<
-                    // static_cast<int>(direction)
-                    //           << ": id=" << neighbor_id.id()
-                    //           << " bp level=" << (int)level_bp_neighbor << " offsets:
-                    //           ";
-                    // for (auto off : neighbor_offsets)
-                    //     std::cout << off << " ";
-                    // std::cout << "\n";
-                    if (level_bp_neighbor > level)
+                    for (const auto& neighbor_id : *result)
                     {
-                        std::cout << "    [balancing] Balancing violation! removing this "
-                                     "block from coarsenign "
-                                  << std::endl;
-
-                        // balancing condition violated - just remove this block from to
-                        // coarsen vector push this cell to coarsening cells (it will be
-                        // checked itself later as it is appended at the end of the
-                        // vector)
-                        std::cout << "    [balancing] Balancing violation! Marking this "
-                                     "block for removal from coarsening\n";
-                        blocks_to_remove.push_back(block_id);
-                        break; // Optionally break if you want to skip further checks for
-                               // this block
-                        // Decrement i if you continue looping, since the vector shrinks
-
-                        // if (std::find_if(
-                        //         to_coarsen.begin(),
-                        //         to_coarsen.end(),
-                        //         [&](const node_index_t& n)
-                        //         { return n.id() == neighbor_id.id(); }
-                        //     ) == to_coarsen.end() &&
-                        //     std::find_if(
-                        //         parents_of_to_refine.begin(),
-                        //         parents_of_to_refine.end(),
-                        //         [&](const node_index_t& n)
-                        //         { return n.id() == neighbor_id.id(); }
-                        //     ) == parents_of_to_refine.end())
-                        // {
-                        //     auto block = find_block(neighbor_id);
-                        //     assert(block.has_value());
-                        //     if (!block.has_value())
-                        //     {
-                        //         std::cout << "balancing tries to add a block which "
-                        //                      "doesnt even exist"
-                        //                   << std::endl;
-                        //         std::cout << "block id : " << neighbor_id.id()
-                        //                   << std::endl;
-                        //         assert(false);
-                        //     }
-                        //     std::cout << "[recombine] to_coarsen vector contains "
-                        //               << to_coarsen.size() << " entries:\n";
-                        //     for ( size_t index = 0; index < to_coarsen.size(); ++index)
-                        //     {
-                        //         auto  [coordinaten, levels] =
-                        //         node_index_t::decode(to_coarsen[index].id()); std::cout
-                        //         << "  [" << index << "] id = " <<
-                        //         to_coarsen[index].id()
-                        //                   << " coords: (" << coordinaten[0] << "," <<
-                        //                   coordinaten[1]
-                        //                   << ")" << " level: " <<
-                        //                   static_cast<int>(levels)
-                        //                   << std::endl;
-                        //     }
-                        // to_coarsen.push_back(neighbor_id);
-                        // }
+                        auto [__, neighbor_id_level] =
+                            node_index_t::decode(neighbor_id.id());
+                        auto iterator = std::find_if(
+                            m_to_refine.begin(),
+                            m_to_refine.end(),
+                            [&](const node_index_t& n)
+                            { return n.id() == neighbor_id.id(); }
+                        );
+                        if (iterator != m_to_refine.end()) // this is untested...
+                        {
+                            neighbor_id_level++;
+                        }
+#ifdef AMR_NDTREE_CHECK_BALANCING
+                        std::cout << "    [coarsen] Neighbor " << neighbor_id.id()
+                                  << " at level " << int(neighbor_id_level) << "\n";
+#endif
+                        if (neighbor_id_level > level + 1)
+                        {
+#ifdef AMR_NDTREE_CHECK_BALANCING
+                            std::cout
+                                << "    [balancing] Balancing violation! removing this "
+                                   "block from coarsening: parent "
+                                << parent_id.id() << " (neighbor " << neighbor_id.id()
+                                << " is finer)\n";
+#endif
+                            blocks_to_remove.push_back(parent_id);
+                            break;
+                        }
                     }
                 }
             }
         }
         for (const auto& id : blocks_to_remove)
         {
-            to_coarsen.erase(
-                std::remove(to_coarsen.begin(), to_coarsen.end(), id), to_coarsen.end()
+            m_to_coarsen.erase(
+                std::remove(m_to_coarsen.begin(), m_to_coarsen.end(), id),
+                m_to_coarsen.end()
             );
         }
     }
 
-    template <typename Lambda>
-    auto compute_refine_flag(Lambda&& condition)
+public:
+    template <typename Fn>
+    auto reconstruct_tree(Fn&& fn) noexcept(noexcept(fn(std::declval<linear_index_t&>())))
     {
-        for (auto& block : m_blocks)
-        {
-            for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
-            {
-                if (block.metadata.cell_data[i].alive)
-                {
-                    auto child_id = node_index_t::child_of(block.id, i);
-                    block.metadata.cell_data[i].refine_flag = condition(child_id);
-                }
-            }
-        }
+        update_refine_flags(fn);
+        apply_refine_coarsen();
+        balancing();
+        fragment();
+        recombine();
     }
 
     [[nodiscard]]
-    auto recombine(node_index_t const& node_id) -> cell_pointer
+    auto get_node_index_at(linear_index_t idx) const noexcept -> node_index_t
     {
-        auto bp = find_block(node_id);
-        assert(bp.has_value());
-
-        auto pbp = find_block(node_index_t::parent_of(node_id));
-        assert(pbp.has_value());
-
-        release(bp.value());
-        const auto offset = node_index_t::offset_of(node_id);
-        // std::cout << "offset of parent cell " << static_cast<int>(offset) << std::endl;
-        auto const& it = pbp.value();
-        it->revive_cell(offset);
-        return it->operator[](offset);
-    }
-
-    auto recombine(const std::vector<node_index_t>& node_ids) -> void
-    {
-        std::cout << "[recombine] to_coarsen vector contains " << node_ids.size()
-                  << " entries:\n";
-        for (size_t i = 0; i < node_ids.size(); ++i)
-        {
-            auto [coords, level] = node_index_t::decode(node_ids[i].id());
-            std::cout << "  [" << i << "] id = " << node_ids[i].id() << " coords: ("
-                      << coords[0] << "," << coords[1] << ")"
-                      << " level: " << static_cast<int>(level) << std::endl;
-        }
-
-        for (const auto& node_id : node_ids)
-        {
-            auto [coords, level] = node_index_t::decode(node_id.id());
-            std::cout << "[recombine] Recombining node_id: " << node_id.id()
-                      << " coords: (" << coords[0] << "," << coords[1] << ")"
-                      << " level: " << static_cast<int>(level) << std::endl;
-            [[maybe_unused]]
-            auto _ = recombine(node_id);
-        }
-    }
-
-    [[nodiscard]]
-    auto get_block(node_index_t const& node_id) const noexcept
-        -> std::optional<block_pointer>
-    {
-        auto bp = find_block(node_id);
-        if (!bp.has_value()) return std::nullopt;
-        return *bp.value();
-    }
-
-    [[nodiscard]]
-    auto get_cell(node_index_t const& node_id) const noexcept
-        -> std::optional<block_pointer>
-    {
-        const auto parent = node_index_t::parent_of(node_id);
-        const auto offset = node_index_t::offset_of(node_id);
-        auto       bp     = find_block(parent);
-        if (!bp.has_value()) return std::nullopt;
-        return bp.value()->operator[](offset);
-    }
-
-    [[nodiscard]]
-    auto blocks() const noexcept -> index_map_t const&
-    {
-        return m_blocks;
+        assert(idx < m_size && "Index out of bounds in node_index_at()");
+        return m_linear_index_map[idx];
     }
 
 private:
+    [[nodiscard, gnu::always_inline]]
+    auto back_idx() noexcept -> linear_index_t
+    {
+        return m_size - 1;
+    }
+
+    auto append(node_index_t const node_id) noexcept -> void
+    {
+        m_linear_index_map[m_size] = node_id;
+        m_index_map[node_id]       = m_size;
+        ++m_size;
+    }
+
     [[nodiscard]]
-    auto find_block(node_index_t const& node_id) const noexcept
+    auto find_index(node_index_t const node_id) const noexcept
         -> std::optional<index_map_const_iterator_t>
     {
-        auto it = std::ranges::find_if(
-            m_blocks, [&id = node_id](auto const& e) { return e.id == id; }
-        );
-        return it == m_blocks.end() ? std::nullopt : std::optional{ it };
+        const auto it = m_index_map.find(node_id);
+        return it == m_index_map.end() ? std::nullopt : std::optional{ it };
     }
 
     [[nodiscard]]
-    auto find_block(node_index_t const& node_id) noexcept
+    auto find_index(node_index_t const node_id) noexcept
         -> std::optional<index_map_iterator_t>
     {
-        auto it = std::ranges::find_if(
-            m_blocks, [&id = node_id](auto const& e) { return e.id == id; }
-        );
-        return it == m_blocks.end() ? std::nullopt : std::optional{ it };
+        const auto it = m_index_map.find(node_id);
+        return it == m_index_map.end() ? std::nullopt : std::optional{ it };
     }
 
-    auto release(index_map_iterator_t const& bp) noexcept -> void
+    // TODO: make private
+public:
+    auto sort_buffers() noexcept -> void
     {
-        auto p = bp->ptr;
+        compact();
+        std::sort(
+            m_reorder_buffer,
+            &m_reorder_buffer[m_size],
+            [this](auto const i, auto const j)
+            { return m_linear_index_map[i] < m_linear_index_map[j]; }
+        );
+
+        linear_index_t        backup_start_pos;
+        node_index_t          backup_node_index;
+        refine_status_t       backup_refine_status;
+        deconstructed_types_t backup_buffer;
+
+        for (linear_index_t i = 0; i != back_idx();)
+        {
+            auto src = m_reorder_buffer[i];
+            if (i == src)
+            {
+                ++i;
+                continue;
+            }
+
+            backup_start_pos     = i;
+            backup_node_index    = m_linear_index_map[i];
+            backup_refine_status = m_refine_status_buffer[i];
+            [this, &backup_buffer, i]<std::size_t... I>(std::index_sequence<I...>)
+            {
+                ((void)(std::get<I>(backup_buffer) = std::get<I>(m_data_buffers)[i]),
+                 ...);
+            }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
+
+            auto dst = i;
+            do
+            {
+                m_linear_index_map[dst]     = m_linear_index_map[src];
+                m_refine_status_buffer[dst] = m_refine_status_buffer[src];
+                std::apply(
+                    [src, dst](auto&... b) { ((void)(b[dst] = b[src]), ...); },
+                    m_data_buffers
+                );
+                m_index_map[m_linear_index_map[dst]] = dst;
+                m_reorder_buffer[dst]                = dst;
+                dst                                  = src;
+                src                                  = m_reorder_buffer[src];
+                assert(src != dst);
+            } while (src != backup_start_pos);
+
+            m_linear_index_map[dst]     = backup_node_index;
+            m_refine_status_buffer[dst] = backup_refine_status;
+            [this, &backup_buffer, dst]<std::size_t... I>(std::index_sequence<I...>)
+            {
+                ((void)(std::get<I>(m_data_buffers)[dst] = std::get<I>(backup_buffer)),
+                 ...);
+            }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
+            m_index_map[backup_node_index] = dst;
+            m_reorder_buffer[dst]          = dst;
+        }
+        assert(is_sorted());
+        assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
+    }
+
+public:
+    [[nodiscard]]
+    auto gather_node(linear_index_t const i) const noexcept -> value_type
+
+    {
+        return std::apply(
+            [i](auto&&... args)
+            { return value_type(std::forward<decltype(args)>(args)[i]...); },
+            m_data_buffers
+        );
+    }
+
+    auto scatter_node(value_type const& v, const linear_index_t i) const noexcept -> void
+    {
+        [this, &v, i]<std::size_t... I>(std::index_sequence<I...>)
+        {
+            ((void)(std::get<I>(m_data_buffers)[i] = std::get<I>(v.data_tuple()).value),
+             ...);
+        }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
+    }
+
+    auto restrict_nodes(linear_index_t const start_from, linear_index_t const to) noexcept
+        -> void
+    {
+        // std::cout << "In restriction from [" << start_from << ", "
+        //           << start_from + s_nd_fanout - 1 << "] to " << to << '\n';
+        auto mean = [](auto const data[s_nd_fanout])
+        {
+            auto ret = data[0];
+            for (auto i = 1u; i != s_nd_fanout; ++i)
+            {
+                ret += data[i] / s_nd_fanout;
+            }
+            return ret;
+        };
+        std::apply(
+            [start_from, to, &mean](auto&... b)
+            { ((void)(b[to] = mean(&(b[start_from]))), ...); },
+            m_data_buffers
+        );
+    }
+
+    auto interpolate_node(
+        linear_index_t const from,
+        linear_index_t const start_to
+    ) const noexcept -> void
+    {
+        auto const old_node = gather_node(from);
+        std::cout << old_node << '\n';
+#ifdef AMR_NDTREE_ENABLE_CHECKS
         for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
         {
-            //(p[i]).~();
+            assert(m_index_map.at(m_linear_index_map[start_to + i]) == start_to + i);
         }
-        m_allocator.deallocate_one(reinterpret_cast<std::byte*>(p));
-        m_blocks.erase(bp);
+#endif
+        std::apply(
+            [from, start_to](auto&... b)
+            {
+                // TODO: Implement
+                for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
+                {
+                    ((void)(b[start_to + i] =
+                                b[from] + static_cast<value_t<decltype(b)>>(i + 1)),
+                     ...);
+                }
+            },
+            m_data_buffers
+        );
+    }
+
+    [[nodiscard]]
+    auto get_refine_status(const linear_index_t i) const noexcept -> refine_status_t
+    {
+        assert(i < m_size);
+        return m_refine_status_buffer[i];
     }
 
 private:
-    allocator_t m_allocator;
-    index_map_t m_blocks;
+    [[nodiscard]]
+    auto is_refine_elegible(const linear_index_t i) const noexcept -> bool
+    {
+        const auto node_id = m_linear_index_map[i];
+        assert(m_index_map.contains(node_id));
+        const auto status = m_refine_status_buffer[i];
+        const auto level  = node_index_t::level(node_id);
+        return (status == refine_status_t::Refine) && (level < node_index_t::max_depth());
+    }
+
+    [[nodiscard]]
+    auto is_coarsen_elegible(node_index_t parent_id) const noexcept -> bool
+    {
+        for (typename node_index_t::offset_t i = 0; i < s_nd_fanout; ++i)
+        {
+            const auto child = node_index_t::child_of(parent_id, i);
+            const auto it    = find_index(child.id());
+            // TODO: Maybe do this an assert rather
+            if (!it.has_value())
+            {
+                return false;
+            }
+            const auto idx = it.value()->second;
+            if (m_refine_status_buffer[idx] != refine_status_t::Coarsen)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // TODO: privatize
+public:
+    auto compact() noexcept -> void
+    {
+        size_t tail = 0;
+        for (linear_index_t head = 0; head < m_size; ++head)
+        {
+            const auto node_id = m_linear_index_map[head];
+            if (m_index_map.contains(node_id))
+            {
+                block_buffer_swap(head, tail);
+                ++tail;
+            }
+        }
+        m_size = tail;
+        m_index_map.clear();
+        for (linear_index_t i = 0; i != m_size; ++i)
+        {
+            m_index_map[m_linear_index_map[i]] = i;
+        }
+    }
+
+    [[gnu::always_inline, gnu::flatten]]
+    auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
+        -> void
+    {
+        assert(i < m_size);
+        assert(j < m_size);
+        if (i == j)
+        {
+            return;
+        }
+        assert(m_linear_index_map[i] != m_linear_index_map[j]);
+        std::swap(m_linear_index_map[i], m_linear_index_map[j]);
+        std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
+        std::apply(
+            [i, j](auto&... b) { ((void)std::swap(b[i], b[j]), ...); }, m_data_buffers
+        );
+    }
+
+    [[nodiscard]]
+    auto is_sorted() const noexcept -> bool
+    {
+        if (std::ranges::is_sorted(
+                m_linear_index_map, &m_linear_index_map[m_size], std::less{}
+            ))
+        {
+            for (linear_index_t i = 0; i != m_size; ++i)
+            {
+                assert(m_index_map.contains(m_linear_index_map[i]));
+                if (m_index_map.at(m_linear_index_map[i]) != i)
+                {
+                    std::cout << "index map is not correct" << std::endl;
+                    return false;
+                }
+            }
+            return true;
+        }
+        std::cout << "linear index is not sorted" << std::endl;
+        ;
+        return false;
+    }
+
+#ifdef AMR_NDTREE_ENABLE_CHECKS
+    auto check_index_map() const noexcept -> void
+    {
+        assert(m_index_map.size() <= m_size);
+        for (const auto& [node_idx, linear_idx] : m_index_map)
+        {
+            assert(m_linear_index_map[linear_idx] == node_idx);
+        }
+        std::cout << "Hash table looks good chef...\n";
+    }
+#endif
+
+private:
+    index_map_t                m_index_map;
+    deconstructed_buffers_t    m_data_buffers;
+    linear_index_map_t         m_linear_index_map;
+    linear_index_array_t       m_reorder_buffer;
+    flat_refine_status_array_t m_refine_status_buffer;
+    size_type                  m_size;
+    std::vector<node_index_t>  m_to_refine;
+    std::vector<node_index_t>  m_to_coarsen;
 };
 
 } // namespace amr::ndt::tree
 
-#endif // AMR_INCLUDED_NDT_TREE
+#endif // AMR_INCLUDED_NDTREE
