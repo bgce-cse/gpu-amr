@@ -48,7 +48,7 @@ private:
     void write_points(std::ofstream& file, auto const& tree) const
     {
         using TreeType  = std::remove_cvref_t<decltype(tree)>;
-        using IndexType = typename TreeType::node_index_t;
+        using IndexType = typename TreeType::patch_index_t;
 
         std::vector<std::array<uint32_t, 3>> points;
         std::vector<size_t>                  cell_indices;

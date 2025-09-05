@@ -66,9 +66,9 @@ auto operator<<(std::ostream& os, cell const& c) -> std::ostream&
 int main()
 {
     std::cout << "Hello balancing world\n";
-
+    using Patch_Type = PatchIndexer<4,4>;
     using index_t = amr::ndt::morton::morton_id<8u, 2u>;
-    using tree_t  = amr::ndt::tree::ndtree<cell, index_t>;
+    using tree_t  = amr::ndt::tree::ndtree<cell, index_t, Patch_Type>;
     tree_t h(100000000); // Provide initial capacity
 
     ndt::print::vtk_print vtk_printer("balancing_tree_a");
