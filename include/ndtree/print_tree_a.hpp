@@ -239,7 +239,7 @@ private:
             file << i << "\n";  // Just output the cell index
         }
         
-        // Write cell data - S1 component (float)
+        /* // Write cell data - S1 component (float)
         file << "SCALARS S1_value float 1\n";
         file << "LOOKUP_TABLE default\n";
         for (size_t i = 0; i < cell_indices.size(); ++i)
@@ -255,6 +255,37 @@ private:
         {
             auto result = tree.gather_node(i);
             file << std::get<1>(result.data_tuple()).value << "\n";  // Second component
+        }*/
+
+        // Get the total number of cells
+        size_t num_cells = tree.size();
+
+        // Write density
+        file << "SCALARS density float 1\n";
+        file << "LOOKUP_TABLE default\n";
+        for (size_t i = 0; i < num_cells; ++i) {
+            file << tree.template get<amr::cell::Rho>(i) << "\n";
+        }
+
+        // Write momentum x
+        file << "SCALARS momentum_x float 1\n";
+        file << "LOOKUP_TABLE default\n";
+        for (size_t i = 0; i < num_cells; ++i) {
+            file << tree.template get<amr::cell::Rhou>(i) << "\n";
+        }
+
+        // Write momentum y
+        file << "SCALARS momentum_y float 1\n";
+        file << "LOOKUP_TABLE default\n";
+        for (size_t i = 0; i < num_cells; ++i) {
+            file << tree.template get<amr::cell::Rhov>(i) << "\n";
+        }
+
+        // Write energy
+        file << "SCALARS energy float 1\n";
+        file << "LOOKUP_TABLE default\n";
+        for (size_t i = 0; i < num_cells; ++i) {
+            file << tree.template get<amr::cell::E>(i) << "\n";
         }
     }
 
