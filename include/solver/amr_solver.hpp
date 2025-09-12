@@ -75,7 +75,7 @@ public:
             std::vector<double> flux_bottom(4, 0.0);
             std::vector<double> flux_top(4, 0.0);
 
-            // Calculate fluxes for all four faces (currently simplifying the different kinds of neighbors by just averaging if several are provided -> needs to be checked for correctness)
+            // Calculate fluxes for all four faces (currently simplifying the different kinds of neighbors by just averaging if several are provided TODO: implement correct, use ndtree-interpolate_patch)
             // --- Calculate fluxes for the right face (X-direction) ---
             auto neighbors_right = m_tree.get_neighbors(node_id, TreeT::node_index_directon_t::right);
             if (neighbors_right.has_value()) {

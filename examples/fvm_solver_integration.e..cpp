@@ -86,6 +86,7 @@ int main() {
         solver.get_tree().reconstruct_tree(
             [](const auto& node_id) {
                 // Placeholder for a real refinement criterion
+                // TODO: implement shock based or similar
                 if (node_id.level() < 4) {
                     return tree_t::refine_status_t::Refine;
                 }
