@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <string>
 #include <type_traits>
+#include <numeric>
 #include <utility>
 
 #ifndef NDEBUG
@@ -111,11 +112,7 @@ public:
     [[nodiscard]]
     constexpr static auto linear_index(multi_index_t const& multi_idx) noexcept -> index_t
     {
-        auto linear_idx = index_t{};
-        for (auto d = rank_t{}; d != s_rank; ++d)
-        {
-            linear_idx += multi_idx.get(d) * s_strides[d];
-        }
+        auto linear_idx = std::transform_reduce(std::begin(multi_idx), std::end(multi_idx), std::begin(s_strides), index_t{});
         assert(linear_idx < flat_size());
         return linear_idx;
     }
@@ -300,7 +297,6 @@ auto operator<<(std::ostream& os, static_tensor<T, N, Ns...> const& t) noexcept
         }
     }
     os << postfix[rank - 1];
-
     return os;
 }
 

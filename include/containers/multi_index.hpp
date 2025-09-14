@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <utility>
 #include <cassert>
 #include <concepts>
 #include <iostream>
@@ -15,9 +16,13 @@ template <std::integral Index_Type, std::integral auto N, std::integral auto... 
 struct static_multi_index
 {
 public:
-    using index_t   = Index_Type;
-    using size_type = std::common_type_t<decltype(N), decltype(Ns)...>;
-    using rank_t    = size_type;
+    using index_t         = Index_Type;
+    using size_type       = std::common_type_t<decltype(N), decltype(Ns)...>;
+    using rank_t          = size_type;
+    using const_iterator  = index_t const*;
+    using iterator        = index_t*;
+    using const_reference = index_t const&;
+    using reference       = index_t&;
 
     struct increment_result_t
     {
@@ -66,14 +71,50 @@ public:
         return { s_rank };
     }
 
-    constexpr auto get(index_t const d) const noexcept -> index_t
+    constexpr auto operator[](index_t const i) noexcept -> reference
     {
-        return value_[d];
+        return const_cast<reference>(std::as_const(*this).operator[](i));
     }
 
-    constexpr auto set(index_t const d, index_t const idx) noexcept -> void
+    constexpr auto operator[](index_t const i) const noexcept -> const_reference
     {
-        value_[d] = idx;
+        return value_[i];
+    }
+
+    [[nodiscard]]
+    constexpr auto cbegin() const noexcept -> const_iterator
+    {
+        return std::cbegin(value_);
+    }
+
+    [[nodiscard]]
+    constexpr auto cend() const noexcept -> const_iterator
+    {
+        return std::cend(value_);
+    }
+
+    [[nodiscard]]
+    constexpr auto begin() const noexcept -> const_iterator
+    {
+        return std::begin(value_);
+    }
+
+    [[nodiscard]]
+    constexpr auto end() const noexcept -> const_iterator
+    {
+        return std::end(value_);
+    }
+
+    [[nodiscard]]
+    constexpr auto begin() noexcept -> iterator
+    {
+        return std::begin(value_);
+    }
+
+    [[nodiscard]]
+    constexpr auto end() noexcept -> iterator
+    {
+        return std::end(value_);
     }
 
 private:
@@ -90,7 +131,7 @@ auto operator<<(
     os << "{ ";
     for (typename idx_t::index_t d{}; d != idx_t::s_rank;)
     {
-        os << idx.get(d);
+        os << idx[d];
         os << (++d != idx_t::s_rank ? ", " : " ");
     }
     return os << '}';
