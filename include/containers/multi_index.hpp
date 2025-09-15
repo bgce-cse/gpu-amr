@@ -24,6 +24,10 @@ public:
     using const_reference = index_t const&;
     using reference       = index_t&;
 
+    inline static constexpr size_type                     s_rank     = sizeof...(Ns) + 1;
+    inline static constexpr size_type                     s_sentinel = s_rank;
+    inline static constexpr std::array<size_type, s_rank> s_sizes    = { N, Ns... };
+
     struct increment_result_t
     {
         constexpr auto incremented_idx() const noexcept -> rank_t
@@ -33,12 +37,14 @@ public:
 
         constexpr auto reverse_incremented_idx() const noexcept -> rank_t
         {
-            return rank_t{ s_rank - incremented_idx_ } - 1;
+            return incremented_idx_ == s_sentinel
+                       ? s_sentinel
+                       : rank_t{ s_rank - incremented_idx_ } - 1;
         }
 
         constexpr operator bool() const noexcept
         {
-            return incremented_idx_ != s_rank;
+            return incremented_idx_ != s_sentinel;
         }
 
         constexpr auto is_fastest() const noexcept -> bool
@@ -48,9 +54,6 @@ public:
 
         rank_t incremented_idx_;
     };
-
-    inline static constexpr size_type                     s_rank  = sizeof...(Ns) + 1;
-    inline static constexpr std::array<size_type, s_rank> s_sizes = { N, Ns... };
 
     constexpr auto reset() noexcept -> void
     {
@@ -73,7 +76,7 @@ public:
                 value_[d] = index_t{};
             }
         }
-        return { s_rank };
+        return { s_sentinel };
     }
 
     [[nodiscard]]
