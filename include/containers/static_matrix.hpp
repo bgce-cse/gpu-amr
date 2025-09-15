@@ -145,7 +145,7 @@ std::ostream& operator<<(std::ostream& os, static_matrix<T, N, M> const& mat)
     using matrix_t   = static_matrix<T, N, M>;
     using size_type  = typename matrix_t::size_type;
     using value_type = typename matrix_t::value_type;
-    if (std::is_floating_point_v<value_type>)
+    if constexpr (std::is_floating_point_v<value_type>)
     {
         os << std::fixed;
         os << std::setprecision(4);
@@ -161,7 +161,7 @@ std::ostream& operator<<(std::ostream& os, static_matrix<T, N, M> const& mat)
         os << "]";
     }
     os << "\n]\n";
-    if (std::is_floating_point_v<value_type>)
+    if constexpr (std::is_floating_point_v<value_type>)
     {
         os << std::defaultfloat;
     }

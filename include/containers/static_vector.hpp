@@ -112,7 +112,7 @@ auto operator<<(std::ostream& os, static_vector<Value_Type, N> const& v) noexcep
     -> std::ostream&
 {
     using vector_t = static_vector<Value_Type, N>;
-    if (std::is_floating_point_v<typename vector_t::value_type>)
+    if constexpr (std::is_floating_point_v<typename vector_t::value_type>)
     {
         os << std::fixed;
         os << std::setprecision(4);
@@ -124,7 +124,7 @@ auto operator<<(std::ostream& os, static_vector<Value_Type, N> const& v) noexcep
         os << e << (++n != N ? ", " : " ");
     }
     os << '}';
-    if (std::is_floating_point_v<typename vector_t::value_type>)
+    if constexpr (std::is_floating_point_v<typename vector_t::value_type>)
     {
         os << std::defaultfloat;
     }

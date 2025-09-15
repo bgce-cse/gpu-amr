@@ -3,11 +3,11 @@
 
 #include <algorithm>
 #include <array>
-#include <utility>
 #include <cassert>
 #include <concepts>
 #include <iostream>
 #include <type_traits>
+#include <utility>
 
 namespace amr::containers::index
 {
@@ -43,16 +43,19 @@ public:
         return sizes;
     }();
 
+    [[nodiscard]]
     static constexpr auto first() noexcept -> static_multi_index
     {
         return static_multi_index{};
     }
 
+    [[nodiscard]]
     static constexpr auto last() noexcept -> static_multi_index
     {
         return static_multi_index{ Ns - 1 ..., N - 1 };
     }
 
+    [[nodiscard]]
     constexpr auto increment() noexcept -> increment_result_t
     {
         for (rank_t d = 0; d != s_rank; ++d)
@@ -71,11 +74,13 @@ public:
         return { s_rank };
     }
 
+    [[nodiscard]]
     constexpr auto operator[](index_t const i) noexcept -> reference
     {
         return const_cast<reference>(std::as_const(*this).operator[](i));
     }
 
+    [[nodiscard]]
     constexpr auto operator[](index_t const i) const noexcept -> const_reference
     {
         return value_[i];
@@ -129,10 +134,10 @@ auto operator<<(
 {
     using idx_t = std::remove_cvref_t<decltype(idx)>;
     os << "{ ";
-    for (typename idx_t::index_t d{}; d != idx_t::s_rank;)
+    for (typename idx_t::index_t d{}; d != idx_t::s_rank; ++d)
     {
         os << idx[d];
-        os << (++d != idx_t::s_rank ? ", " : " ");
+        os << (d != idx_t::s_rank ? ", " : " ");
     }
     return os << '}';
 }

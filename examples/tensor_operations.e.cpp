@@ -45,5 +45,9 @@ int main()
 
     std::cout << t << '\n';
 
+    constexpr std::array<float, 5> nodes{ 0.1f, 0.3f, 0.5f, 0.7f, 0.9f };
+    constexpr auto reference_element = amr::containers::cartesian_expansion<3>(nodes);
+    std::cout << reference_element << '\n';
+
     return EXIT_SUCCESS;
 }

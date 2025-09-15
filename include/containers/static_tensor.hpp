@@ -2,6 +2,7 @@
 #define AMR_INCLUDED_STATIC_TENSOR
 
 #include "multi_index.hpp"
+#include "static_vector.hpp"
 #include "utility/compile_time_utility.hpp"
 #include "utility/utility_concepts.hpp"
 #include <algorithm>
@@ -10,9 +11,9 @@
 #include <cmath>
 #include <functional>
 #include <iomanip>
+#include <numeric>
 #include <string>
 #include <type_traits>
-#include <numeric>
 #include <utility>
 
 #ifndef NDEBUG
@@ -112,12 +113,22 @@ public:
     [[nodiscard]]
     constexpr static auto linear_index(multi_index_t const& multi_idx) noexcept -> index_t
     {
-        auto linear_idx = std::transform_reduce(std::begin(multi_idx), std::end(multi_idx), std::begin(s_strides), index_t{});
+        auto linear_idx = std::transform_reduce(
+            std::cbegin(multi_idx),
+            std::cend(multi_idx),
+            std::cbegin(s_strides),
+            index_t{}
+        );
         assert(linear_idx < flat_size());
+        if constexpr (std::is_signed_v<index_t>)
+        {
+            assert(linear_idx >= 0);
+        }
         return linear_idx;
     }
 
 public:
+    [[nodiscard]]
     constexpr static auto zero() noexcept -> static_tensor
     {
         return static_tensor{};
@@ -272,13 +283,14 @@ auto operator<<(std::ostream& os, static_tensor<T, N, Ns...> const& t) noexcept
         return arr;
     }();
 
-    auto       multi_idx = typename tensor_t::multi_index_t{};
-    const auto w = std::clamp((int)std::ceil(std::log10(std::ranges::max(t))), 1, 7);
+    auto multi_idx = typename tensor_t::multi_index_t{};
+    // const auto w = std::clamp((int)std::ceil(std::log10(std::ranges::max(t))), 1, 7);
 
     os << prefixes[rank - 1];
     while (true)
     {
-        os << std::setw(w) << std::setfill(' ') << t[multi_idx];
+        // os << std::setw(w) << std::setfill(' ') << t[multi_idx];
+        os << t[multi_idx];
         auto res = multi_idx.increment();
         if (!res)
         {
@@ -298,6 +310,31 @@ auto operator<<(std::ostream& os, static_tensor<T, N, Ns...> const& t) noexcept
     }
     os << postfix[rank - 1];
     return os;
+}
+
+template <std::integral auto Rank, typename T, std::size_t N>
+[[nodiscard]]
+constexpr auto cartesian_expansion(std::array<T, N> const& v) noexcept -> auto
+{
+    using size_type = decltype(Rank);
+    auto impl       = [&v]<std::size_t... Is>(std::index_sequence<Is...>) constexpr
+        -> static_tensor<static_vector<T, Rank>, ((void)Is, size_type{ N })...>
+    {
+        using tensor_t =
+            static_tensor<static_vector<T, Rank>, ((void)Is, size_type{ N })...>;
+        auto ret = tensor_t::zero();
+        auto idx = typename tensor_t::multi_index_t{};
+        do
+        {
+            for (auto d = decltype(Rank){}; d != Rank; ++d)
+            {
+                ret[idx][d] = v[idx[d]];
+            }
+        } while (idx.increment());
+
+        return ret;
+    };
+    return impl(std::make_index_sequence<Rank>{});
 }
 
 } // namespace amr::containers
