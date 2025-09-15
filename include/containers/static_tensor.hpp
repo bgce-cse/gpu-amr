@@ -2,7 +2,6 @@
 #define AMR_INCLUDED_STATIC_TENSOR
 
 #include "multi_index.hpp"
-#include "static_vector.hpp"
 #include "utility/compile_time_utility.hpp"
 #include "utility/utility_concepts.hpp"
 #include <algorithm>
@@ -44,22 +43,14 @@ public:
     inline static constexpr rank_t                        s_rank = sizeof...(Ns) + 1;
     inline static constexpr std::array<size_type, s_rank> s_sizes =
         multi_index_t::s_sizes;
-    inline static constexpr std::array<size_type, s_rank> s_reverse_sizes =
-        multi_index_t::s_reverse_sizes;
     inline static constexpr auto s_strides = []
     {
         std::array<size_type, s_rank> strides{};
-        strides[0] = size_type{ 1 };
-        for (rank_t d = 1; d != s_rank; ++d)
+        strides[s_rank - 1] = size_type{ 1 };
+        for (rank_t d = s_rank - 1; d-- > 0;)
         {
-            strides[d] = strides[d - 1] * s_reverse_sizes[d - 1];
+            strides[d] = strides[d + 1] * s_sizes[d + 1];
         }
-        return strides;
-    }();
-    inline static constexpr auto s_reverse_strides = []
-    {
-        auto strides = s_strides;
-        std::ranges::reverse(strides);
         return strides;
     }();
     inline static constexpr size_type s_flat_size = (N * ... * Ns);
@@ -101,12 +92,14 @@ public:
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
         assert_in_bounds(idxs);
 #endif
-        auto linear_idx = index_t{};
-        for (auto d = rank_t{}; d != s_rank; ++d)
-        {
-            linear_idx += idxs[d] * s_reverse_strides[d];
-        }
+        auto linear_idx = std::transform_reduce(
+            std::cbegin(idxs), std::cend(idxs), std::cbegin(s_strides), index_t{}
+        );
         assert(linear_idx < flat_size());
+        if constexpr (std::is_signed_v<index_t>)
+        {
+            assert(linear_idx >= 0);
+        }
         return linear_idx;
     }
 
@@ -154,12 +147,14 @@ public:
         );
     }
 
+    [[nodiscard]]
     constexpr auto operator[](multi_index_t const& multi_idx) const noexcept
         -> const_reference
     {
         return data_[linear_index(multi_idx)];
     }
 
+    [[nodiscard]]
     constexpr auto operator[](multi_index_t const& multi_idx) noexcept -> reference
     {
         return const_cast<reference>(std::as_const(*this).operator[](multi_idx));
@@ -296,13 +291,13 @@ auto operator<<(std::ostream& os, static_tensor<T, N, Ns...> const& t) noexcept
         {
             break;
         }
-        if (res.incremented_idx == 0)
+        if (res.is_fastest())
         {
             os << ", ";
         }
         else
         {
-            const auto i = res.incremented_idx - 1;
+            const auto i = res.reverse_incremented_idx() - 1;
             os << postfix[i];
             os << newlines[i];
             os << prefixes[i];
@@ -310,31 +305,6 @@ auto operator<<(std::ostream& os, static_tensor<T, N, Ns...> const& t) noexcept
     }
     os << postfix[rank - 1];
     return os;
-}
-
-template <std::integral auto Rank, typename T, std::size_t N>
-[[nodiscard]]
-constexpr auto cartesian_expansion(std::array<T, N> const& v) noexcept -> auto
-{
-    using size_type = decltype(Rank);
-    auto impl       = [&v]<std::size_t... Is>(std::index_sequence<Is...>) constexpr
-        -> static_tensor<static_vector<T, Rank>, ((void)Is, size_type{ N })...>
-    {
-        using tensor_t =
-            static_tensor<static_vector<T, Rank>, ((void)Is, size_type{ N })...>;
-        auto ret = tensor_t::zero();
-        auto idx = typename tensor_t::multi_index_t{};
-        do
-        {
-            for (auto d = decltype(Rank){}; d != Rank; ++d)
-            {
-                ret[idx][d] = v[idx[d]];
-            }
-        } while (idx.increment());
-
-        return ret;
-    };
-    return impl(std::make_index_sequence<Rank>{});
 }
 
 } // namespace amr::containers

@@ -1,3 +1,4 @@
+#include "containers/container_algorithms.hpp"
 #include "containers/static_tensor.hpp"
 #include "utility/random.hpp"
 #include <cassert>
@@ -36,7 +37,6 @@ int main()
                     }
 
     auto idx = typename tensor_t::multi_index_t{};
-
     do
     {
         std::cout << idx << " -> " << tensor_t::linear_index(idx) << '\n';
@@ -46,8 +46,18 @@ int main()
     std::cout << t << '\n';
 
     constexpr std::array<float, 5> nodes{ 0.1f, 0.3f, 0.5f, 0.7f, 0.9f };
-    constexpr auto reference_element = amr::containers::cartesian_expansion<3>(nodes);
+    constexpr auto                 reference_element =
+        amr::containers::algorithms::tensor::cartesian_expansion<3>(nodes);
     std::cout << reference_element << '\n';
+
+    for (auto i = typename decltype(reference_element)::multi_index_t{};;)
+    {
+        std::cout << i << " -> " << reference_element[i] << '\n';
+        if (!i.increment())
+        {
+            break;
+        }
+    }
 
     return EXIT_SUCCESS;
 }

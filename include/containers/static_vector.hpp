@@ -101,6 +101,7 @@ struct static_vector
     }
 #endif
 
+    [[nodiscard]]
     constexpr auto operator<=>(static_vector const&) const noexcept = default;
 
 public:
