@@ -15,7 +15,6 @@ concept Container = requires(C c) {
 
 template <typename V>
 concept Vector = requires(V v, typename V::size_type i) {
-    typename V::value_type;
     v[i];
 } && Container<V> && std::is_trivially_constructible_v<V>;
 

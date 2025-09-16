@@ -1,5 +1,6 @@
 #include "containers/container_algorithms.hpp"
 #include "containers/static_tensor.hpp"
+#include "containers/static_vector.hpp"
 #include "utility/random.hpp"
 #include <cassert>
 #include <cstdlib>
@@ -45,8 +46,10 @@ int main()
 
     std::cout << t << '\n';
 
-    constexpr std::array<float, 5> nodes{ 0.1f, 0.3f, 0.5f, 0.7f, 0.9f };
-    constexpr auto                 reference_element =
+    constexpr amr::containers::static_vector<float, 5> nodes{
+        0.1f, 0.3f, 0.5f, 0.7f, 0.9f
+    };
+    constexpr auto reference_element =
         amr::containers::algorithms::tensor::cartesian_expansion<3>(nodes);
     std::cout << reference_element << '\n';
 
