@@ -11,6 +11,7 @@
 #include <functional>
 #include <iomanip>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -279,12 +280,21 @@ auto operator<<(std::ostream& os, static_tensor<T, N, Ns...> const& t) noexcept
     }();
 
     auto multi_idx = typename tensor_t::multi_index_t{};
-    // const auto w = std::clamp((int)std::ceil(std::log10(std::ranges::max(t))), 1, 7);
+
+    std::optional<int> width = std::nullopt;
+    if constexpr (std::is_arithmetic_v<T>)
+    {
+        // TODO: Improve. Max is not necessarily the most restrictive value
+        width = std::clamp((int)std::ceil(std::log10(std::ranges::max(t))), 1, 7);
+    }
 
     os << prefixes[rank - 1];
     while (true)
     {
-        // os << std::setw(w) << std::setfill(' ') << t[multi_idx];
+        if constexpr (std::is_arithmetic_v<T>)
+        {
+            os << std::setw(width.value()) << std::setfill(' ');
+        }
         os << t[multi_idx];
         auto res = multi_idx.increment();
         if (!res)
