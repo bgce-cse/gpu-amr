@@ -1,0 +1,2 @@
+Tensors are typically too small for the GPU, so we should pack multiple tensors
+and operate on them at once.
