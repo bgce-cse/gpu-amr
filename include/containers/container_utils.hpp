@@ -41,6 +41,6 @@ using hypercube_t = typename hypercube<T, Size, Rank>::type;
 
 } // namespace types
 
-} // namespace amr::contianers::utils
+} // namespace amr::containers::utils
 
 #endif // AMR_INCLUDED_CONTAINER_UTILS
