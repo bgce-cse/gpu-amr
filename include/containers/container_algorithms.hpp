@@ -1,7 +1,7 @@
 #ifndef AMR_INCLUDED_CONTAINER_FACTORIES
 #define AMR_INCLUDED_CONTAINER_FACTORIES
 
-#include "continaer_utils.hpp"
+#include "container_utils.hpp"
 #include "static_tensor.hpp"
 #include "static_vector.hpp"
 #include <concepts>
@@ -43,7 +43,7 @@ template <
 [[nodiscard]]
 constexpr auto evaluate_basis(
     utils::types::tensor::hypercube_t<static_vector<F, Dofs>, Order, Rank> const& coeffs,
-    static_vector<F, Rank> const&                                                x,
+    static_vector<F, Rank> const&                                                 x,
     static_vector<F, Order> const& quad_points
 ) noexcept -> F
 {
