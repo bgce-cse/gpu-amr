@@ -1,5 +1,6 @@
 #include "containers/static_tensor.hpp"
 #include <iostream>
+#include "containers/static_layout.hpp"
 
 int main()
 {
