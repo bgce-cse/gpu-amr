@@ -24,6 +24,8 @@ int main()
         std::cout << e << " ";
     std::cout << '\n';
 
+    // -------------------------------------
+
     patch_shape_t to{};
 
     auto idx           = typename tensor_t::multi_index_t{};
@@ -35,31 +37,32 @@ int main()
         std::begin(sized_strides),
         std::multiplies{}
     );
-    for (auto const& e : sized_strides)
-        std::cout << e << ' ';
     std::cout << '\n';
     do
     {
+        const auto offset = std::transform_reduce(
+            std::cbegin(idx),
+            std::cend(idx),
+            std::cbegin(tensor_t::s_strides),
+            index_t{},
+            std::plus{},
+            [](index_t const i, index_t const s) { return (i / Fanout) * s; }
+        );
         auto out_patch_idx = typename patch_shape_t::multi_index_t{};
         do
         {
-            to[out_patch_idx][idx] =
-                std::transform_reduce(
-                    std::cbegin(idx),
-                    std::cend(idx),
-                    std::cbegin(tensor_t::s_strides),
-                    index_t{},
-                    std::plus{},
-                    [](index_t const i, index_t const s) { return (i / Fanout) * s; }
-                ) +
-                std::transform_reduce(
-                    std::cbegin(out_patch_idx),
-                    std::cend(out_patch_idx),
-                    std::cbegin(sized_strides),
-                    index_t{}
-                ) / Fanout;
+            const auto base = std::transform_reduce(
+                                  std::cbegin(out_patch_idx),
+                                  std::cend(out_patch_idx),
+                                  std::cbegin(sized_strides),
+                                  index_t{}
+                              ) /
+                              Fanout;
+            to[out_patch_idx][idx] = offset + base;
         } while (out_patch_idx.increment());
     } while (idx.increment());
+
+    // -------------------------------------
 
     for (auto const& e : to)
         std::cout << e << '\n';
