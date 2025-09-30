@@ -3,7 +3,7 @@
 
 #include "ndconcepts.hpp"
 #include "ndhierarchy.hpp"
-#include "patch.hpp"
+#include "ndutils.hpp"
 #include "utility/compile_time_utility.hpp"
 #include "utility/constexpr_functions.hpp"
 #include <algorithm>
@@ -30,22 +30,23 @@ namespace amr::ndt::tree
 
 template <
     concepts::DeconstructibleType T,
-    concepts::NodeIndex           Node_Index,
-    typename Patch_Indexer>
+    concepts::PatchIndex          Patch_Index,
+    concepts::StaticLayout         Patch_Layout>
 class ndtree
 {
 public:
     using value_type                  = T;
-    using tree_index_t                = Node_Index;
     using size_type                   = std::size_t;
+    using patch_index_t               = Patch_Index;
+    using patch_index_directon_t      = typename patch_index_t::direction_t;
     using linear_index_t              = size_type;
-    using node_index_directon_t       = typename tree_index_t::direction_t;
-    using patch_indexer_t             = Patch_Indexer;
-    static constexpr auto s_nd_fanout = tree_index_t::nd_fanout();
-    static constexpr auto dimension   = patch_indexer_t::N;
+    using patch_layout_t              = Patch_Layout;
+    static constexpr auto s_nd_fanout = patch_index_t::nd_fanout();
+    static constexpr auto dimension   = patch_layout_t::s_rank;
 
+    static_assert(s_nd_fanout > 1);
     static_assert(
-        patch_indexer_t::template check_dims_multiple_of_fanout<s_nd_fanout>(),
+        utils::patches::multiples_of(patch_layout_t::s_sizes, s_nd_fanout),
         "All patch dimensions must be multiples of the fanout"
     );
 
@@ -59,8 +60,6 @@ public:
     using reference_t = Type&;
     template <typename Type>
     using const_reference_t = Type const&;
-
-    static_assert(s_nd_fanout > 1);
 
     template <typename>
     struct deconstructed_buffers_impl;
@@ -94,13 +93,12 @@ public:
         Refine  = 1,
         Coarsen = 2,
     };
-
     using refine_status_t = RefinementStatus;
 
-    using linear_index_map_t         = pointer_t<tree_index_t>;
+    using linear_index_map_t         = pointer_t<patch_index_t>;
     using linear_index_array_t       = pointer_t<linear_index_t>;
     using flat_refine_status_array_t = pointer_t<refine_status_t>;
-    using index_map_t                = std::unordered_map<tree_index_t, linear_index_t>;
+    using index_map_t                = std::unordered_map<patch_index_t, linear_index_t>;
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
 
@@ -119,14 +117,14 @@ public:
             m_data_buffers
         );
         m_linear_index_map =
-            (pointer_t<tree_index_t>)std::malloc(size * sizeof(tree_index_t));
+            (pointer_t<patch_index_t>)std::malloc(size * sizeof(patch_index_t));
         m_reorder_buffer =
             (pointer_t<linear_index_t>)std::malloc(size * sizeof(linear_index_t));
         m_refine_status_buffer =
             (pointer_t<refine_status_t>)std::malloc(size * sizeof(refine_status_t));
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
 
-        append(tree_index_t::root());
+        append(patch_index_t::root());
     }
 
     ~ndtree() noexcept
@@ -161,14 +159,14 @@ public:
         return std::get<Map_Type::index()>(m_data_buffers)[idx];
     }
 
-    auto fragment(tree_index_t const node_id) -> void
+    auto fragment(patch_index_t const node_id) -> void
     {
         const auto it = find_index(node_id);
         assert(it.has_value());
         auto const start_to = m_size;
         for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
         {
-            auto child_id = tree_index_t::child_of(node_id, i);
+            auto child_id = patch_index_t::child_of(node_id, i);
             assert(!find_index(child_id).has_value());
             append(child_id);
             assert(m_index_map[child_id] == back_idx());
@@ -182,11 +180,11 @@ public:
 #endif
     }
 
-    auto recombine(tree_index_t const parent_node_id) -> void
+    auto recombine(patch_index_t const parent_node_id) -> void
     {
         assert(!find_index(parent_node_id).has_value());
 
-        const auto child_0    = tree_index_t::child_of(parent_node_id, 0);
+        const auto child_0    = patch_index_t::child_of(parent_node_id, 0);
         const auto child_0_it = find_index(child_0);
         assert(child_0_it.has_value());
 
@@ -197,7 +195,7 @@ public:
 
         for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
         {
-            const auto child_i    = tree_index_t::child_of(parent_node_id, i);
+            const auto child_i    = patch_index_t::child_of(parent_node_id, i);
             auto       child_i_it = find_index(child_i);
             assert(child_i_it.has_value());
             assert(child_i_it.value()->second == start + i);
@@ -240,7 +238,7 @@ public:
     {
         m_to_refine.clear();
         m_to_coarsen.clear();
-        std::vector<tree_index_t> parent_morton_idx;
+        std::vector<patch_index_t> parent_patch_idx;
         for (linear_index_t i = 0; i < m_size; ++i)
         {
             const auto node_id = m_linear_index_map[i];
@@ -248,13 +246,13 @@ public:
             {
                 continue;
             }
-            const auto parent_id = tree_index_t::parent_of(node_id);
-            parent_morton_idx.push_back(parent_id);
+            const auto parent_id = patch_index_t::parent_of(node_id);
+            parent_patch_idx.push_back(parent_id);
         }
-        std::sort(parent_morton_idx.begin(), parent_morton_idx.end());
-        parent_morton_idx.erase(
-            std::unique(parent_morton_idx.begin(), parent_morton_idx.end()),
-            parent_morton_idx.end()
+        std::sort(parent_patch_idx.begin(), parent_patch_idx.end());
+        parent_patch_idx.erase(
+            std::unique(parent_patch_idx.begin(), parent_patch_idx.end()),
+            parent_patch_idx.end()
         );
 
         for (linear_index_t i = 0; i < m_size; ++i)
@@ -265,7 +263,7 @@ public:
                 m_to_refine.push_back(node_id);
             }
         }
-        for (auto parent_id : parent_morton_idx)
+        for (auto parent_id : parent_patch_idx)
         {
             if (is_coarsen_elegible(parent_id))
             {
@@ -274,10 +272,10 @@ public:
         }
     }
 
-    auto get_neighbors(tree_index_t const& node_id, node_index_directon_t dir)
-        -> std::optional<std::vector<tree_index_t>>
+    auto get_neighbors(patch_index_t const& node_id, patch_index_directon_t dir)
+        -> std::optional<std::vector<patch_index_t>>
     {
-        std::vector<tree_index_t> neighbor_vector;
+        std::vector<patch_index_t> neighbor_vector;
 
         auto cell_it = find_index(node_id);
         assert(cell_it.has_value() && "[get_neighbors] this cell cannot be found");
@@ -287,7 +285,7 @@ public:
                   << "\n";
 #endif
 
-        auto direct_neighbor = tree_index_t::neighbour_at(node_id, dir);
+        auto direct_neighbor = patch_index_t::neighbour_at(node_id, dir);
 
         if (!direct_neighbor) // adjacent to boundary case
         {
@@ -313,7 +311,7 @@ public:
             return neighbor_vector;
         }
 
-        auto neighbor_parent = tree_index_t::parent_of(direct_neighbor.value());
+        auto neighbor_parent = patch_index_t::parent_of(direct_neighbor.value());
 #ifdef AMR_NDTREE_CHECK_NEIGHBORS
         std::cout << "  [get_neighbors] Checking parent of direct neighbor: "
                   << neighbor_parent.id() << "\n";
@@ -329,29 +327,29 @@ public:
             return neighbor_vector;
         }
 
-        typename tree_index_t::offset_t offset0, offset1;
+        typename patch_index_t::offset_t offset0, offset1;
         switch (dir)
         {
-            case node_index_directon_t::left:
+            case patch_index_directon_t::left:
                 offset0 = 1;
                 offset1 = 3;
                 break;
-            case node_index_directon_t::right:
+            case patch_index_directon_t::right:
                 offset0 = 0;
                 offset1 = 2;
                 break;
-            case node_index_directon_t::bottom:
+            case patch_index_directon_t::bottom:
                 offset0 = 0;
                 offset1 = 1;
                 break;
-            case node_index_directon_t::top:
+            case patch_index_directon_t::top:
                 offset0 = 2;
                 offset1 = 3;
                 break;
             default: break;
         }
-        auto child0 = tree_index_t::child_of(direct_neighbor.value(), offset0);
-        auto child1 = tree_index_t::child_of(direct_neighbor.value(), offset1);
+        auto child0 = patch_index_t::child_of(direct_neighbor.value(), offset0);
+        auto child1 = patch_index_t::child_of(direct_neighbor.value(), offset1);
 #ifdef AMR_NDTREE_CHECK_NEIGHBORS
         std::cout << "  [get_neighbors] Checking children of direct neighbor: "
                   << child0.id() << ", " << child1.id() << "\n";
@@ -378,16 +376,18 @@ public:
 
     auto balancing()
     {
-        constexpr node_index_directon_t directions[] = { node_index_directon_t::left,
-                                                         node_index_directon_t::right,
-                                                         node_index_directon_t::top,
-                                                         node_index_directon_t::bottom };
+        constexpr patch_index_directon_t directions[] = {
+            patch_index_directon_t::left,
+            patch_index_directon_t::right,
+            patch_index_directon_t::top,
+            patch_index_directon_t::bottom
+        };
 
         // Refinement balancing
         for (size_t i = 0; i < m_to_refine.size(); i++)
         {
             auto cell_id         = m_to_refine[i];
-            auto [coords, level] = tree_index_t::decode(cell_id.id());
+            auto [coords, level] = patch_index_t::decode(cell_id.id());
 #ifdef AMR_NDTREE_CHECK_BALANCING
             std::cout << "[balancing] Refinement  Checking cell " << cell_id.id()
                       << " at level " << (int)level << " coords: (" << coords[0] << ","
@@ -405,7 +405,7 @@ public:
                 }
                 for (const auto& neighbor : neighbor_opt.value())
                 {
-                    auto [__, level_bp_neighbor] = tree_index_t::decode(neighbor.id());
+                    auto [__, level_bp_neighbor] = patch_index_t::decode(neighbor.id());
 
                     if (level_bp_neighbor < level)
                     {
@@ -417,7 +417,7 @@ public:
                         if (std::find_if(
                                 m_to_refine.begin(),
                                 m_to_refine.end(),
-                                [&](const tree_index_t& n)
+                                [&](const patch_index_t& n)
                                 { return n.id() == neighbor.id(); }
                             ) == m_to_refine.end())
                         {
@@ -429,11 +429,11 @@ public:
         }
 
         // Coarsening balancing
-        std::vector<tree_index_t> blocks_to_remove;
+        std::vector<patch_index_t> blocks_to_remove;
         for (size_t i = 0; i < m_to_coarsen.size(); i++)
         {
             auto parent_id       = m_to_coarsen[i];
-            auto [coords, level] = tree_index_t::decode(parent_id.id());
+            auto [coords, level] = patch_index_t::decode(parent_id.id());
 #ifdef AMR_NDTREE_CHECK_BALANCING
             std::cout << "[balancing] Coarsening Checking parent " << parent_id.id()
                       << " at level " << (int)level << " coords: (" << coords[0] << ","
@@ -443,34 +443,34 @@ public:
             for (auto direction : directions)
             {
                 // For each direction, check the two children on the face
-                typename tree_index_t::offset_t offset0 = 0, offset1 = 0;
+                typename patch_index_t::offset_t offset0 = 0, offset1 = 0;
                 switch (direction)
                 {
-                    case node_index_directon_t::left:
+                    case patch_index_directon_t::left:
                         offset0 = 0;
                         offset1 = 2;
                         break;
-                    case node_index_directon_t::right:
+                    case patch_index_directon_t::right:
                         offset0 = 1;
                         offset1 = 3;
                         break;
-                    case node_index_directon_t::bottom:
+                    case patch_index_directon_t::bottom:
                         offset0 = 2;
                         offset1 = 3;
                         break;
-                    case node_index_directon_t::top:
+                    case patch_index_directon_t::top:
                         offset0 = 0;
                         offset1 = 1;
                         break;
                     default: break;
                 }
-                std::vector<typename tree_index_t::offset_t> offsets = { offset0,
-                                                                         offset1 };
+                std::vector<typename patch_index_t::offset_t> offsets = { offset0,
+                                                                          offset1 };
                 for (auto offset : offsets)
                 {
-                    auto child_cell = tree_index_t::child_of(parent_id.id(), offset);
+                    auto child_cell = patch_index_t::child_of(parent_id.id(), offset);
                     [[maybe_unused]] auto [child_coords, child_level] =
-                        tree_index_t::decode(child_cell.id());
+                        patch_index_t::decode(child_cell.id());
 #ifdef AMR_NDTREE_CHECK_BALANCING
                     std::cout << "  [coarsen] Checking child " << child_cell.id()
                               << " (offset " << int(offset) << ") at level "
@@ -490,11 +490,11 @@ public:
                     for (const auto& neighbor_id : *result)
                     {
                         auto [__, neighbor_id_level] =
-                            tree_index_t::decode(neighbor_id.id());
+                            patch_index_t::decode(neighbor_id.id());
                         auto iterator = std::find_if(
                             m_to_refine.begin(),
                             m_to_refine.end(),
-                            [&](const tree_index_t& n)
+                            [&](const patch_index_t& n)
                             { return n.id() == neighbor_id.id(); }
                         );
                         if (iterator != m_to_refine.end()) // this is untested...
@@ -542,7 +542,7 @@ public:
     }
 
     [[nodiscard]]
-    auto get_node_index_at(linear_index_t idx) const noexcept -> tree_index_t
+    auto get_node_index_at(linear_index_t idx) const noexcept -> patch_index_t
     {
         assert(idx < m_size && "Index out of bounds in node_index_at()");
         return m_linear_index_map[idx];
@@ -555,7 +555,7 @@ private:
         return m_size - 1;
     }
 
-    auto append(tree_index_t const node_id) noexcept -> void
+    auto append(patch_index_t const node_id) noexcept -> void
     {
         m_linear_index_map[m_size] = node_id;
         m_index_map[node_id]       = m_size;
@@ -563,7 +563,7 @@ private:
     }
 
     [[nodiscard]]
-    auto find_index(tree_index_t const node_id) const noexcept
+    auto find_index(patch_index_t const node_id) const noexcept
         -> std::optional<index_map_const_iterator_t>
     {
         const auto it = m_index_map.find(node_id);
@@ -571,7 +571,7 @@ private:
     }
 
     [[nodiscard]]
-    auto find_index(tree_index_t const node_id) noexcept
+    auto find_index(patch_index_t const node_id) noexcept
         -> std::optional<index_map_iterator_t>
     {
         const auto it = m_index_map.find(node_id);
@@ -591,7 +591,7 @@ public:
         );
 
         linear_index_t        backup_start_pos;
-        tree_index_t          backup_node_index;
+        patch_index_t         backup_node_index;
         refine_status_t       backup_refine_status;
         deconstructed_types_t backup_buffer;
 
@@ -685,31 +685,34 @@ public:
         );
     }
 
-    auto interpolate_patch(linear_index_t const from, linear_index_t const start_to) noexcept -> void
+    auto interpolate_patch(
+        linear_index_t const from,
+        linear_index_t const start_to
+    ) noexcept -> void
     {
         // iterate trough old patch and interpolate7 assign values to new patches
 
-        for (size_t parent_flat_idx = 0; parent_flat_idx < patch_indexer_t::total_size();
+        for (size_t parent_flat_idx = 0; parent_flat_idx < patch_layout_t::total_size();
              ++parent_flat_idx)
         {
-            auto parent_multi_idx = patch_indexer_t::to_multi_dim(parent_flat_idx);
+            auto parent_multi_idx = patch_layout_t::to_multi_dim(parent_flat_idx);
 
             // For each child patch (fanout^N)
             for (size_t child_patch = 0;
                  child_patch < utility::cx_functions::pow(
                                    static_cast<size_t>(s_nd_fanout),
-                                   static_cast<size_t>(patch_indexer_t::N)
+                                   static_cast<size_t>(patch_layout_t::N)
                                );
                  ++child_patch)
             {
-                std::array<size_t, patch_indexer_t::N> child_patch_idx;
-                std::array<size_t, patch_indexer_t::N> child_local_idx;
+                std::array<size_t, patch_layout_t::N> child_patch_idx;
+                std::array<size_t, patch_layout_t::N> child_local_idx;
 
                 size_t tmp              = child_patch;
                 bool   skip_child_patch = false;
-                for (size_t d = 0; d < patch_indexer_t::N; ++d)
+                for (size_t d = 0; d < patch_layout_t::N; ++d)
                 {
-                    size_t child_patch_size = patch_indexer_t::dim_size(d) / s_nd_fanout;
+                    size_t child_patch_size = patch_layout_t::dim_size(d) / s_nd_fanout;
                     child_patch_idx[d]      = tmp % s_nd_fanout;
                     tmp /= s_nd_fanout;
 
@@ -728,15 +731,15 @@ public:
                 // Compute flat index in child patch
                 size_t child_flat_idx = 0;
                 size_t stride         = 1;
-                for (int d = patch_indexer_t::N - 1; d >= 0; --d)
+                for (int d = patch_layout_t::N - 1; d >= 0; --d)
                 {
                     child_flat_idx += child_local_idx[d] * stride;
-                    stride *= patch_indexer_t::dim_size(d) / s_nd_fanout;
+                    stride *= patch_layout_t::dim_size(d) / s_nd_fanout;
                 }
 
                 // Compute offset for this child patch in the buffer
                 size_t child_patch_offset =
-                    start_to + child_patch * patch_indexer_t::total_size();
+                    start_to + child_patch * patch_layout_t::total_size();
 
                 // Copy value from parent to child
                 // std apply stuff comes now
@@ -786,16 +789,17 @@ private:
         const auto node_id = m_linear_index_map[i];
         assert(m_index_map.contains(node_id));
         const auto status = m_refine_status_buffer[i];
-        const auto level  = tree_index_t::level(node_id);
-        return (status == refine_status_t::Refine) && (level < tree_index_t::max_depth());
+        const auto level  = patch_index_t::level(node_id);
+        return (status == refine_status_t::Refine) &&
+               (level < patch_index_t::max_depth());
     }
 
     [[nodiscard]]
-    auto is_coarsen_elegible(tree_index_t parent_id) const noexcept -> bool
+    auto is_coarsen_elegible(patch_index_t parent_id) const noexcept -> bool
     {
-        for (typename tree_index_t::offset_t i = 0; i < s_nd_fanout; ++i)
+        for (typename patch_index_t::offset_t i = 0; i < s_nd_fanout; ++i)
         {
-            const auto child = tree_index_t::child_of(parent_id, i);
+            const auto child = patch_index_t::child_of(parent_id, i);
             const auto it    = find_index(child.id());
             // TODO: Maybe do this an assert rather
             if (!it.has_value())
@@ -893,8 +897,8 @@ private:
     linear_index_array_t       m_reorder_buffer;
     flat_refine_status_array_t m_refine_status_buffer;
     size_type                  m_size;
-    std::vector<tree_index_t>  m_to_refine;
-    std::vector<tree_index_t>  m_to_coarsen;
+    std::vector<patch_index_t> m_to_refine;
+    std::vector<patch_index_t> m_to_coarsen;
 };
 
 } // namespace amr::ndt::tree

@@ -34,7 +34,7 @@ concept DeconstructibleType = requires {
 } && detail::type_map_tuple_impl<typename T::deconstructed_types_map_t>;
 
 template <typename I>
-concept NodeIndex =
+concept PatchIndex =
     requires(
         const I                       i,
         const typename I::direction_t d,
@@ -57,6 +57,14 @@ concept NodeIndex =
     } &&
     std::integral<typename I::size_type> && std::unsigned_integral<typename I::mask_t> &&
     std::equality_comparable<I>;
+
+template <typename S>
+concept StaticLayout = requires() {
+    S::flat_index();
+    S::s_strides;
+    S::s_sizes;
+    S::s_rank;
+};
 
 } // namespace amr::ndt::concepts
 
