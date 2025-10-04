@@ -58,12 +58,25 @@ concept PatchIndex =
     std::integral<typename I::size_type> && std::unsigned_integral<typename I::mask_t> &&
     std::equality_comparable<I>;
 
-template <typename S>
-concept StaticLayout = requires() {
-    S::flat_index();
-    S::s_strides;
-    S::s_sizes;
-    S::s_rank;
+template <typename T>
+concept StaticLayout = requires {
+    // Static constexpr members
+    { T::s_rank } -> std::convertible_to<std::size_t>;
+    { T::s_flat_size } -> std::convertible_to<std::size_t>;
+    
+    // Linear index functionality - now matches static_tensor's interface
+    requires requires(typename T::index_t const (&idxs)[T::s_rank]) {
+        { T::linear_index(idxs) } -> std::convertible_to<typename T::index_t>;
+    };
+    
+    requires requires(typename T::multi_index_t const& multi_idx) {
+        { T::linear_index(multi_idx) } -> std::convertible_to<typename T::index_t>;
+    };
+    
+    // Required type aliases
+    typename T::size_type;
+    typename T::index_t;
+    typename T::multi_index_t;
 };
 
 } // namespace amr::ndt::concepts
