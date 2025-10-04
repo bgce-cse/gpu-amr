@@ -31,7 +31,7 @@ consteval auto multiples_of(
     std::ranges::input_range auto const& r,
     std::integral auto const             x
 ) noexcept -> bool
-    requires std::is_same_v<
+    requires std::convertible_to<
         std::ranges::range_value_t<std::remove_cvref_t<decltype(r)>>,
         decltype(x)>
 {
@@ -54,7 +54,7 @@ consteval auto fragmentation_patch_maps(containers::static_layout<N, Ns...>) noe
     using tensor_t = containers::static_tensor<index_t, N, Ns...>;
     using patch_shape_t =
         containers::utils::types::tensor::hypercube_t<tensor_t, Fanout, tensor_t::s_rank>;
-    patch_shape_t to{};
+    patch_shape_t ret{};
 
     auto idx           = typename tensor_t::multi_index_t{};
     auto sized_strides = decltype(tensor_t::s_strides){};
@@ -85,10 +85,10 @@ consteval auto fragmentation_patch_maps(containers::static_layout<N, Ns...>) noe
                                   index_t{}
                               ) /
                               Fanout;
-            to[out_patch_idx][idx] = offset + base;
+            ret[out_patch_idx][idx] = offset + base;
         } while (out_patch_idx.increment());
     } while (idx.increment());
-    return to;
+    return ret;
 }
 
 } // namespace patches

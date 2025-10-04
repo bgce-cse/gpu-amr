@@ -102,6 +102,12 @@ public:
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
 
+
+    static constexpr auto s_patch_maps = 
+        amr::ndt::utils::patches::fragmentation_patch_maps<linear_index_t, patch_index_t::fanout()>(
+            typename patch_layout_t::layout_t{}
+        );
+
 public:
     ndtree(size_type size) noexcept
         : m_size{}
@@ -159,11 +165,35 @@ public:
         return std::get<Map_Type::index()>(m_data_buffers)[idx];
     }
 
+
+     template <concepts::TypeMap Map_Type>
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
+    auto get_patch(linear_index_t const patch_idx) noexcept 
+        -> patch_layout_t& 
+    {
+        assert(patch_idx < m_size);
+        auto* data_start = &std::get<Map_Type::index()>(m_data_buffers)[patch_idx * patch_layout_t::s_flat_size];
+        
+        // Return a reference to the data reinterpreted as a tensor
+        return *reinterpret_cast<patch_layout_t*>(data_start);
+    }
+
+    template <concepts::TypeMap Map_Type>
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
+    auto get_patch(linear_index_t const patch_idx) const noexcept 
+        -> const patch_layout_t& 
+    {
+        assert(patch_idx < m_size);
+        auto* data_start = &std::get<Map_Type::index()>(m_data_buffers)[patch_idx * patch_layout_t::s_flat_size];
+        
+        return *reinterpret_cast<const patch_layout_t*>(data_start);
+    }
+
     auto fragment(patch_index_t const node_id) -> void
     {
         const auto it = find_index(node_id);
         assert(it.has_value());
-        auto const start_to = m_size;
+        auto const start_to = m_size * patch_layout_t::flat_size() ;
         for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
         {
             auto child_id = patch_index_t::child_of(node_id, i);
@@ -205,22 +235,22 @@ public:
 
     auto fragment() -> void
     {
-        assert(is_sorted());
+        // assert(is_sorted());
         for (auto const& node_id : m_to_refine)
         {
             fragment(node_id);
         }
-        sort_buffers();
+        // sort_buffers();
     }
 
     auto recombine() -> void
     {
-        assert(is_sorted());
+        // assert(is_sorted());
         for (const auto& node_id : m_to_coarsen)
         {
             recombine(node_id);
         }
-        sort_buffers();
+        // sort_buffers();
     }
 
     template <typename Fn>
@@ -582,7 +612,7 @@ private:
 public:
     auto sort_buffers() noexcept -> void
     {
-        compact();
+        // compact();
         std::sort(
             m_reorder_buffer,
             &m_reorder_buffer[m_size],
@@ -639,8 +669,8 @@ public:
             m_index_map[backup_node_index] = dst;
             m_reorder_buffer[dst]          = dst;
         }
-        assert(is_sorted());
-        assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
+        // assert(is_sorted());
+        // assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
     }
 
 public:
@@ -685,67 +715,64 @@ public:
         );
     }
 
-    auto interpolate_patch(
-        linear_index_t const from,
-        linear_index_t const start_to
-    ) noexcept -> void
-    {
-        // iterate trough old patch and interpolate7 assign values to new patches
-
-        for (size_t parent_flat_idx = 0; parent_flat_idx < patch_layout_t::total_size();
-             ++parent_flat_idx)
-        {
-            auto parent_multi_idx = patch_layout_t::to_multi_dim(parent_flat_idx);
-
-            // For each child patch (fanout^N)
-            for (size_t child_patch = 0;
-                 child_patch < utility::cx_functions::pow(
-                                   static_cast<size_t>(s_nd_fanout),
-                                   static_cast<size_t>(patch_layout_t::N)
-                               );
-                 ++child_patch)
-            {
-                std::array<size_t, patch_layout_t::N> child_patch_idx;
-                std::array<size_t, patch_layout_t::N> child_local_idx;
-
-                size_t tmp              = child_patch;
-                bool   skip_child_patch = false;
-                for (size_t d = 0; d < patch_layout_t::N; ++d)
+auto interpolate_patch(
+    linear_index_t const from,
+    linear_index_t const start_to
+) noexcept -> void
+{
+    std::cout << "\n=== INTERPOLATE_PATCH DEBUG ===" << std::endl;
+    std::cout << "From parent patch: " << from << std::endl;
+    std::cout << "To children starting at: " << start_to << std::endl;
+    std::cout << "Number of child patches: " << s_nd_fanout << std::endl;
+    std::cout << "Patch flat size: " << patch_layout_t::flat_size() << std::endl;
+    
+    // Debug: Print patch maps structure
+    std::cout << "\nPatch maps structure:" << std::endl;
+    std::cout << "s_patch_maps dimensions: " << s_patch_maps.size(0) << "x" << s_patch_maps.size(1) << std::endl;
+    
+    // For all new patches patch_idx
+    for(size_t patch_idx = 0; patch_idx < s_nd_fanout; patch_idx++) {
+        std::cout << "\n--- Processing child patch " << patch_idx << " ---" << std::endl;
+        
+        // For all nodes in this patch node_idx  
+        for(size_t linear_idx = 0; linear_idx < static_cast<size_t>(patch_layout_t::flat_size()); linear_idx++) {
+            
+            // Get mapping from patch maps
+            auto map_value = s_patch_maps[static_cast<int>(patch_idx)][static_cast<int>(linear_idx)];
+            std::cout << "  patch_maps[" << patch_idx << "][" << linear_idx << "] = " << map_value << std::endl;
+            
+            auto parent_linear_idx = from + map_value;
+            auto child_linear_idx = start_to + patch_layout_t::flat_size() * patch_idx + linear_idx;
+            
+            std::cout << "  Copying: parent[" << parent_linear_idx << "] -> child[" << child_linear_idx << "]" << std::endl;
+            std::cout << "    Child patch " << patch_idx << ", local idx " << linear_idx << std::endl;
+            
+            // Debug: Print values being copied
+            std::apply(
+                [parent_linear_idx, child_linear_idx, patch_idx, linear_idx](auto&... b)
                 {
-                    size_t child_patch_size = patch_layout_t::dim_size(d) / s_nd_fanout;
-                    child_patch_idx[d]      = tmp % s_nd_fanout;
-                    tmp /= s_nd_fanout;
-
-                    // Check if parent node belongs to this child patch
-                    if (child_patch_idx[d] != (parent_multi_idx[d] / child_patch_size))
-                    {
-                        skip_child_patch = true;
-                        break;
-                    }
-
-                    child_local_idx[d] = parent_multi_idx[d] % child_patch_size;
-                }
-
-                if (skip_child_patch) continue;
-
-                // Compute flat index in child patch
-                size_t child_flat_idx = 0;
-                size_t stride         = 1;
-                for (int d = patch_layout_t::N - 1; d >= 0; --d)
-                {
-                    child_flat_idx += child_local_idx[d] * stride;
-                    stride *= patch_layout_t::dim_size(d) / s_nd_fanout;
-                }
-
-                // Compute offset for this child patch in the buffer
-                size_t child_patch_offset =
-                    start_to + child_patch * patch_layout_t::total_size();
-
-                // Copy value from parent to child
-                // std apply stuff comes now
-            }
+                    size_t buffer_idx = 0;
+                    ((void)(
+                        std::cout << "    Buffer " << buffer_idx++ 
+                                  << ": " << b[parent_linear_idx] 
+                                  << " -> " << b[child_linear_idx] << " (before)" << std::endl,
+                        b[child_linear_idx] = b[parent_linear_idx],
+                        std::cout << "    Buffer " << (buffer_idx-1) 
+                                  << ": " << b[child_linear_idx] << " (after)" << std::endl
+                    ), ...);
+                },
+                m_data_buffers
+            );
         }
+        
+        std::cout << "Child patch " << patch_idx << " complete. Total elements copied: " 
+                  << patch_layout_t::flat_size() << std::endl;
     }
+    
+    std::cout << "\n=== INTERPOLATE_PATCH COMPLETE ===" << std::endl;
+    std::cout << "Total child patches created: " << s_nd_fanout << std::endl;
+    std::cout << "Total elements copied: " << s_nd_fanout * patch_layout_t::flat_size() << std::endl;
+}
 
     auto interpolate_node(
         linear_index_t const from,
@@ -855,28 +882,28 @@ public:
         );
     }
 
-    [[nodiscard]]
-    auto is_sorted() const noexcept -> bool
-    {
-        if (std::ranges::is_sorted(
-                m_linear_index_map, &m_linear_index_map[m_size], std::less{}
-            ))
-        {
-            for (linear_index_t i = 0; i != m_size; ++i)
-            {
-                assert(m_index_map.contains(m_linear_index_map[i]));
-                if (m_index_map.at(m_linear_index_map[i]) != i)
-                {
-                    std::cout << "index map is not correct" << std::endl;
-                    return false;
-                }
-            }
-            return true;
-        }
-        std::cout << "linear index is not sorted" << std::endl;
-        ;
-        return false;
-    }
+    // [[nodiscard]]
+    // auto is_sorted() const noexcept -> bool
+    // {
+    //     if (std::ranges::is_sorted(
+    //             m_linear_index_map, &m_linear_index_map[m_size], std::less{}
+    //         ))
+    //     {
+    //         for (linear_index_t i = 0; i != m_size; ++i)
+    //         {
+    //             assert(m_index_map.contains(m_linear_index_map[i]));
+    //             if (m_index_map.at(m_linear_index_map[i]) != i)
+    //             {
+    //                 std::cout << "index map is not correct" << std::endl;
+    //                 return false;
+    //             }
+    //         }
+    //         return true;
+    //     }
+    //     std::cout << "linear index is not sorted" << std::endl;
+    //     ;
+    //     return false;
+    // }
 
 #ifdef AMR_NDTREE_ENABLE_CHECKS
     auto check_index_map() const noexcept -> void
@@ -886,7 +913,7 @@ public:
         {
             assert(m_linear_index_map[linear_idx] == node_idx);
         }
-        std::cout << "Hash table looks good chef...\n";
+        // std::cout << "Hash table looks good chef...\n";
     }
 #endif
 

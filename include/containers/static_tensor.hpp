@@ -158,6 +158,22 @@ public:
         return std::end(data_);
     }
 
+
+
+    [[nodiscard]]
+    constexpr auto operator[](index_t const linear_idx) const noexcept -> const_reference
+    {
+        assert(linear_idx < s_flat_size);
+        return data_[linear_idx];
+    }
+
+    [[nodiscard]]
+    constexpr auto operator[](index_t const linear_idx) noexcept -> reference
+    {
+        assert(linear_idx < s_flat_size);
+        return data_[linear_idx];
+    }
+
 private:
     // TODO: Alignment?
     value_type data_[s_flat_size];
