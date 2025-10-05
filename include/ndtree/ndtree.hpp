@@ -202,7 +202,7 @@ public:
             assert(m_index_map[child_id] == back_idx());
             assert(m_linear_index_map[back_idx()] == child_id);
         }
-        const auto from = it.value()->second;
+        const auto from = it.value()->second * patch_layout_t::flat_size();
         interpolate_patch(from, start_to);
         m_index_map.erase(it.value());
 #ifdef AMR_NDTREE_ENABLE_CHECKS
@@ -623,7 +623,10 @@ public:
         linear_index_t        backup_start_pos;
         patch_index_t         backup_node_index;
         refine_status_t       backup_refine_status;
-        deconstructed_types_t backup_buffer;
+        
+        // NEW: Backup buffer for entire patches instead of single elements
+        using backup_patch_t = std::array<deconstructed_types_t, patch_layout_t::s_flat_size>;
+        backup_patch_t backup_patch;
 
         for (linear_index_t i = 0; i != back_idx();)
         {
@@ -637,10 +640,14 @@ public:
             backup_start_pos     = i;
             backup_node_index    = m_linear_index_map[i];
             backup_refine_status = m_refine_status_buffer[i];
-            [this, &backup_buffer, i]<std::size_t... I>(std::index_sequence<I...>)
+            
+            // Backup entire patch
+            auto patch_i_start = i * patch_layout_t::s_flat_size;
+            [this, &backup_patch, patch_i_start]<std::size_t... I>(std::index_sequence<I...>)
             {
-                ((void)(std::get<I>(backup_buffer) = std::get<I>(m_data_buffers)[i]),
-                 ...);
+                for(size_t k = 0; k < patch_layout_t::s_flat_size; k++) {
+                    ((void)(std::get<I>(backup_patch[k]) = std::get<I>(m_data_buffers)[patch_i_start + k]), ...);
+                }
             }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
 
             auto dst = i;
@@ -648,10 +655,20 @@ public:
             {
                 m_linear_index_map[dst]     = m_linear_index_map[src];
                 m_refine_status_buffer[dst] = m_refine_status_buffer[src];
+                
+                // Copy entire patches instead of single elements
+                auto patch_src_start = src * patch_layout_t::s_flat_size;
+                auto patch_dst_start = dst * patch_layout_t::s_flat_size;
+                
                 std::apply(
-                    [src, dst](auto&... b) { ((void)(b[dst] = b[src]), ...); },
+                    [patch_src_start, patch_dst_start](auto&... b) { 
+                        for(size_t k = 0; k < patch_layout_t::s_flat_size; k++) {
+                            ((b[patch_dst_start + k] = b[patch_src_start + k]), ...);
+                        }
+                    }, 
                     m_data_buffers
                 );
+                
                 m_index_map[m_linear_index_map[dst]] = dst;
                 m_reorder_buffer[dst]                = dst;
                 dst                                  = src;
@@ -661,11 +678,16 @@ public:
 
             m_linear_index_map[dst]     = backup_node_index;
             m_refine_status_buffer[dst] = backup_refine_status;
-            [this, &backup_buffer, dst]<std::size_t... I>(std::index_sequence<I...>)
+            
+            // Restore backed up patch
+            auto patch_dst_start = dst * patch_layout_t::s_flat_size;
+            [this, &backup_patch, patch_dst_start]<std::size_t... I>(std::index_sequence<I...>)
             {
-                ((void)(std::get<I>(m_data_buffers)[dst] = std::get<I>(backup_buffer)),
-                 ...);
+                for(size_t k = 0; k < patch_layout_t::s_flat_size; k++) {
+                    ((void)(std::get<I>(m_data_buffers)[patch_dst_start + k] = std::get<I>(backup_patch[k])), ...);
+                }
             }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
+            
             m_index_map[backup_node_index] = dst;
             m_reorder_buffer[dst]          = dst;
         }
@@ -741,7 +763,7 @@ auto interpolate_patch(
             auto map_value = s_patch_maps[static_cast<int>(patch_idx)][static_cast<int>(linear_idx)];
             std::cout << "  patch_maps[" << patch_idx << "][" << linear_idx << "] = " << map_value << std::endl;
             
-            auto parent_linear_idx = from + map_value;
+            auto parent_linear_idx = from +  map_value;
             auto child_linear_idx = start_to + patch_layout_t::flat_size() * patch_idx + linear_idx;
             
             std::cout << "  Copying: parent[" << parent_linear_idx << "] -> child[" << child_linear_idx << "]" << std::endl;
@@ -868,12 +890,14 @@ public:
 auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
     -> void
 {
+    
     assert(i < m_size);
     assert(j < m_size);
     if (i == j)
     {
         return;
     }
+    std::cout << "switching " << i << " and " << j << std::endl;
     assert(m_linear_index_map[i] != m_linear_index_map[j]);
     std::swap(m_linear_index_map[i], m_linear_index_map[j]);
     std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);

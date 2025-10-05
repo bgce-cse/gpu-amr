@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <iostream>
 #include <tuple>
+#include <iomanip>  // for std::setw, std::setprecision
+#include <limits>   // for std::numeric_limits
 
 struct S1
 {
@@ -129,40 +131,50 @@ int main()
     }
 
     printer.print(h, "_iteration_1.vtk");
-    // int i = 2;
-    // for (; i != 7; ++i)
-    // {
-    //     h.reconstruct_tree(refine_criterion);
-    //     std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
-    //     printer.print(h, file_extension);
 
-    // }
-    // for (; i != 18; ++i)
-    // {
-    //     h.reconstruct_tree(
-    //         [](const patch_index_t& idx)
-    //         {
-    //             auto [coords, level] = patch_index_t::decode(idx.id());
-    //             auto max_size        = 1u << idx.max_depth();
-    //             auto cell_size       = 1u << (idx.max_depth() - level);
+    
+    
+    for (int i = 2; i != 5; ++i)
+    {
+        h.reconstruct_tree(refine_criterion);
+        std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
+        printer.print(h, file_extension);
+    }
+    // Add this at the end of your main function, before "adios balancing world"
 
-    //             double mid_x  = coords[0] + 0.5 * cell_size;
-    //             double mid_y  = coords[1] + 0.5 * cell_size;
-    //             double center = 0.5 * max_size;
-    //             double dist2  = (mid_x - center) * (mid_x - center) +
-    //                            (mid_y - center) * (mid_y - center);
+std::cout << "\n=== FINAL TREE VALUES ===" << std::endl;
+std::cout << "Tree size: " << h.size() << " patches" << std::endl;
+std::cout << "Total elements: " << h.size() * 16 << std::endl;
 
-    //             // Only coarsen if not at min level!
-    //             if (level > 0 && dist2 < 0.3 / idx.level() * max_size * max_size)
-    //             {
-    //                 return tree_t::refine_status_t::Coarsen;
-    //             }
-    //             return tree_t::refine_status_t::Stable;
-    //         }
-    //     );
-    //     std::string file_extension = std::to_string(i) + ".vtk";
-    //     vtk_printer.print(h, file_extension);
-    // }
+// Print all S1 values from all patches
+std::cout << "\n--- S1 VALUES (float) ---" << std::endl;
+for(size_t patch_idx = 0; patch_idx < h.size(); patch_idx++){
+    auto& s1_patch = h.template get_patch<S1>(patch_idx);
+    auto patch_id = h.get_node_index_at(patch_idx);
+    
+    std::cout << "Patch " << patch_idx << " (Morton ID: " << patch_id.id() 
+              << ", Level: " << static_cast<int>(patch_id.level()) << "):" << std::endl;
+    
+    // Print as 4x4 matrix
+    for(int i = 0; i < 4; i++) {
+        std::cout << "  Row " << i << ": ";
+        for(int j = 0; j < 4; j++) {
+            std::cout << std::setw(8) << std::fixed << std::setprecision(2) 
+                      << s1_patch[i, j] << " ";
+        }
+        std::cout << std::endl;
+    }
+    
+    // Also print linear order for verification
+    std::cout << "  Linear: ";
+    for(int k = 0; k < 16; k++) {
+        std::cout << std::setw(6) << std::fixed << std::setprecision(1) 
+                  << s1_patch[k] << " ";
+        if((k + 1) % 8 == 0) std::cout << std::endl << "          ";
+    }
+    std::cout << std::endl << std::endl;
+}
+
     std::cout << "adios balancing world\n";
     return EXIT_SUCCESS;
 }
