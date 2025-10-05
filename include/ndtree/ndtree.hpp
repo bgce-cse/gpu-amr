@@ -235,22 +235,22 @@ public:
 
     auto fragment() -> void
     {
-        // assert(is_sorted());
+        assert(is_sorted());
         for (auto const& node_id : m_to_refine)
         {
             fragment(node_id);
         }
-        // sort_buffers();
+        sort_buffers();
     }
 
     auto recombine() -> void
     {
-        // assert(is_sorted());
+        assert(is_sorted());
         for (const auto& node_id : m_to_coarsen)
         {
             recombine(node_id);
         }
-        // sort_buffers();
+        sort_buffers();
     }
 
     template <typename Fn>
@@ -612,7 +612,7 @@ private:
 public:
     auto sort_buffers() noexcept -> void
     {
-        // compact();
+        compact();
         std::sort(
             m_reorder_buffer,
             &m_reorder_buffer[m_size],
@@ -669,8 +669,8 @@ public:
             m_index_map[backup_node_index] = dst;
             m_reorder_buffer[dst]          = dst;
         }
-        // assert(is_sorted());
-        // assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
+        assert(is_sorted());
+        assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
     }
 
 public:
@@ -865,45 +865,56 @@ public:
     }
 
     [[gnu::always_inline, gnu::flatten]]
-    auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
-        -> void
+auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
+    -> void
+{
+    assert(i < m_size);
+    assert(j < m_size);
+    if (i == j)
     {
-        assert(i < m_size);
-        assert(j < m_size);
-        if (i == j)
-        {
-            return;
-        }
-        assert(m_linear_index_map[i] != m_linear_index_map[j]);
-        std::swap(m_linear_index_map[i], m_linear_index_map[j]);
-        std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
-        std::apply(
-            [i, j](auto&... b) { ((void)std::swap(b[i], b[j]), ...); }, m_data_buffers
-        );
+        return;
     }
+    assert(m_linear_index_map[i] != m_linear_index_map[j]);
+    std::swap(m_linear_index_map[i], m_linear_index_map[j]);
+    std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
+    
+    auto patch_i_start = i * patch_layout_t::s_flat_size;
+    auto patch_j_start = j * patch_layout_t::s_flat_size;
+    
+    std::apply(
+        [patch_i_start, patch_j_start](auto&... b) {
+            ((void)(
+                std::swap_ranges(&b[patch_i_start], 
+                               &b[patch_i_start + patch_layout_t::s_flat_size], 
+                               &b[patch_j_start])
+            ), ...);
+        }, 
+        m_data_buffers
+    );
+}
 
-    // [[nodiscard]]
-    // auto is_sorted() const noexcept -> bool
-    // {
-    //     if (std::ranges::is_sorted(
-    //             m_linear_index_map, &m_linear_index_map[m_size], std::less{}
-    //         ))
-    //     {
-    //         for (linear_index_t i = 0; i != m_size; ++i)
-    //         {
-    //             assert(m_index_map.contains(m_linear_index_map[i]));
-    //             if (m_index_map.at(m_linear_index_map[i]) != i)
-    //             {
-    //                 std::cout << "index map is not correct" << std::endl;
-    //                 return false;
-    //             }
-    //         }
-    //         return true;
-    //     }
-    //     std::cout << "linear index is not sorted" << std::endl;
-    //     ;
-    //     return false;
-    // }
+    [[nodiscard]]
+    auto is_sorted() const noexcept -> bool
+    {
+        if (std::ranges::is_sorted(
+                m_linear_index_map, &m_linear_index_map[m_size], std::less{}
+            ))
+        {
+            for (linear_index_t i = 0; i != m_size; ++i)
+            {
+                assert(m_index_map.contains(m_linear_index_map[i]));
+                if (m_index_map.at(m_linear_index_map[i]) != i)
+                {
+                    std::cout << "index map is not correct" << std::endl;
+                    return false;
+                }
+            }
+            return true;
+        }
+        std::cout << "linear index is not sorted" << std::endl;
+        ;
+        return false;
+    }
 
 #ifdef AMR_NDTREE_ENABLE_CHECKS
     auto check_index_map() const noexcept -> void

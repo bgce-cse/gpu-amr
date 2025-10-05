@@ -116,7 +116,7 @@ int main()
 
     h.reconstruct_tree(refine_criterion);
 
-    for(size_t idx = 1; idx < h.size(); idx++){
+    for(size_t idx = 0; idx < h.size(); idx++){
         // Access S1 values (float)
 
         std::cout << "new patch : " << idx << std::endl;
