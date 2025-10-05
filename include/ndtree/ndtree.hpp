@@ -46,7 +46,7 @@ public:
 
     static_assert(s_nd_fanout > 1);
     static_assert(
-        utils::patches::multiples_of(patch_layout_t::s_sizes, s_nd_fanout),
+        utils::patches::multiples_of(patch_layout_t::s_sizes, patch_index_t::fanout()),
         "All patch dimensions must be multiples of the fanout"
     );
 
