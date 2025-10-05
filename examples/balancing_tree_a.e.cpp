@@ -103,6 +103,27 @@ int main()
         return tree_t::refine_status_t::Stable;
     };
 
+
+    auto coarsen_criterion =[](const patch_index_t& idx)
+            {
+                auto [coords, level] = patch_index_t::decode(idx.id());
+                auto max_size        = 1u << idx.max_depth();
+                auto cell_size       = 1u << (idx.max_depth() - level);
+
+                double mid_x  = coords[0] + 0.5 * cell_size;
+                double mid_y  = coords[1] + 0.5 * cell_size;
+                double center = 0.5 * max_size;
+                double dist2  = (mid_x - center) * (mid_x - center) +
+                               (mid_y - center) * (mid_y - center);
+
+                // Only coarsen if not at min level!
+                if (level > 0 && dist2 < 0.3 / idx.level() * max_size * max_size)
+                {
+                    return tree_t::refine_status_t::Coarsen;
+                }
+                return tree_t::refine_status_t::Stable;
+            };
+
     
     for(size_t idx = 0; idx < h.size(); idx++){
         // Access S1 values (float)
@@ -116,27 +137,17 @@ int main()
 
     printer.print(h, "_iteration_0.vtk");
 
-    h.reconstruct_tree(refine_criterion);
-
-    for(size_t idx = 0; idx < h.size(); idx++){
-        // Access S1 values (float)
-
-        std::cout << "new patch : " << idx << std::endl;
-        tensor_t& s1_patch = h.template get_patch<S1>(idx);
-
-        for(int linear_idx = 0; linear_idx < N*M; linear_idx++) {
-        std::cout << s1_patch[linear_idx] << std::endl;
-        }
-
-    }
-
-    printer.print(h, "_iteration_1.vtk");
-
-    
-    
-    for (int i = 2; i != 5; ++i)
+    int i = 1;
+    for (; i != 6; ++i)
     {
         h.reconstruct_tree(refine_criterion);
+        std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
+        printer.print(h, file_extension);
+    }
+
+    for (; i != 13; ++i)
+    {
+        h.reconstruct_tree(coarsen_criterion);
         std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
         printer.print(h, file_extension);
     }
