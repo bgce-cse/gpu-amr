@@ -218,17 +218,18 @@ public:
         const auto child_0_it = find_index(child_0);
         assert(child_0_it.has_value());
 
-        const auto start = child_0_it.value()->second;
+        const auto start = child_0_it.value()->second * patch_layout_t::flat_size();
+        auto const to = m_size * patch_layout_t::flat_size() ;
         append(parent_node_id);
         assert(m_linear_index_map[back_idx()] == parent_node_id);
-        restrict_nodes(start, back_idx());
+        restrict_patches(start, to);
 
         for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
         {
             const auto child_i    = patch_index_t::child_of(parent_node_id, i);
             auto       child_i_it = find_index(child_i);
             assert(child_i_it.has_value());
-            assert(child_i_it.value()->second == start + i);
+            // assert(child_i_it.value()->second == start + i);
             m_index_map.erase(child_i_it.value());
         }
     }
@@ -716,26 +717,68 @@ public:
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
     }
 
-    auto restrict_nodes(linear_index_t const start_from, linear_index_t const to) noexcept
-        -> void
-    {
-        // std::cout << "In restriction from [" << start_from << ", "
-        //           << start_from + s_nd_fanout - 1 << "] to " << to << '\n';
-        auto mean = [](auto const data[s_nd_fanout])
+    // auto restrict_nodes(linear_index_t const start_from, linear_index_t const to) noexcept
+    //     -> void
+    // {
+
+
+    //     // std::cout << "In restriction from [" << start_from << ", "
+    //     //           << start_from + s_nd_fanout - 1 << "] to " << to << '\n';
+    //     auto mean = [](auto const data[s_nd_fanout])
+    //     {
+    //         auto ret = data[0];
+    //         for (auto i = 1u; i != s_nd_fanout; ++i)
+    //         {
+    //             ret += data[i] / s_nd_fanout;
+    //         }
+    //         return ret;
+    //     };
+    //     std::apply(
+    //         [start_from, to, &mean](auto&... b)
+    //         { ((void)(b[to] = mean(&(b[start_from]))), ...); },
+    //         m_data_buffers
+    //     );
+    // }
+
+auto restrict_patches(linear_index_t const start_from, linear_index_t const to) noexcept
+    -> void
+{
+    std::apply(
+        [to](auto&... b)
         {
-            auto ret = data[0];
-            for (auto i = 1u; i != s_nd_fanout; ++i)
-            {
-                ret += data[i] / s_nd_fanout;
+            for(size_t k = 0; k < patch_layout_t::s_flat_size; k++) {
+                ((b[to + k] =  std::remove_reference_t<decltype(b[0])>{}), ...); // Zero initialize
             }
-            return ret;
-        };
-        std::apply(
-            [start_from, to, &mean](auto&... b)
-            { ((void)(b[to] = mean(&(b[start_from]))), ...); },
-            m_data_buffers
-        );
+        },
+        m_data_buffers
+    );
+
+    for(size_t patch_idx = 0; patch_idx < s_nd_fanout; patch_idx++) {
+        for(size_t linear_idx = 0; linear_idx < static_cast<size_t>(patch_layout_t::flat_size()); linear_idx++) {
+            auto map_value = s_patch_maps[static_cast<int>(patch_idx)][static_cast<int>(linear_idx)];
+            auto parent_linear_idx = to + map_value;
+            auto child_linear_idx = start_from  + patch_layout_t::s_flat_size * patch_idx + linear_idx;
+            
+            std::apply(
+                [parent_linear_idx, child_linear_idx](auto&... b)
+                {
+                    ((void)(b[parent_linear_idx] += b[child_linear_idx] ), ...);
+                },
+                m_data_buffers
+            );
+        }
     }
+
+    std::apply(
+        [to](auto&... b)
+        {
+            for(size_t k = 0; k < patch_layout_t::s_flat_size; k++) {
+                ((b[to + k] /= static_cast<std::remove_reference_t<decltype(b[0])>>(s_nd_fanout)), ...);
+            }
+        },
+        m_data_buffers
+    );
+}
 
 auto interpolate_patch(
     linear_index_t const from,
