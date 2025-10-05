@@ -14,8 +14,16 @@ struct S1;
 
 namespace ndt::print
 {
+
+// template of patch_x and patch_y
+template<std::size_t... PatchDims>
 struct example_patch_print
 {
+    static_assert(sizeof...(PatchDims) >= 2, "Need at least 2 dimensions for patch");
+    static constexpr auto patch_size_x = std::get<0>(std::array<std::size_t, sizeof...(PatchDims)>{PatchDims...});
+    static constexpr auto patch_size_y = std::get<1>(std::array<std::size_t, sizeof...(PatchDims)>{PatchDims...});
+    static constexpr auto total_patch_elements = (PatchDims * ...);
+
 public:
     example_patch_print(std::string base_filename)
         : m_base_filename(std::move(base_filename))
@@ -41,7 +49,7 @@ private:
     void write_header(std::ofstream& file) const
     {
         file << "# vtk DataFile Version 3.0\n";
-        file << "AMR Tree Structure with Patch Data\n";
+        file << "AMR Tree Structure with Patch Data (" << patch_size_x << "x" << patch_size_y << ")\n";
         file << "ASCII\n";
         file << "DATASET UNSTRUCTURED_GRID\n";
     }
@@ -54,41 +62,43 @@ private:
         std::vector<std::array<uint32_t, 3>> points;
         std::vector<float> s1_values;
 
-        // Calculate total number of cells (each patch has 4x4 = 16 cells)
-        size_t total_cells = tree.size() * 16;  // 16 cells per patch
-        uint32_t max_coord = 1u << IndexType::max_depth(); // Maximum coordinate for flipping
+        size_t total_cells = tree.size() * total_patch_elements;
+        uint32_t max_coord = 1u << IndexType::max_depth();
 
-        // For each patch in the tree
         for (size_t patch_idx = 0; patch_idx < tree.size(); ++patch_idx)
         {
             auto patch_id = tree.get_node_index_at(patch_idx);
             auto level = patch_id.level();
             auto max_depth = IndexType::max_depth();
             uint32_t patch_size = 1u << (max_depth - level);
-            uint32_t cell_size = patch_size / 4;  // 4x4 cells per patch
 
             auto [patch_coords, _] = IndexType::decode(patch_id.id());
             uint32_t patch_x = patch_coords[0];
             uint32_t patch_y = patch_coords[1];
 
+            // FIXED: Divide the patch space among sub-elements
+            uint32_t cell_width = patch_size / static_cast<uint32_t>(patch_size_x);
+            uint32_t cell_height = patch_size / static_cast<uint32_t>(patch_size_y);
+
             // Get the S1 data for this patch
             auto s1_patch = tree.template get_patch<S1>(patch_idx);
 
-            // For each cell in the 4x4 patch
-            for(int i = 0; i < 4; i++) {
-                for(int j = 0; j < 4; j++) {
-                    uint32_t cell_x = patch_x + i * cell_size;
-                    uint32_t cell_y = patch_y + j * cell_size;
+            // For each cell in the patch_size_x * patch_size_y patch
+            for(std::size_t i = 0; i < patch_size_x; i++) {
+                for(std::size_t j = 0; j < patch_size_y; j++) {
+                    // FIXED: Each cell gets a fraction of the patch space
+                    uint32_t cell_x = patch_x + static_cast<uint32_t>(i) * cell_width;
+                    uint32_t cell_y = patch_y + static_cast<uint32_t>(j) * cell_height;
                     
                     // FLIP Y coordinates for top-left origin
-                    uint32_t flipped_y = max_coord - cell_y - cell_size;
+                    uint32_t flipped_y = max_coord - cell_y - cell_height;
                     uint32_t flipped_y_top = max_coord - cell_y;
 
                     // Add the 4 corners of this cell (with Y flipped)
-                    points.push_back({ cell_x, flipped_y_top, 0 });              // top-left
-                    points.push_back({ cell_x + cell_size, flipped_y_top, 0 });  // top-right
-                    points.push_back({ cell_x + cell_size, flipped_y, 0 });      // bottom-right
-                    points.push_back({ cell_x, flipped_y, 0 });                  // bottom-left
+                    points.push_back({ cell_x, flipped_y_top, 0 });                        // top-left
+                    points.push_back({ cell_x + cell_width, flipped_y_top, 0 });           // top-right
+                    points.push_back({ cell_x + cell_width, flipped_y, 0 });               // bottom-right
+                    points.push_back({ cell_x, flipped_y, 0 });                            // bottom-left
 
                     // Store the S1 value for this cell
                     s1_values.push_back(s1_patch[j, i]);

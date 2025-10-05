@@ -68,7 +68,7 @@ auto operator<<(std::ostream& os, cell const& c) -> std::ostream&
 int main()
 {
     std::cout << "Hello balancing world\n";
-    constexpr auto N = 4;
+    constexpr auto N = 2;
     constexpr auto M = 4;
     // using linear_index_t    = std::uint32_t;
     [[maybe_unused]]
@@ -80,7 +80,7 @@ int main()
 
     tree_t h(100000000); // Provide initial capacity
 
-    ndt::print::example_patch_print printer("debug_tree");
+    ndt::print::example_patch_print<M,N> printer("debug_tree");
  
     auto refine_criterion = [](const patch_index_t& idx)
     {
@@ -108,7 +108,7 @@ int main()
         // Access S1 values (float)
         tensor_t& s1_patch = h.template get_patch<S1>(idx);
 
-        for(int linear_idx = 0; linear_idx < 16; linear_idx++) {
+        for(int linear_idx = 0; linear_idx < N*M; linear_idx++) {
         s1_patch[linear_idx] = static_cast<float>(linear_idx);
         }
 
@@ -124,7 +124,7 @@ int main()
         std::cout << "new patch : " << idx << std::endl;
         tensor_t& s1_patch = h.template get_patch<S1>(idx);
 
-        for(int linear_idx = 0; linear_idx < 16; linear_idx++) {
+        for(int linear_idx = 0; linear_idx < N*M; linear_idx++) {
         std::cout << s1_patch[linear_idx] << std::endl;
         }
 
@@ -140,40 +140,8 @@ int main()
         std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
         printer.print(h, file_extension);
     }
-    // Add this at the end of your main function, before "adios balancing world"
 
-std::cout << "\n=== FINAL TREE VALUES ===" << std::endl;
-std::cout << "Tree size: " << h.size() << " patches" << std::endl;
-std::cout << "Total elements: " << h.size() * 16 << std::endl;
 
-// Print all S1 values from all patches
-std::cout << "\n--- S1 VALUES (float) ---" << std::endl;
-for(size_t patch_idx = 0; patch_idx < h.size(); patch_idx++){
-    auto& s1_patch = h.template get_patch<S1>(patch_idx);
-    auto patch_id = h.get_node_index_at(patch_idx);
-    
-    std::cout << "Patch " << patch_idx << " (Morton ID: " << patch_id.id() 
-              << ", Level: " << static_cast<int>(patch_id.level()) << "):" << std::endl;
-    
-    // Print as 4x4 matrix
-    for(int i = 0; i < 4; i++) {
-        std::cout << "  Row " << i << ": ";
-        for(int j = 0; j < 4; j++) {
-            std::cout << std::setw(8) << std::fixed << std::setprecision(2) 
-                      << s1_patch[i, j] << " ";
-        }
-        std::cout << std::endl;
-    }
-    
-    // Also print linear order for verification
-    std::cout << "  Linear: ";
-    for(int k = 0; k < 16; k++) {
-        std::cout << std::setw(6) << std::fixed << std::setprecision(1) 
-                  << s1_patch[k] << " ";
-        if((k + 1) % 8 == 0) std::cout << std::endl << "          ";
-    }
-    std::cout << std::endl << std::endl;
-}
 
     std::cout << "adios balancing world\n";
     return EXIT_SUCCESS;
