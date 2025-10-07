@@ -25,6 +25,9 @@
 // #    define AMR_NDTREE_CHECK_BALANCING
 #endif
 
+
+
+
 namespace amr::ndt::tree
 {
 
@@ -42,7 +45,8 @@ public:
     using linear_index_t              = size_type;
     using patch_layout_t              = Patch_Layout;
     static constexpr auto s_nd_fanout = patch_index_t::nd_fanout();
-    static constexpr auto dimension   = patch_layout_t::s_rank;
+    static constexpr auto s_fanout      = patch_index_t::fanout();
+    static constexpr auto s_dimension   = patch_layout_t::s_rank;
 
     static_assert(s_nd_fanout > 1);
     static_assert(
@@ -101,6 +105,26 @@ public:
     using index_map_t                = std::unordered_map<patch_index_t, linear_index_t>;
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
+    
+    struct NeighborVariant
+    {
+
+        struct None { };                      
+        struct Same { patch_index_t id; };       
+        struct Coarser { patch_index_t id; };    
+
+        static constexpr size_t s_num_fine =
+            []{ std::size_t n = 1; for (size_t i = 0; i < s_dimension - 1; ++i) n *= s_fanout; return n; }();
+
+        struct Finer { std::array<patch_index_t, s_num_fine> ids; };
+
+        using type = std::variant<None, Same, Finer, Coarser>;
+
+        type data = None{};
+    };
+
+    using neighbor_array_t       = std::array<NeighborVariant,2*s_dimension> ;
+    using neighbor_buffer_t           = pointer_t<neighbor_array_t>;
 
 
     static constexpr auto s_patch_maps = 
@@ -130,7 +154,10 @@ public:
             (pointer_t<refine_status_t>)std::malloc(size * sizeof(refine_status_t));
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
 
-        append(patch_index_t::root());
+        m_neighbors = (neighbor_buffer_t)std::malloc(size * sizeof(NeighborVariant));
+
+        neighbor_array_t root_neighbor_array{};  
+        append(patch_index_t::root(),root_neighbor_array);
     }
 
     ~ndtree() noexcept
@@ -138,6 +165,7 @@ public:
         std::free(m_refine_status_buffer);
         std::free(m_reorder_buffer);
         std::free(m_linear_index_map);
+        std::free(m_neighbors);
         std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_data_buffers);
     }
 
@@ -198,7 +226,8 @@ public:
         {
             auto child_id = patch_index_t::child_of(node_id, i);
             assert(!find_index(child_id).has_value());
-            append(child_id);
+            neighbor_array_t empty{};
+            append(child_id,empty);
             assert(m_index_map[child_id] == back_idx());
             assert(m_linear_index_map[back_idx()] == child_id);
         }
@@ -220,7 +249,8 @@ public:
 
         const auto start = child_0_it.value()->second * patch_layout_t::flat_size();
         auto const to = m_size * patch_layout_t::flat_size() ;
-        append(parent_node_id);
+        neighbor_array_t empty{};
+        append(parent_node_id, empty);
         assert(m_linear_index_map[back_idx()] == parent_node_id);
         restrict_patches(start, to);
 
@@ -588,10 +618,11 @@ private:
         return m_size - 1;
     }
 
-    auto append(patch_index_t const node_id) noexcept -> void
+    auto append(patch_index_t const node_id, neighbor_array_t neighbor_array) noexcept -> void
     {
         m_linear_index_map[m_size] = node_id;
         m_index_map[node_id]       = m_size;
+        m_neighbors[m_size] = neighbor_array;
         ++m_size;
     }
 
@@ -718,29 +749,6 @@ public:
              ...);
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
     }
-
-    // auto restrict_nodes(linear_index_t const start_from, linear_index_t const to) noexcept
-    //     -> void
-    // {
-
-
-    //     // std::cout << "In restriction from [" << start_from << ", "
-    //     //           << start_from + s_nd_fanout - 1 << "] to " << to << '\n';
-    //     auto mean = [](auto const data[s_nd_fanout])
-    //     {
-    //         auto ret = data[0];
-    //         for (auto i = 1u; i != s_nd_fanout; ++i)
-    //         {
-    //             ret += data[i] / s_nd_fanout;
-    //         }
-    //         return ret;
-    //     };
-    //     std::apply(
-    //         [start_from, to, &mean](auto&... b)
-    //         { ((void)(b[to] = mean(&(b[start_from]))), ...); },
-    //         m_data_buffers
-    //     );
-    // }
 
 auto restrict_patches(linear_index_t const start_from, linear_index_t const to) noexcept
     -> void
@@ -1017,6 +1025,7 @@ private:
     size_type                  m_size;
     std::vector<patch_index_t> m_to_refine;
     std::vector<patch_index_t> m_to_coarsen;
+    neighbor_buffer_t          m_neighbors;
 };
 
 } // namespace amr::ndt::tree
