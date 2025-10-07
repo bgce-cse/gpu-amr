@@ -46,7 +46,7 @@ public:
 
     static_assert(s_nd_fanout > 1);
     static_assert(
-        utils::patches::multiples_of(patch_layout_t::s_sizes, patch_index_t::fanout()),
+        utils::patches::multiples_of(patch_layout_t::layout_t::s_logical_sizes, patch_index_t::fanout()),
         "All patch dimensions must be multiples of the fanout"
     );
 
@@ -241,6 +241,8 @@ public:
         {
             fragment(node_id);
         }
+        // print tree for debugging
+
         sort_buffers();
     }
 
@@ -754,10 +756,16 @@ auto restrict_patches(linear_index_t const start_from, linear_index_t const to) 
     );
 
     for(size_t patch_idx = 0; patch_idx < s_nd_fanout; patch_idx++) {
-        for(size_t linear_idx = 0; linear_idx < static_cast<size_t>(patch_layout_t::flat_size()); linear_idx++) {
-            auto map_value = s_patch_maps[static_cast<int>(patch_idx)][static_cast<int>(linear_idx)];
-            auto parent_linear_idx = to + map_value;
-            auto child_linear_idx = start_from  + patch_layout_t::s_flat_size * patch_idx + linear_idx;
+        for(size_t linear_idx = 0; linear_idx < static_cast<size_t>(patch_layout_t::layout_t::s_logical_flat_size); linear_idx++) {
+
+            auto map_value = s_patch_maps[static_cast<int>(patch_idx)][static_cast<int>(linear_idx)]; 
+
+            auto full_map_value = patch_layout_t::layout_t::logical_to_full_index(map_value);
+            auto full_linear_idx = patch_layout_t::layout_t::logical_to_full_index(linear_idx);
+
+            auto parent_linear_idx = to +  full_map_value;
+            auto child_linear_idx = start_from + patch_layout_t::s_flat_size * patch_idx + full_linear_idx;
+
             
             std::apply(
                 [parent_linear_idx, child_linear_idx](auto&... b)
@@ -800,17 +808,22 @@ auto interpolate_patch(
         std::cout << "\n--- Processing child patch " << patch_idx << " ---" << std::endl;
         
         // For all nodes in this patch node_idx  
-        for(size_t linear_idx = 0; linear_idx < static_cast<size_t>(patch_layout_t::flat_size()); linear_idx++) {
+        for(size_t linear_idx = 0; linear_idx < static_cast<size_t>(patch_layout_t::layout_t::s_logical_flat_size); linear_idx++) {
             
             // Get mapping from patch maps
             auto map_value = s_patch_maps[static_cast<int>(patch_idx)][static_cast<int>(linear_idx)];
             std::cout << "  patch_maps[" << patch_idx << "][" << linear_idx << "] = " << map_value << std::endl;
             
-            auto parent_linear_idx = from +  map_value;
-            auto child_linear_idx = start_to + patch_layout_t::flat_size() * patch_idx + linear_idx;
+            auto full_map_value = patch_layout_t::layout_t::logical_to_full_index(map_value);
+            auto full_linear_idx = patch_layout_t::layout_t::logical_to_full_index(linear_idx);
+
+            auto parent_linear_idx = from +  full_map_value;
+            auto child_linear_idx = start_to + patch_layout_t::s_flat_size * patch_idx + full_linear_idx;
+
+            
             
             std::cout << "  Copying: parent[" << parent_linear_idx << "] -> child[" << child_linear_idx << "]" << std::endl;
-            std::cout << "    Child patch " << patch_idx << ", local idx " << linear_idx << std::endl;
+            std::cout << "    Child patch " << patch_idx << ", local idx " << full_linear_idx << std::endl;
             
             // Debug: Print values being copied
             std::apply(
@@ -940,7 +953,7 @@ auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
     {
         return;
     }
-    std::cout << "switching " << i << " and " << j << std::endl;
+    std::cout << "switching " << i << " and " << j << "with block size "<<  patch_layout_t::s_flat_size << std::endl;
     assert(m_linear_index_map[i] != m_linear_index_map[j]);
     std::swap(m_linear_index_map[i], m_linear_index_map[j]);
     std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);

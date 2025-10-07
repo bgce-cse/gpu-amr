@@ -16,12 +16,12 @@ namespace ndt::print
 {
 
 // template of patch_x and patch_y
-template<std::size_t... PatchDims>
+template<size_t Halo, std::size_t... PatchDims>
 struct example_patch_print
 {
     static_assert(sizeof...(PatchDims) >= 2, "Need at least 2 dimensions for patch");
-    static constexpr auto patch_size_x = std::get<0>(std::array<std::size_t, sizeof...(PatchDims)>{PatchDims...});
-    static constexpr auto patch_size_y = std::get<1>(std::array<std::size_t, sizeof...(PatchDims)>{PatchDims...});
+    static constexpr auto patch_size_x = std::get<0>(std::array<std::size_t, sizeof...(PatchDims)>{PatchDims...}) ;
+    static constexpr auto patch_size_y = std::get<1>(std::array<std::size_t, sizeof...(PatchDims)>{PatchDims...}) ;
     static constexpr auto total_patch_elements = (PatchDims * ...);
 
 public:
@@ -84,7 +84,7 @@ private:
             auto s1_patch = tree.template get_patch<S1>(patch_idx);
 
             // For each cell in the patch_size_x * patch_size_y patch
-            for(std::size_t i = 0; i < patch_size_x; i++) {
+            for(std::size_t i = 0; i < patch_size_x ; i++) {
                 for(std::size_t j = 0; j < patch_size_y; j++) {
                     // FIXED: Each cell gets a fraction of the patch space
                     uint32_t cell_x = patch_x + static_cast<uint32_t>(i) * cell_width;
@@ -101,7 +101,7 @@ private:
                     points.push_back({ cell_x, flipped_y, 0 });                            // bottom-left
 
                     // Store the S1 value for this cell
-                    s1_values.push_back(s1_patch[j, i]);
+                    s1_values.push_back(s1_patch[j + Halo , i + Halo]);
                 }
             }
         }
