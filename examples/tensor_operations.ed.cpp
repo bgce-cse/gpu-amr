@@ -10,7 +10,7 @@ int main()
 {
     constexpr auto N = 5;
     using F          = int;
-    using tensor_t   = amr::containers::static_tensor<F, N, 3, 4, 2, 3>;
+    using tensor_t   = amr::containers::static_tensor<F,0, N, 3, 4, 2, 3>;
 
     std::cout << tensor_t::flat_size() << '\n';
     for (int i = 0; i != tensor_t::rank(); ++i)
@@ -50,7 +50,7 @@ int main()
         0.1f, 0.3f, 0.5f, 0.7f, 0.9f
     };
     constexpr auto reference_element =
-        amr::containers::algorithms::tensor::cartesian_expansion<3>(nodes);
+        amr::containers::algorithms::tensor::cartesian_expansion<5>(nodes);
     std::cout << reference_element << '\n';
 
     for (auto i = typename decltype(reference_element)::multi_index_t{};;)

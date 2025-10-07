@@ -13,7 +13,7 @@ int main()
     using index_t    = std::uint32_t;
     [[maybe_unused]]
     constexpr auto Fanout = 2;
-    using tensor_t        = amr::containers::static_tensor<index_t, N, M>;
+    using tensor_t        = amr::containers::static_tensor<index_t,0, N, M>;
 
     tensor_t from{};
     std::ranges::iota(from, 0);
