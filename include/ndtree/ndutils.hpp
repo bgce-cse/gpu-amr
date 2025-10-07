@@ -35,25 +35,28 @@ consteval auto multiples_of(
         std::ranges::range_value_t<std::remove_cvref_t<decltype(r)>>,
         decltype(x)>
 {
-    return std::ranges::all_of(r, [x](auto const& e) { return e % x == 0; });
+    return std::ranges::all_of(r, [x](auto const& e) { return (e) % x == 0; });
 }
 
 template <
     std::integral      Index_Type,
     std::integral auto Fanout,
+    std::integral auto H,
     std::integral auto N,
     std::integral auto... Ns>
 [[nodiscard]]
-consteval auto fragmentation_patch_maps(containers::static_layout<N, Ns...>) noexcept
+consteval auto fragmentation_patch_maps(containers::static_layout<H, N, Ns...>) noexcept
     -> containers::utils::types::tensor::hypercube_t<
-        containers::static_tensor<Index_Type, N, Ns...>,
+        containers::static_tensor<Index_Type, 0, N, Ns...>,  // Maps use halo=0
+        0,      // ← Add halo parameter for hypercube
         Fanout,
-        containers::static_tensor<Index_Type, N, Ns...>::s_rank>
+        containers::static_tensor<Index_Type, 0, N, Ns...>::s_rank>
 {
     using index_t  = Index_Type;
-    using tensor_t = containers::static_tensor<index_t, N, Ns...>;
+    using tensor_t = containers::static_tensor<index_t, 0, N, Ns...>;  // Maps don't need halos
     using patch_shape_t =
-        containers::utils::types::tensor::hypercube_t<tensor_t, Fanout, tensor_t::s_rank>;
+        containers::utils::types::tensor::hypercube_t<tensor_t, 0, Fanout, tensor_t::s_rank>;
+    //                                                        ↑ halo=0 for maps
     patch_shape_t ret{};
 
     auto idx           = typename tensor_t::multi_index_t{};

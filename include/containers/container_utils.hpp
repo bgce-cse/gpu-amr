@@ -17,25 +17,25 @@ namespace tensor
 
 namespace detail
 {
-template <typename T, std::integral auto Size, std::size_t Rank, std::size_t... Is>
+template <typename T, std::integral auto H, std::integral auto Size, std::size_t Rank, std::size_t... Is>
 constexpr auto make_hypercube_type_impl(std::index_sequence<Is...>)
-    -> static_tensor<T, ((void)Is, Size)...>
+    -> static_tensor<T, H, ((void)Is, Size)...>  // ← Use the halo parameter H
 {
     return {};
 }
 
 } // namespace detail
 
-template <typename T, std::integral auto Size, std::size_t Rank>
+template <typename T, std::integral auto H, std::integral auto Size, std::size_t Rank>
 struct hypercube
 {
-    using type = decltype(detail::make_hypercube_type_impl<T, Size, Rank>(
+    using type = decltype(detail::make_hypercube_type_impl<T, H, Size, Rank>(
         std::make_index_sequence<Rank>{}
     ));
 };
 
-template <typename T, std::integral auto Size, std::size_t Rank>
-using hypercube_t = typename hypercube<T, Size, Rank>::type;
+template <typename T, std::integral auto H, std::integral auto Size, std::size_t Rank>
+using hypercube_t = typename hypercube<T, H, Size, Rank>::type;
 
 } // namespace tensor
 

@@ -17,14 +17,14 @@
 namespace amr::containers
 {
 
-template <typename T, std::integral auto N, std::integral auto... Ns>
-    requires utility::concepts::are_same<decltype(N), decltype(Ns)...> && (N > 0) &&
+template <typename T, std::integral auto H , std::integral auto N, std::integral auto... Ns>
+    requires utility::concepts::are_same<decltype(N), decltype(Ns)...> && (H >= 0) && (N > 0) &&
              ((Ns > 0) && ...)
 class static_tensor
 {
 public:
     using value_type      = std::remove_cv_t<T>;
-    using layout_t        = static_layout<N, Ns...>;
+    using layout_t        = static_layout<H , N, Ns...>;
     using size_type       = typename layout_t::size_type;
     using index_t         = typename layout_t::index_t;
     using rank_t          = typename layout_t::rank_t;
@@ -38,6 +38,7 @@ public:
     inline static constexpr std::array<size_type, s_rank> s_sizes   = layout_t::s_sizes;
     inline static constexpr auto                          s_strides = layout_t::s_strides;
     inline static constexpr size_type s_flat_size = layout_t::s_flat_size;
+    inline static constexpr auto s_halo = layout_t::s_halo;
 
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::is_standard_layout_v<T>);
