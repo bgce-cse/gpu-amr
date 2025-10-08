@@ -25,16 +25,13 @@
 // #    define AMR_NDTREE_CHECK_BALANCING
 #endif
 
-
-
-
 namespace amr::ndt::tree
 {
 
 template <
     concepts::DeconstructibleType T,
     concepts::PatchIndex          Patch_Index,
-    concepts::StaticLayout         Patch_Layout>
+    concepts::StaticLayout        Patch_Layout>
 class ndtree
 {
 public:
@@ -45,12 +42,15 @@ public:
     using linear_index_t              = size_type;
     using patch_layout_t              = Patch_Layout;
     static constexpr auto s_nd_fanout = patch_index_t::nd_fanout();
-    static constexpr auto s_fanout      = patch_index_t::fanout();
-    static constexpr auto s_dimension   = patch_layout_t::s_rank;
+    static constexpr auto s_fanout    = patch_index_t::fanout();
+    static constexpr auto s_dimension = patch_layout_t::s_rank;
 
     static_assert(s_nd_fanout > 1);
     static_assert(
-        utils::patches::multiples_of(patch_layout_t::layout_t::s_logical_sizes, patch_index_t::fanout()),
+        utils::patches::multiples_of(
+            patch_layout_t::layout_t::s_logical_sizes,
+            patch_index_t::fanout()
+        ),
         "All patch dimensions must be multiples of the fanout"
     );
 
@@ -105,36 +105,53 @@ public:
     using index_map_t                = std::unordered_map<patch_index_t, linear_index_t>;
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
-    
 
-
-    using static_child_layout_t  =  amr::containers::static_layout<0, s_fanout,s_fanout >; // needs to be done generically but idk how size is fanout ^dimension
-
+    using static_child_layout_t = amr::containers::
+        static_layout<0, s_fanout, s_fanout>; // needs to be done generically but idk how
+                                              // size is fanout ^dimension
 
     struct NeighborVariant
     {
+        struct None
+        {
+        };
 
-        struct None { };                      
-        struct Same { patch_index_t id; };       
-        struct Coarser { patch_index_t id; };    
+        struct Same
+        {
+            patch_index_t id;
+        };
 
-        static constexpr size_t s_num_fine =
-            []{ std::size_t n = 1; for (size_t i = 0; i < s_dimension - 1; ++i) n *= s_fanout; return n; }();
+        struct Coarser
+        {
+            patch_index_t id;
+        };
 
-        struct Finer { std::array<patch_index_t, s_num_fine> ids; };
+        static constexpr size_t s_num_fine = []
+        {
+            std::size_t n = 1;
+            for (size_t i = 0; i < s_dimension - 1; ++i)
+                n *= s_fanout;
+            return n;
+        }();
+
+        struct Finer
+        {
+            std::array<patch_index_t, s_num_fine> ids;
+        };
 
         using type = std::variant<None, Same, Finer, Coarser>;
 
         type data = None{};
     };
 
-    using neighbor_array_t       = std::array<NeighborVariant,2*s_dimension> ;
-    using neighbor_buffer_t           = pointer_t<neighbor_array_t>;
+    using neighbor_array_t  = std::array<NeighborVariant, 2 * s_dimension>;
+    using neighbor_buffer_t = pointer_t<neighbor_array_t>;
 
-    static constexpr auto s_neighbor_relation_maps = amr::ndt::utils::compute_neighbor_relation_maps<s_fanout,s_dimension, s_nd_fanout>();
+    static constexpr auto s_neighbor_relation_maps = amr::ndt::utils::
+        compute_neighbor_relation_maps<s_fanout, s_dimension, s_nd_fanout>();
 
-    static constexpr auto s_patch_maps = 
-        amr::ndt::utils::patches::fragmentation_patch_maps<linear_index_t, patch_index_t::fanout()>(
+    static constexpr auto s_patch_maps = amr::ndt::utils::patches::
+        fragmentation_patch_maps<linear_index_t, patch_index_t::fanout()>(
             typename patch_layout_t::layout_t{}
         );
 
@@ -162,7 +179,7 @@ public:
 
         m_neighbors = (neighbor_buffer_t)std::malloc(size * sizeof(NeighborVariant));
 
-        neighbor_array_t root_neighbor_array{};  
+        neighbor_array_t root_neighbor_array{};
         append(patch_index_t::root(), root_neighbor_array);
     }
 
@@ -192,34 +209,33 @@ public:
 
     template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
-    auto get(linear_index_t const idx) const noexcept
-        -> const_reference_t<typename Map_Type::type>
+    auto get(linear_index_t const idx
+    ) const noexcept -> const_reference_t<typename Map_Type::type>
     {
         assert(idx < m_size);
         return std::get<Map_Type::index()>(m_data_buffers)[idx];
     }
 
-
-     template <concepts::TypeMap Map_Type>
+    template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
-    auto get_patch(linear_index_t const patch_idx) noexcept 
-        -> patch_layout_t& 
+    auto get_patch(linear_index_t const patch_idx) noexcept -> patch_layout_t&
     {
         assert(patch_idx < m_size);
-        auto* data_start = &std::get<Map_Type::index()>(m_data_buffers)[patch_idx * patch_layout_t::s_flat_size];
-        
+        auto* data_start = &std::get<Map_Type::index()>(m_data_buffers
+        )[patch_idx * patch_layout_t::s_flat_size];
+
         // Return a reference to the data reinterpreted as a tensor
         return *reinterpret_cast<patch_layout_t*>(data_start);
     }
 
     template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
-    auto get_patch(linear_index_t const patch_idx) const noexcept 
-        -> const patch_layout_t& 
+    auto get_patch(linear_index_t const patch_idx) const noexcept -> const patch_layout_t&
     {
         assert(patch_idx < m_size);
-        auto* data_start = &std::get<Map_Type::index()>(m_data_buffers)[patch_idx * patch_layout_t::s_flat_size];
-        
+        auto* data_start = &std::get<Map_Type::index()>(m_data_buffers
+        )[patch_idx * patch_layout_t::s_flat_size];
+
         return *reinterpret_cast<const patch_layout_t*>(data_start);
     }
 
@@ -227,13 +243,13 @@ public:
     {
         const auto it = find_index(node_id);
         assert(it.has_value());
-        auto const start_to = m_size * patch_layout_t::flat_size() ;
+        auto const start_to = m_size * patch_layout_t::flat_size();
         for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
         {
             auto child_id = patch_index_t::child_of(node_id, i);
             assert(!find_index(child_id).has_value());
             neighbor_array_t neighbor_array = compute_child_neighbors(node_id, i);
-            append(child_id,neighbor_array);
+            append(child_id, neighbor_array);
             assert(m_index_map[child_id] == back_idx());
             assert(m_linear_index_map[back_idx()] == child_id);
         }
@@ -242,7 +258,6 @@ public:
             auto child_id = patch_index_t::child_of(node_id, i);
             enforce_symmetric_neighbors(child_id, m_neighbors[m_index_map[child_id]]);
         }
-
 
         const auto from = it.value()->second * patch_layout_t::flat_size();
         interpolate_patch(from, start_to);
@@ -260,8 +275,8 @@ public:
         const auto child_0_it = find_index(child_0);
         assert(child_0_it.has_value());
 
-        const auto start = child_0_it.value()->second * patch_layout_t::flat_size();
-        auto const to = m_size * patch_layout_t::flat_size() ;
+        const auto       start = child_0_it.value()->second * patch_layout_t::flat_size();
+        auto const       to    = m_size * patch_layout_t::flat_size();
         neighbor_array_t empty{};
         append(parent_node_id, empty);
         assert(m_linear_index_map[back_idx()] == parent_node_id);
@@ -282,9 +297,9 @@ public:
         assert(is_sorted());
 
         for (size_t i = m_to_refine.size(); i > 0; --i)
-{
-    fragment(m_to_refine[i - 1]);
-}
+        {
+            fragment(m_to_refine[i - 1]);
+        }
         // print tree for debugging
 
         sort_buffers();
@@ -300,327 +315,440 @@ public:
         sort_buffers();
     }
 
-
-    auto compute_child_neighbors(patch_index_t parent_id, size_t local_child_id) -> neighbor_array_t
+    auto compute_child_neighbors(patch_index_t parent_id, size_t local_child_id)
+        -> neighbor_array_t
     {
         std::cout << "\n=== COMPUTING CHILD NEIGHBORS ===" << std::endl;
-        std::cout << "Parent ID: " << parent_id.id() << ", Local Child ID: " << local_child_id << std::endl;
-        
+        std::cout << "Parent ID: " << parent_id.id()
+                  << ", Local Child ID: " << local_child_id << std::endl;
+
         auto parent_it = find_index(parent_id);
         assert(parent_it.has_value() && "Parent must exist in the tree");
         linear_index_t parent_linear_idx = parent_it.value()->second;
         std::cout << "Parent linear index: " << parent_linear_idx << std::endl;
-        
+
         auto local_multiindex = static_child_layout_t::multi_index(local_child_id);
-        std::cout << "Child multi-index: [" << local_multiindex[0] << ", " << local_multiindex[1] << "]" << std::endl;
-        
-        auto relations = s_neighbor_relation_maps[local_child_id];
+        std::cout << "Child multi-index: [" << local_multiindex[0] << ", "
+                  << local_multiindex[1] << "]" << std::endl;
+
+        auto             relations = s_neighbor_relation_maps[local_child_id];
         neighbor_array_t child_neighbor_array{};
         neighbor_array_t parent_neighbor_array = m_neighbors[parent_linear_idx];
 
-        const char* direction_names[] = {"-X", "+X", "-Y", "+Y"};
+        const char* direction_names[] = { "-X", "+X", "-Y", "+Y" };
 
         for (size_t direction = 0; direction < 2 * s_dimension; direction++)
         {
-            std::cout << "\n--- Direction " << direction_names[direction] << " (index " << direction << ") ---" << std::endl;
-            
+            std::cout << "\n--- Direction " << direction_names[direction] << " (index "
+                      << direction << ") ---" << std::endl;
+
             auto directional_relation = relations[direction];
-            std::cout << "Relation type: " << (directional_relation == amr::ndt::utils::NeighborRelation::Sibling ? "Sibling" : "ParentNeighbor") << std::endl;
-            
+            std::cout << "Relation type: "
+                      << (directional_relation ==
+                                  amr::ndt::utils::NeighborRelation::Sibling
+                              ? "Sibling"
+                              : "ParentNeighbor")
+                      << std::endl;
+
             if (directional_relation == amr::ndt::utils::NeighborRelation::Sibling)
             {
                 auto sibling_offset = get_sibling_offset(local_child_id, direction);
-                auto sibling_id = patch_index_t::child_of(parent_id, sibling_offset);
-                
-                std::cout << "  Sibling offset: " << sibling_offset << ", Sibling ID: " << sibling_id.id() << std::endl;
-            
+                auto sibling_id     = patch_index_t::child_of(parent_id, sibling_offset);
+
+                std::cout << "  Sibling offset: " << sibling_offset
+                          << ", Sibling ID: " << sibling_id.id() << std::endl;
+
                 NeighborVariant nb;
                 nb.data = typename NeighborVariant::Same{ sibling_id };
                 child_neighbor_array[direction] = nb;
-                
-                std::cout << "  -> Assigned SAME neighbor: " << sibling_id.id() << std::endl;
+
+                std::cout << "  -> Assigned SAME neighbor: " << sibling_id.id()
+                          << std::endl;
             }
             else
             {
-                NeighborVariant parent_directional_neighbor = parent_neighbor_array[direction];
-                std::cout << "  Parent neighbor variant index: " << parent_directional_neighbor.data.index() << std::endl;
-                
-                std::visit([&](auto&& neighbor) {
-                    using Neighbor_T = std::decay_t<decltype(neighbor)>;
-                    
-                    if constexpr (std::is_same_v<Neighbor_T, typename NeighborVariant::None>) {
-                        std::cout << "  Parent has NONE neighbor -> Child gets NONE" << std::endl;
-                      
-                        NeighborVariant nb;
-                        nb.data = typename NeighborVariant::None{};
-                        child_neighbor_array[direction] = nb;
-                    }
-                    else if constexpr (std::is_same_v<Neighbor_T, typename NeighborVariant::Same>) {
-                        std::cout << "  Parent has SAME neighbor (ID: " << neighbor.id.id() << ") -> Child gets COARSER" << std::endl;
-                        
-                        NeighborVariant nb;
-                    
-                        if constexpr (requires { neighbor.id; }) {
-                            nb.data = typename NeighborVariant::Coarser{ neighbor.id };
-                            std::cout << "  -> Assigned COARSER neighbor: " << neighbor.id.id() << std::endl;
-                        }
-                        child_neighbor_array[direction] = nb;
-                    }
-                    else if constexpr (std::is_same_v<Neighbor_T,typename NeighborVariant::Finer>) {
-                        std::cout << "  Parent has FINER neighbors -> Child gets specific SAME neighbor" << std::endl;
+                NeighborVariant parent_directional_neighbor =
+                    parent_neighbor_array[direction];
+                std::cout << "  Parent neighbor variant index: "
+                          << parent_directional_neighbor.data.index() << std::endl;
 
-                        size_t direction_dim = direction / 2;  // 0=x, 1=y for 2D
-                        size_t relevant_coord = 0;
-                        if constexpr (s_dimension == 2) {
-                            relevant_coord = local_multiindex[(direction_dim + 1) % s_dimension];
-                            std::cout << "    Direction dim: " << direction_dim << ", Relevant coord: " << relevant_coord << std::endl;
-                        } else{
-                            assert(false);
+                std::visit(
+                    [&](auto&& neighbor)
+                    {
+                        using Neighbor_T = std::decay_t<decltype(neighbor)>;
+
+                        if constexpr (std::is_same_v<
+                                          Neighbor_T,
+                                          typename NeighborVariant::None>)
+                        {
+                            std::cout << "  Parent has NONE neighbor -> Child gets NONE"
+                                      << std::endl;
+
+                            NeighborVariant nb;
+                            nb.data = typename NeighborVariant::None{};
+                            child_neighbor_array[direction] = nb;
                         }
-                        
-                        // Print all fine neighbors
-                        std::cout << "    Fine neighbors: [";
-                        for (size_t i = 0; i < neighbor.ids.size(); i++) {
-                            std::cout << neighbor.ids[i].id();
-                            if (i < neighbor.ids.size() - 1) std::cout << ", ";
+                        else if constexpr (std::is_same_v<
+                                               Neighbor_T,
+                                               typename NeighborVariant::Same>)
+                        {
+                            std::cout
+                                << "  Parent has SAME neighbor (ID: " << neighbor.id.id()
+                                << ") -> Child gets COARSER" << std::endl;
+
+                            NeighborVariant nb;
+
+                            if constexpr (requires { neighbor.id; })
+                            {
+                                nb.data =
+                                    typename NeighborVariant::Coarser{ neighbor.id };
+                                std::cout << "  -> Assigned COARSER neighbor: "
+                                          << neighbor.id.id() << std::endl;
+                            }
+                            child_neighbor_array[direction] = nb;
                         }
-                        std::cout << "]" << std::endl;
-                        
-                        auto fine_neighbor_id = neighbor.ids[relevant_coord];
-                        std::cout << "    Selected fine neighbor: " << fine_neighbor_id.id() << std::endl;
-                        
-                        NeighborVariant nb;
-                        nb.data = typename NeighborVariant::Same{ fine_neighbor_id };
-                        child_neighbor_array[direction] = nb;
-                        
-                        std::cout << "  -> Assigned SAME neighbor: " << fine_neighbor_id.id() << std::endl;
-                    }
-                    else if constexpr (std::is_same_v<Neighbor_T,typename NeighborVariant::Coarser>) {
-                        std::cout << "  ERROR: Parent has COARSER neighbor but trying to refine!" << std::endl;
-                        assert(false && "sth isogin wrong as your neighbro is coarser and u try to refine my friend");
-                    }
-                    else {
-                        std::cout << "  ERROR: Unknown neighbor variant type!" << std::endl;
-                        assert(false && "Unknown neighbor variant type");
-                    }
-                }, parent_directional_neighbor.data);
+                        else if constexpr (std::is_same_v<
+                                               Neighbor_T,
+                                               typename NeighborVariant::Finer>)
+                        {
+                            std::cout << "  Parent has FINER neighbors -> Child gets "
+                                         "specific SAME neighbor"
+                                      << std::endl;
+
+                            size_t direction_dim  = direction / 2; // 0=x, 1=y for 2D
+                            size_t relevant_coord = 0;
+                            if constexpr (s_dimension == 2)
+                            {
+                                relevant_coord =
+                                    local_multiindex[(direction_dim + 1) % s_dimension];
+                                std::cout << "    Direction dim: " << direction_dim
+                                          << ", Relevant coord: " << relevant_coord
+                                          << std::endl;
+                            }
+                            else
+                            {
+                                assert(false);
+                            }
+
+                            // Print all fine neighbors
+                            std::cout << "    Fine neighbors: [";
+                            for (size_t i = 0; i < neighbor.ids.size(); i++)
+                            {
+                                std::cout << neighbor.ids[i].id();
+                                if (i < neighbor.ids.size() - 1) std::cout << ", ";
+                            }
+                            std::cout << "]" << std::endl;
+
+                            auto fine_neighbor_id = neighbor.ids[relevant_coord];
+                            std::cout
+                                << "    Selected fine neighbor: " << fine_neighbor_id.id()
+                                << std::endl;
+
+                            NeighborVariant nb;
+                            nb.data = typename NeighborVariant::Same{ fine_neighbor_id };
+                            child_neighbor_array[direction] = nb;
+
+                            std::cout << "  -> Assigned SAME neighbor: "
+                                      << fine_neighbor_id.id() << std::endl;
+                        }
+                        else if constexpr (std::is_same_v<
+                                               Neighbor_T,
+                                               typename NeighborVariant::Coarser>)
+                        {
+                            std::cout << "  ERROR: Parent has COARSER neighbor but "
+                                         "trying to refine!"
+                                      << std::endl;
+                            assert(
+                                false && "sth isogin wrong as your neighbro is coarser "
+                                         "and u try to refine my friend"
+                            );
+                        }
+                        else
+                        {
+                            std::cout << "  ERROR: Unknown neighbor variant type!"
+                                      << std::endl;
+                            assert(false && "Unknown neighbor variant type");
+                        }
+                    },
+                    parent_directional_neighbor.data
+                );
             }
         }
-        
+
         std::cout << "\n=== CHILD NEIGHBOR COMPUTATION COMPLETE ===" << std::endl;
         return child_neighbor_array;
     }
 
-
-    typename patch_index_t::offset_t get_sibling_offset(size_t local_child_id, size_t direction) const
-{
-    // Convert local_child_id to coordinates
-    std::array<typename patch_index_t::offset_t, s_dimension> coords{};
-    size_t remainder = local_child_id;
-    for (size_t d = 0; d < s_dimension; ++d) {
-        coords[d] = remainder % s_fanout;
-        remainder /= s_fanout;
-    }
-    
-    // Calculate sibling coordinates based on direction
-    size_t dim = direction / 2;  // Which dimension (0=x, 1=y)
-    bool positive = (direction % 2) == 1;  // true for +direction, false for -direction
-    
-    if (positive) {
-        coords[dim] = (coords[dim] + 1) % s_fanout;
-    } else {
-        coords[dim] = (coords[dim] + s_fanout - 1) % s_fanout;
-    }
-    
-    // Convert back to flat index
-    typename patch_index_t::offset_t result = 0;
-    typename patch_index_t::offset_t multiplier = 1;
-    for (size_t d = 0; d < s_dimension; ++d) {
-        result += coords[d] * multiplier;
-        multiplier *= s_fanout;
-    }
-    
-    return result;
-}
-
-
-// Helper function to get specific fine neighbors for a child
- patch_index_t get_fine_neighbors_for_child(
-    const std::array<patch_index_t, NeighborVariant::s_num_fine>& fine_neighbors,
-    size_t local_child_id, 
-    size_t direction) const
-{
-    auto relevant_coord = local_child_id / s_fanout *(direction / 2);
-
-    std::array<size_t, s_dimension> coords{};
-    size_t remainder = local_child_id;
-    for (size_t d = 0; d < s_dimension; ++d) {
-        coords[d] = remainder % s_fanout;
-        remainder /= s_fanout;
-    }
-    return fine_neighbors[relevant_coord];
-
-}
-
- void enforce_symmetric_neighbors(patch_index_t patch_id, neighbor_array_t& neighbor_array){
-    std::cout << "\n=== ENFORCING SYMMETRIC NEIGHBORS ===" << std::endl;
-    std::cout << "Patch ID: " << patch_id.id() << std::endl;
-    for (size_t direction = 0; direction < 2 * s_dimension; direction++) {
-        auto& neighbor_variant = neighbor_array[direction]; // retrieve variant
-        
-        // Calculate opposite direction
-        size_t opposite_direction;
-        if (direction % 2 == 0) {
-            opposite_direction = direction + 1; // -x -> +x, -y -> +y
-        } else {
-            opposite_direction = direction - 1; // +x -> -x, +y -> -y
+    typename patch_index_t::offset_t
+        get_sibling_offset(size_t local_child_id, size_t direction) const
+    {
+        // Convert local_child_id to coordinates
+        std::array<typename patch_index_t::offset_t, s_dimension> coords{};
+        size_t remainder = local_child_id;
+        for (size_t d = 0; d < s_dimension; ++d)
+        {
+            coords[d] = remainder % s_fanout;
+            remainder /= s_fanout;
         }
-        
-        const char* direction_names[] = {"-X", "+X", "-Y", "+Y"};
-        std::cout << "\n--- Direction " << direction_names[direction] 
-                  << " (opposite: " << direction_names[opposite_direction] << ") ---" << std::endl;
-        std::cout << "Neighbor variant index: " << neighbor_variant.data.index() << std::endl;
-        
-        // Handle different neighbor types
-        std::visit([&](auto&& neighbor) {
-            using Neighbor_T = std::decay_t<decltype(neighbor)>;
-            
-            if constexpr (std::is_same_v<Neighbor_T, typename NeighborVariant::None>) {
-                std::cout << "  NONE neighbor - nothing to enforce" << std::endl;
-                // No neighbor - nothing to enforce
-                return;
-            }
-            else if constexpr (std::is_same_v<Neighbor_T, typename NeighborVariant::Same>) {
-                std::cout << "  SAME neighbor (ID: " << neighbor.id.id() << ") - enforcing single symmetry" << std::endl;
-                // Single same-level neighbor
-                enforce_neighbor_symmetry_single(patch_id, neighbor.id, opposite_direction);
-            }
-            else if constexpr (std::is_same_v<Neighbor_T, typename NeighborVariant::Coarser>) {
-                std::cout << "  COARSER neighbor (ID: " << neighbor.id.id() << ") - enforcing coarser symmetry" << std::endl;
-                // Single coarser neighbor - patch_id should appear in the coarser neighbor's Finer list
-                enforce_neighbor_symmetry_coarser(patch_id, neighbor.id, opposite_direction);
-            }
-            else{
-                std::cout << "  ERROR: Unknown neighbor variant type!" << std::endl;
-                assert(false);
-            }
-        }, neighbor_variant.data);
-    }
-    
-    std::cout << "\n=== SYMMETRIC NEIGHBOR ENFORCEMENT COMPLETE ===" << std::endl;
-}
 
-private:
-// Helper function for same-level neighbor symmetry
-void enforce_neighbor_symmetry_single(patch_index_t patch_id, patch_index_t neighbor_id, 
-                                    size_t opposite_direction) {
-    std::cout << "    [SINGLE] Enforcing symmetry between patch " << patch_id.id() 
-              << " and neighbor " << neighbor_id.id() << std::endl;
-    
-    auto neighbor_it = find_index(neighbor_id);
-    if (!neighbor_it.has_value()) {
-        std::cout << "    [SINGLE] ERROR: Neighbor " << neighbor_id.id() << " not found in tree!" << std::endl;
-        assert(false);
-    }
-    
-    linear_index_t neighbor_linear_idx = neighbor_it.value()->second;
-    auto& neighbor_neighbor_array = m_neighbors[neighbor_linear_idx];
-    
-    std::cout << "    [SINGLE] Neighbor linear index: " << neighbor_linear_idx << std::endl;
-    std::cout << "    [SINGLE] Current neighbor's opposite direction variant index: " 
-              << neighbor_neighbor_array[opposite_direction].data.index() << std::endl;
-    
-    // Always overwrite with correct symmetry
-    NeighborVariant nb;
-    nb.data = typename NeighborVariant::Same{ patch_id };
-    neighbor_neighbor_array[opposite_direction] = nb;
-    
-    std::cout << "    [SINGLE] -> Set neighbor " << neighbor_id.id() 
-              << " to have SAME neighbor " << patch_id.id() 
-              << " in opposite direction" << std::endl;
-}
+        // Calculate sibling coordinates based on direction
+        size_t dim    = direction / 2;        // Which dimension (0=x, 1=y)
+        bool positive = (direction % 2) == 1; // true for +direction, false for -direction
 
-// Helper function for coarser neighbor symmetry
-void enforce_neighbor_symmetry_coarser(patch_index_t patch_id, patch_index_t coarser_neighbor_id,
-                                     size_t opposite_direction) {
-    std::cout << "    [COARSER] Enforcing coarser symmetry for patch " << patch_id.id() 
-              << " with coarser neighbor " << coarser_neighbor_id.id() << std::endl;
-    
-    auto patch_local_offset = patch_index_t::offset_of(patch_id);
-    auto multi_index = static_child_layout_t::multi_index(patch_local_offset);
-    
-    std::cout << "    [COARSER] Patch local offset: " << patch_local_offset 
-              << ", multi-index: [" << multi_index[0] << ", " << multi_index[1] << "]" << std::endl;
+        if (positive)
+        {
+            coords[dim] = (coords[dim] + 1) % s_fanout;
+        }
+        else
+        {
+            coords[dim] = (coords[dim] + s_fanout - 1) % s_fanout;
+        }
 
-    auto neighbor_it = find_index(coarser_neighbor_id);
-    if (!neighbor_it.has_value()) {
-        std::cout << "    [COARSER] ERROR: Coarser neighbor " << coarser_neighbor_id.id() << " not found in tree!" << std::endl;
-        assert(false); 
-    }
-    
-    linear_index_t neighbor_linear_idx = neighbor_it.value()->second;
-    auto& neighbor_neighbor_array = m_neighbors[neighbor_linear_idx];
-    
-    std::cout << "    [COARSER] Coarser neighbor linear index: " << neighbor_linear_idx << std::endl;
-    std::cout << "    [COARSER] Current coarser neighbor's opposite direction variant index: " 
-              << neighbor_neighbor_array[opposite_direction].data.index() << std::endl;
-    
-    // FIXED: Fill ALL fine neighbors on the boundary face
-    std::array<patch_index_t, NeighborVariant::s_num_fine> finer_ids{};
-    
-    // Get the parent of patch_id to find all siblings on the boundary
-    auto parent_id = patch_index_t::parent_of(patch_id);
-    std::cout << "    [COARSER] Parent ID: " << parent_id.id() << std::endl;
-    
-    // Determine which coordinate is parallel to the boundary (the one that varies)
-    size_t direction_dim = opposite_direction / 2;  // 0=x, 1=y for 2D
-    size_t parallel_dim = (direction_dim + 1) % s_dimension;  // The perpendicular dimension
-    
-    std::cout << "    [COARSER] Direction dim: " << direction_dim 
-              << ", Parallel dim: " << parallel_dim << std::endl;
-    
-    // Fill all fine neighbors along the boundary face
-    std::cout << "    [COARSER] Creating fine neighbors: [";
-    for (size_t i = 0; i < s_fanout; i++) {
-        // Create coordinates for each sibling on the boundary
-        std::array<typename patch_index_t::offset_t, s_dimension> sibling_coords{};
-        
-        // Copy the fixed coordinate from our patch
-        sibling_coords[direction_dim] = multi_index[direction_dim];
-        
-        // Vary the parallel coordinate
-        sibling_coords[parallel_dim] = static_cast<typename patch_index_t::offset_t>(i);
-        
-        std::cout << "(" << sibling_coords[0] << "," << sibling_coords[1] << ")";
-        
         // Convert back to flat index
-        typename patch_index_t::offset_t sibling_offset = 0;
+        typename patch_index_t::offset_t result     = 0;
         typename patch_index_t::offset_t multiplier = 1;
-        for (size_t d = 0; d < s_dimension; ++d) {
-            sibling_offset += sibling_coords[d] * multiplier;
+        for (size_t d = 0; d < s_dimension; ++d)
+        {
+            result += coords[d] * multiplier;
             multiplier *= s_fanout;
         }
-        
-        // Get the sibling patch ID
-        auto sibling_id = patch_index_t::child_of(parent_id, sibling_offset);
-        finer_ids[i] = sibling_id;
-        
-        std::cout << "->ID:" << sibling_id.id();
-        if (i < s_fanout - 1) std::cout << ", ";
+
+        return result;
     }
-    std::cout << "]" << std::endl;
-    
-    NeighborVariant nb;
-    nb.data = typename NeighborVariant::Finer{ finer_ids };
-    neighbor_neighbor_array[opposite_direction] = nb;
-    
-    std::cout << "    [COARSER] -> Set coarser neighbor " << coarser_neighbor_id.id() 
-              << " to have FINER neighbors in opposite direction" << std::endl;
-}
-    template <typename Fn>
-    auto update_refine_flags(Fn&& fn) noexcept(
-        noexcept(fn(std::declval<linear_index_t&>()))
+
+    // Helper function to get specific fine neighbors for a child
+    patch_index_t get_fine_neighbors_for_child(
+        const std::array<patch_index_t, NeighborVariant::s_num_fine>& fine_neighbors,
+        size_t                                                        local_child_id,
+        size_t                                                        direction
+    ) const
+    {
+        auto relevant_coord = local_child_id / s_fanout * (direction / 2);
+
+        std::array<size_t, s_dimension> coords{};
+        size_t                          remainder = local_child_id;
+        for (size_t d = 0; d < s_dimension; ++d)
+        {
+            coords[d] = remainder % s_fanout;
+            remainder /= s_fanout;
+        }
+        return fine_neighbors[relevant_coord];
+    }
+
+    void enforce_symmetric_neighbors(
+        patch_index_t     patch_id,
+        neighbor_array_t& neighbor_array
     )
+    {
+        std::cout << "\n=== ENFORCING SYMMETRIC NEIGHBORS ===" << std::endl;
+        std::cout << "Patch ID: " << patch_id.id() << std::endl;
+        for (size_t direction = 0; direction < 2 * s_dimension; direction++)
+        {
+            auto& neighbor_variant = neighbor_array[direction]; // retrieve variant
+
+            // Calculate opposite direction
+            size_t opposite_direction;
+            if (direction % 2 == 0)
+            {
+                opposite_direction = direction + 1; // -x -> +x, -y -> +y
+            }
+            else
+            {
+                opposite_direction = direction - 1; // +x -> -x, +y -> -y
+            }
+
+            const char* direction_names[] = { "-X", "+X", "-Y", "+Y" };
+            std::cout << "\n--- Direction " << direction_names[direction]
+                      << " (opposite: " << direction_names[opposite_direction] << ") ---"
+                      << std::endl;
+            std::cout << "Neighbor variant index: " << neighbor_variant.data.index()
+                      << std::endl;
+
+            // Handle different neighbor types
+            std::visit(
+                [&](auto&& neighbor)
+                {
+                    using Neighbor_T = std::decay_t<decltype(neighbor)>;
+
+                    if constexpr (std::is_same_v<
+                                      Neighbor_T,
+                                      typename NeighborVariant::None>)
+                    {
+                        std::cout << "  NONE neighbor - nothing to enforce" << std::endl;
+                        // No neighbor - nothing to enforce
+                        return;
+                    }
+                    else if constexpr (std::is_same_v<
+                                           Neighbor_T,
+                                           typename NeighborVariant::Same>)
+                    {
+                        std::cout << "  SAME neighbor (ID: " << neighbor.id.id()
+                                  << ") - enforcing single symmetry" << std::endl;
+                        // Single same-level neighbor
+                        enforce_neighbor_symmetry_single(
+                            patch_id, neighbor.id, opposite_direction
+                        );
+                    }
+                    else if constexpr (std::is_same_v<
+                                           Neighbor_T,
+                                           typename NeighborVariant::Coarser>)
+                    {
+                        std::cout << "  COARSER neighbor (ID: " << neighbor.id.id()
+                                  << ") - enforcing coarser symmetry" << std::endl;
+                        // Single coarser neighbor - patch_id should appear in the coarser
+                        // neighbor's Finer list
+                        enforce_neighbor_symmetry_coarser(
+                            patch_id, neighbor.id, opposite_direction
+                        );
+                    }
+                    else
+                    {
+                        std::cout << "  ERROR: Unknown neighbor variant type!"
+                                  << std::endl;
+                        assert(false);
+                    }
+                },
+                neighbor_variant.data
+            );
+        }
+
+        std::cout << "\n=== SYMMETRIC NEIGHBOR ENFORCEMENT COMPLETE ===" << std::endl;
+    }
+
+private:
+    // Helper function for same-level neighbor symmetry
+    void enforce_neighbor_symmetry_single(
+        patch_index_t patch_id,
+        patch_index_t neighbor_id,
+        size_t        opposite_direction
+    )
+    {
+        std::cout << "    [SINGLE] Enforcing symmetry between patch " << patch_id.id()
+                  << " and neighbor " << neighbor_id.id() << std::endl;
+
+        auto neighbor_it = find_index(neighbor_id);
+        if (!neighbor_it.has_value())
+        {
+            std::cout << "    [SINGLE] ERROR: Neighbor " << neighbor_id.id()
+                      << " not found in tree!" << std::endl;
+            assert(false);
+        }
+
+        linear_index_t neighbor_linear_idx     = neighbor_it.value()->second;
+        auto&          neighbor_neighbor_array = m_neighbors[neighbor_linear_idx];
+
+        std::cout << "    [SINGLE] Neighbor linear index: " << neighbor_linear_idx
+                  << std::endl;
+        std::cout << "    [SINGLE] Current neighbor's opposite direction variant index: "
+                  << neighbor_neighbor_array[opposite_direction].data.index()
+                  << std::endl;
+
+        // Always overwrite with correct symmetry
+        NeighborVariant nb;
+        nb.data = typename NeighborVariant::Same{ patch_id };
+        neighbor_neighbor_array[opposite_direction] = nb;
+
+        std::cout << "    [SINGLE] -> Set neighbor " << neighbor_id.id()
+                  << " to have SAME neighbor " << patch_id.id()
+                  << " in opposite direction" << std::endl;
+    }
+
+    // Helper function for coarser neighbor symmetry
+    void enforce_neighbor_symmetry_coarser(
+        patch_index_t patch_id,
+        patch_index_t coarser_neighbor_id,
+        size_t        opposite_direction
+    )
+    {
+        std::cout << "    [COARSER] Enforcing coarser symmetry for patch "
+                  << patch_id.id() << " with coarser neighbor "
+                  << coarser_neighbor_id.id() << std::endl;
+
+        auto patch_local_offset = patch_index_t::offset_of(patch_id);
+        auto multi_index        = static_child_layout_t::multi_index(patch_local_offset);
+
+        std::cout << "    [COARSER] Patch local offset: " << patch_local_offset
+                  << ", multi-index: [" << multi_index[0] << ", " << multi_index[1] << "]"
+                  << std::endl;
+
+        auto neighbor_it = find_index(coarser_neighbor_id);
+        if (!neighbor_it.has_value())
+        {
+            std::cout << "    [COARSER] ERROR: Coarser neighbor "
+                      << coarser_neighbor_id.id() << " not found in tree!" << std::endl;
+            assert(false);
+        }
+
+        linear_index_t neighbor_linear_idx     = neighbor_it.value()->second;
+        auto&          neighbor_neighbor_array = m_neighbors[neighbor_linear_idx];
+
+        std::cout << "    [COARSER] Coarser neighbor linear index: "
+                  << neighbor_linear_idx << std::endl;
+        std::cout << "    [COARSER] Current coarser neighbor's opposite direction "
+                     "variant index: "
+                  << neighbor_neighbor_array[opposite_direction].data.index()
+                  << std::endl;
+
+        // FIXED: Fill ALL fine neighbors on the boundary face
+        std::array<patch_index_t, NeighborVariant::s_num_fine> finer_ids{};
+
+        // Get the parent of patch_id to find all siblings on the boundary
+        auto parent_id = patch_index_t::parent_of(patch_id);
+        std::cout << "    [COARSER] Parent ID: " << parent_id.id() << std::endl;
+
+        // Determine which coordinate is parallel to the boundary (the one that varies)
+        size_t direction_dim = opposite_direction / 2; // 0=x, 1=y for 2D
+        size_t parallel_dim =
+            (direction_dim + 1) % s_dimension; // The perpendicular dimension
+
+        std::cout << "    [COARSER] Direction dim: " << direction_dim
+                  << ", Parallel dim: " << parallel_dim << std::endl;
+
+        // Fill all fine neighbors along the boundary face
+        std::cout << "    [COARSER] Creating fine neighbors: [";
+        for (size_t i = 0; i < s_fanout; i++)
+        {
+            // Create coordinates for each sibling on the boundary
+            std::array<typename patch_index_t::offset_t, s_dimension> sibling_coords{};
+
+            // Copy the fixed coordinate from our patch
+            sibling_coords[direction_dim] = multi_index[direction_dim];
+
+            // Vary the parallel coordinate
+            sibling_coords[parallel_dim] =
+                static_cast<typename patch_index_t::offset_t>(i);
+
+            std::cout << "(" << sibling_coords[0] << "," << sibling_coords[1] << ")";
+
+            // Convert back to flat index
+            typename patch_index_t::offset_t sibling_offset = 0;
+            typename patch_index_t::offset_t multiplier     = 1;
+            for (size_t d = 0; d < s_dimension; ++d)
+            {
+                sibling_offset += sibling_coords[d] * multiplier;
+                multiplier *= s_fanout;
+            }
+
+            // Get the sibling patch ID
+            auto sibling_id = patch_index_t::child_of(parent_id, sibling_offset);
+            finer_ids[i]    = sibling_id;
+
+            std::cout << "->ID:" << sibling_id.id();
+            if (i < s_fanout - 1) std::cout << ", ";
+        }
+        std::cout << "]" << std::endl;
+
+        NeighborVariant nb;
+        nb.data = typename NeighborVariant::Finer{ finer_ids };
+        neighbor_neighbor_array[opposite_direction] = nb;
+
+        std::cout << "    [COARSER] -> Set coarser neighbor " << coarser_neighbor_id.id()
+                  << " to have FINER neighbors in opposite direction" << std::endl;
+    }
+
+    template <typename Fn>
+    auto update_refine_flags(Fn&& fn
+    ) noexcept(noexcept(fn(std::declval<linear_index_t&>())))
     {
         for (linear_index_t i = 0; i < m_size; ++i)
         {
@@ -949,25 +1077,26 @@ private:
         return m_size - 1;
     }
 
-    auto append(patch_index_t const node_id, neighbor_array_t neighbor_array) noexcept -> void
+    auto append(patch_index_t const node_id, neighbor_array_t neighbor_array) noexcept
+        -> void
     {
         m_linear_index_map[m_size] = node_id;
         m_index_map[node_id]       = m_size;
-        m_neighbors[m_size] = neighbor_array;
+        m_neighbors[m_size]        = neighbor_array;
         ++m_size;
     }
 
     [[nodiscard]]
-    auto find_index(patch_index_t const node_id) const noexcept
-        -> std::optional<index_map_const_iterator_t>
+    auto find_index(patch_index_t const node_id
+    ) const noexcept -> std::optional<index_map_const_iterator_t>
     {
         const auto it = m_index_map.find(node_id);
         return it == m_index_map.end() ? std::nullopt : std::optional{ it };
     }
 
     [[nodiscard]]
-    auto find_index(patch_index_t const node_id) noexcept
-        -> std::optional<index_map_iterator_t>
+    auto find_index(patch_index_t const node_id
+    ) noexcept -> std::optional<index_map_iterator_t>
     {
         const auto it = m_index_map.find(node_id);
         return it == m_index_map.end() ? std::nullopt : std::optional{ it };
@@ -985,13 +1114,14 @@ public:
             { return m_linear_index_map[i] < m_linear_index_map[j]; }
         );
 
-        linear_index_t        backup_start_pos;
-        patch_index_t         backup_node_index;
-        refine_status_t       backup_refine_status;
-        neighbor_array_t      backup_neighbors;
-        
+        linear_index_t   backup_start_pos;
+        patch_index_t    backup_node_index;
+        refine_status_t  backup_refine_status;
+        neighbor_array_t backup_neighbors;
+
         // NEW: Backup buffer for entire patches instead of single elements
-        using backup_patch_t = std::array<deconstructed_types_t, patch_layout_t::s_flat_size>;
+        using backup_patch_t =
+            std::array<deconstructed_types_t, patch_layout_t::s_flat_size>;
         backup_patch_t backup_patch;
 
         for (linear_index_t i = 0; i != back_idx();)
@@ -1006,14 +1136,19 @@ public:
             backup_start_pos     = i;
             backup_node_index    = m_linear_index_map[i];
             backup_refine_status = m_refine_status_buffer[i];
-            backup_neighbors = m_neighbors[i];
-            
+            backup_neighbors     = m_neighbors[i];
+
             // Backup entire patch
             auto patch_i_start = i * patch_layout_t::s_flat_size;
-            [this, &backup_patch, patch_i_start]<std::size_t... I>(std::index_sequence<I...>)
+            [this,
+             &backup_patch,
+             patch_i_start]<std::size_t... I>(std::index_sequence<I...>)
             {
-                for(size_t k = 0; k < patch_layout_t::s_flat_size; k++) {
-                    ((void)(std::get<I>(backup_patch[k]) = std::get<I>(m_data_buffers)[patch_i_start + k]), ...);
+                for (size_t k = 0; k < patch_layout_t::s_flat_size; k++)
+                {
+                    ((void)(std::get<I>(backup_patch[k]) =
+                                std::get<I>(m_data_buffers)[patch_i_start + k]),
+                     ...);
                 }
             }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
 
@@ -1022,21 +1157,23 @@ public:
             {
                 m_linear_index_map[dst]     = m_linear_index_map[src];
                 m_refine_status_buffer[dst] = m_refine_status_buffer[src];
-                m_neighbors[dst] = m_neighbors[src];
-                
+                m_neighbors[dst]            = m_neighbors[src];
+
                 // Copy entire patches instead of single elements
                 auto patch_src_start = src * patch_layout_t::s_flat_size;
                 auto patch_dst_start = dst * patch_layout_t::s_flat_size;
-                
+
                 std::apply(
-                    [patch_src_start, patch_dst_start](auto&... b) { 
-                        for(size_t k = 0; k < patch_layout_t::s_flat_size; k++) {
+                    [patch_src_start, patch_dst_start](auto&... b)
+                    {
+                        for (size_t k = 0; k < patch_layout_t::s_flat_size; k++)
+                        {
                             ((b[patch_dst_start + k] = b[patch_src_start + k]), ...);
                         }
-                    }, 
+                    },
                     m_data_buffers
                 );
-                
+
                 m_index_map[m_linear_index_map[dst]] = dst;
                 m_reorder_buffer[dst]                = dst;
                 dst                                  = src;
@@ -1046,17 +1183,22 @@ public:
 
             m_linear_index_map[dst]     = backup_node_index;
             m_refine_status_buffer[dst] = backup_refine_status;
-            m_neighbors[dst] = backup_neighbors; 
-            
+            m_neighbors[dst]            = backup_neighbors;
+
             // Restore backed up patch
             auto patch_dst_start = dst * patch_layout_t::s_flat_size;
-            [this, &backup_patch, patch_dst_start]<std::size_t... I>(std::index_sequence<I...>)
+            [this,
+             &backup_patch,
+             patch_dst_start]<std::size_t... I>(std::index_sequence<I...>)
             {
-                for(size_t k = 0; k < patch_layout_t::s_flat_size; k++) {
-                    ((void)(std::get<I>(m_data_buffers)[patch_dst_start + k] = std::get<I>(backup_patch[k])), ...);
+                for (size_t k = 0; k < patch_layout_t::s_flat_size; k++)
+                {
+                    ((void)(std::get<I>(m_data_buffers)[patch_dst_start + k] =
+                                std::get<I>(backup_patch[k])),
+                     ...);
                 }
             }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
-            
+
             m_index_map[backup_node_index] = dst;
             m_reorder_buffer[dst]          = dst;
         }
@@ -1085,88 +1227,101 @@ public:
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
     }
 
-auto restrict_patches(linear_index_t const start_from, linear_index_t const to) noexcept
-    -> void
-{
-    std::apply(
-        [to](auto&... b)
-        {
-            for(size_t k = 0; k < patch_layout_t::s_flat_size; k++) {
-                ((b[to + k] =  std::remove_reference_t<decltype(b[0])>{}), ...); // Zero initialize
-            }
-        },
-        m_data_buffers
-    );
-
-    for(size_t patch_idx = 0; patch_idx < s_nd_fanout; patch_idx++) {
-        for(size_t linear_idx = 0; linear_idx < static_cast<size_t>(patch_layout_t::layout_t::s_logical_flat_size); linear_idx++) {
-
-            auto map_value = s_patch_maps[static_cast<int>(patch_idx)][static_cast<int>(linear_idx)]; 
-
-            auto full_map_value = patch_layout_t::layout_t::logical_to_full_index(map_value);
-            auto full_linear_idx = patch_layout_t::layout_t::logical_to_full_index(linear_idx);
-
-            auto parent_linear_idx = to +  full_map_value;
-            auto child_linear_idx = start_from + patch_layout_t::s_flat_size * patch_idx + full_linear_idx;
-
-            
-            std::apply(
-                [parent_linear_idx, child_linear_idx](auto&... b)
+    auto restrict_patches(
+        linear_index_t const start_from,
+        linear_index_t const to
+    ) noexcept -> void
+    {
+        std::apply(
+            [to](auto&... b)
+            {
+                for (size_t k = 0; k < patch_layout_t::s_flat_size; k++)
                 {
-                    ((void)(b[parent_linear_idx] += b[child_linear_idx] ), ...);
-                },
-                m_data_buffers
-            );
+                    ((b[to + k] = std::remove_reference_t<decltype(b[0])>{}),
+                     ...); // Zero initialize
+                }
+            },
+            m_data_buffers
+        );
+
+        for (size_t patch_idx = 0; patch_idx < s_nd_fanout; patch_idx++)
+        {
+            for (size_t linear_idx = 0;
+                 linear_idx <
+                 static_cast<size_t>(patch_layout_t::layout_t::s_logical_flat_size);
+                 linear_idx++)
+            {
+                auto map_value = s_patch_maps[static_cast<int>(patch_idx)]
+                                             [static_cast<int>(linear_idx)];
+
+                auto full_map_value =
+                    patch_layout_t::layout_t::logical_to_full_index(map_value);
+                auto full_linear_idx =
+                    patch_layout_t::layout_t::logical_to_full_index(linear_idx);
+
+                auto parent_linear_idx = to + full_map_value;
+                auto child_linear_idx  = start_from +
+                                        patch_layout_t::s_flat_size * patch_idx +
+                                        full_linear_idx;
+
+                std::apply(
+                    [parent_linear_idx, child_linear_idx](auto&... b)
+                    { ((void)(b[parent_linear_idx] += b[child_linear_idx]), ...); },
+                    m_data_buffers
+                );
+            }
         }
+
+        std::apply(
+            [to](auto&... b)
+            {
+                for (size_t k = 0; k < patch_layout_t::s_flat_size; k++)
+                {
+                    ((b[to + k] /=
+                      static_cast<std::remove_reference_t<decltype(b[0])>>(s_nd_fanout)),
+                     ...);
+                }
+            },
+            m_data_buffers
+        );
     }
 
-    std::apply(
-        [to](auto&... b)
-        {
-            for(size_t k = 0; k < patch_layout_t::s_flat_size; k++) {
-                ((b[to + k] /= static_cast<std::remove_reference_t<decltype(b[0])>>(s_nd_fanout)), ...);
-            }
-        },
-        m_data_buffers
-    );
-}
-
-auto interpolate_patch(
-    linear_index_t const from,
-    linear_index_t const start_to
-) noexcept -> void
-{
-
-    for(size_t patch_idx = 0; patch_idx < s_nd_fanout; patch_idx++) {
-
-        for(size_t linear_idx = 0; linear_idx < static_cast<size_t>(patch_layout_t::layout_t::s_logical_flat_size); linear_idx++) {
-            
-
-            auto map_value = s_patch_maps[static_cast<int>(patch_idx)][static_cast<int>(linear_idx)];
-            
-            auto full_map_value = patch_layout_t::layout_t::logical_to_full_index(map_value);
-            auto full_linear_idx = patch_layout_t::layout_t::logical_to_full_index(linear_idx);
-
-            auto parent_linear_idx = from +  full_map_value;
-            auto child_linear_idx = start_to + patch_layout_t::s_flat_size * patch_idx + full_linear_idx;
-
-            std::apply(
-                [parent_linear_idx, child_linear_idx, patch_idx, linear_idx](auto&... b)
-                {
-                    ((void)(
-                        b[child_linear_idx] = b[parent_linear_idx]
-                    ), ...);
-                },
-                m_data_buffers
-            );
-        }
-    }
-}
-
-    auto interpolate_node(
+    auto interpolate_patch(
         linear_index_t const from,
         linear_index_t const start_to
-    ) const noexcept -> void
+    ) noexcept -> void
+    {
+        for (size_t patch_idx = 0; patch_idx < s_nd_fanout; patch_idx++)
+        {
+            for (size_t linear_idx = 0;
+                 linear_idx <
+                 static_cast<size_t>(patch_layout_t::layout_t::s_logical_flat_size);
+                 linear_idx++)
+            {
+                auto map_value = s_patch_maps[static_cast<int>(patch_idx)]
+                                             [static_cast<int>(linear_idx)];
+
+                auto full_map_value =
+                    patch_layout_t::layout_t::logical_to_full_index(map_value);
+                auto full_linear_idx =
+                    patch_layout_t::layout_t::logical_to_full_index(linear_idx);
+
+                auto parent_linear_idx = from + full_map_value;
+                auto child_linear_idx =
+                    start_to + patch_layout_t::s_flat_size * patch_idx + full_linear_idx;
+
+                std::apply(
+                    [parent_linear_idx, child_linear_idx, patch_idx, linear_idx](
+                        auto&... b
+                    ) { ((void)(b[child_linear_idx] = b[parent_linear_idx]), ...); },
+                    m_data_buffers
+                );
+            }
+        }
+    }
+
+    auto interpolate_node(linear_index_t const from, linear_index_t const start_to)
+        const noexcept -> void
     {
         auto const old_node = gather_node(from);
         std::cout << old_node << '\n';
@@ -1254,35 +1409,37 @@ public:
     }
 
     [[gnu::always_inline, gnu::flatten]]
-auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
-    -> void
-{
-    
-    assert(i < m_size);
-    assert(j < m_size);
-    if (i == j)
+    auto
+        block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept -> void
     {
-        return;
+        assert(i < m_size);
+        assert(j < m_size);
+        if (i == j)
+        {
+            return;
+        }
+        // std::cout << "switching " << i << " and " << j << "with block size "<<
+        // patch_layout_t::s_flat_size << std::endl;
+        assert(m_linear_index_map[i] != m_linear_index_map[j]);
+        std::swap(m_linear_index_map[i], m_linear_index_map[j]);
+        std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
+        std::swap(m_neighbors[i], m_neighbors[j]);
+        auto patch_i_start = i * patch_layout_t::s_flat_size;
+        auto patch_j_start = j * patch_layout_t::s_flat_size;
+
+        std::apply(
+            [patch_i_start, patch_j_start](auto&... b)
+            {
+                ((void)(std::swap_ranges(
+                     &b[patch_i_start],
+                     &b[patch_i_start + patch_layout_t::s_flat_size],
+                     &b[patch_j_start]
+                 )),
+                 ...);
+            },
+            m_data_buffers
+        );
     }
-    // std::cout << "switching " << i << " and " << j << "with block size "<<  patch_layout_t::s_flat_size << std::endl;
-    assert(m_linear_index_map[i] != m_linear_index_map[j]);
-    std::swap(m_linear_index_map[i], m_linear_index_map[j]);
-    std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
-    std::swap(m_neighbors[i], m_neighbors[j]);
-    auto patch_i_start = i * patch_layout_t::s_flat_size;
-    auto patch_j_start = j * patch_layout_t::s_flat_size;
-    
-    std::apply(
-        [patch_i_start, patch_j_start](auto&... b) {
-            ((void)(
-                std::swap_ranges(&b[patch_i_start], 
-                               &b[patch_i_start + patch_layout_t::s_flat_size], 
-                               &b[patch_j_start])
-            ), ...);
-        }, 
-        m_data_buffers
-    );
-}
 
     [[nodiscard]]
     auto is_sorted() const noexcept -> bool
