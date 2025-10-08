@@ -19,7 +19,7 @@ set(CXX_WARNINGS
 	-fvisibility=hidden
 	-pedantic
 	-Wall
-	-Wconversion
+	# -Wconversion
 	-Wdangling-else
 	-Wdouble-promotion
 	-Wduplicated-branches
