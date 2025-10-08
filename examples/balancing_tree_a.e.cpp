@@ -171,7 +171,7 @@ int main()
     // }
 
 
-    for (; i != 13; ++i)
+    for (; i != 6; ++i)
     {
         h.reconstruct_tree(coarsen_criterion);
         std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";

@@ -10,8 +10,62 @@
 #include <concepts>
 #include <type_traits>
 
+
+
+
+
+
+
 namespace amr::ndt::utils
 {
+
+    enum class NeighborRelation : uint8_t {
+    Sibling,
+    ParentNeighbor,
+};
+
+
+template <size_t Fanout, size_t Dim, size_t ND_Fanout>
+[[nodiscard]]
+consteval auto compute_neighbor_relation_maps()
+{
+
+    using neighbor_relation_array_t = std::array<NeighborRelation, 2 * Dim>;
+    std::array<neighbor_relation_array_t, ND_Fanout> neighbor_relation_maps{};
+
+    for (std::size_t flat = 0; flat < ND_Fanout; ++flat)
+    {
+        neighbor_relation_array_t relation_array{};
+
+        // compute multi-index from flat index
+        std::array<std::size_t, Dim> coords{};
+        std::size_t remainder = flat;
+        for (std::size_t d = 0; d < Dim; ++d)
+        {
+            coords[d] = remainder % Fanout;
+            remainder /= Fanout;
+        }
+
+        for (std::size_t d = 0; d < Dim; ++d)
+        {
+            // - direction
+            relation_array[2*d] = (coords[d] == 0)
+                ? NeighborRelation::ParentNeighbor
+                : NeighborRelation::Sibling;
+
+            // + direction
+            relation_array[2*d + 1] = (coords[d] == Fanout - 1)
+                ? NeighborRelation::ParentNeighbor
+                : NeighborRelation::Sibling;
+        }
+
+        neighbor_relation_maps[flat] = relation_array;
+    }
+
+    return neighbor_relation_maps;
+}
+
+
 
 [[nodiscard]]
 consteval auto subdivisions(

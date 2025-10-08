@@ -106,6 +106,11 @@ public:
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
     
+
+
+    using static_child_layout_t  =  amr::containers::static_layout<0, s_fanout,s_fanout >; // needs to be done generically but idk how size is fanout ^dimension
+
+
     struct NeighborVariant
     {
 
@@ -126,6 +131,7 @@ public:
     using neighbor_array_t       = std::array<NeighborVariant,2*s_dimension> ;
     using neighbor_buffer_t           = pointer_t<neighbor_array_t>;
 
+    static constexpr auto s_neighbor_relation_maps = amr::ndt::utils::compute_neighbor_relation_maps<s_fanout,s_dimension, s_nd_fanout>();
 
     static constexpr auto s_patch_maps = 
         amr::ndt::utils::patches::fragmentation_patch_maps<linear_index_t, patch_index_t::fanout()>(
@@ -157,7 +163,7 @@ public:
         m_neighbors = (neighbor_buffer_t)std::malloc(size * sizeof(NeighborVariant));
 
         neighbor_array_t root_neighbor_array{};  
-        append(patch_index_t::root(),root_neighbor_array);
+        append(patch_index_t::root(), root_neighbor_array);
     }
 
     ~ndtree() noexcept
@@ -226,11 +232,19 @@ public:
         {
             auto child_id = patch_index_t::child_of(node_id, i);
             assert(!find_index(child_id).has_value());
-            neighbor_array_t empty{};
-            append(child_id,empty);
+            neighbor_array_t neighbor_array = compute_child_neighbors(node_id, i);
+            enforce_symmetric_neighbors(child_id, neighbor_array);
+            append(child_id,neighbor_array);
             assert(m_index_map[child_id] == back_idx());
             assert(m_linear_index_map[back_idx()] == child_id);
         }
+        for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
+        {
+            auto child_id = patch_index_t::child_of(node_id, i);
+            enforce_symmetric_neighbors(child_id, m_neighbors[m_index_map[child_id]]);
+        }
+
+
         const auto from = it.value()->second * patch_layout_t::flat_size();
         interpolate_patch(from, start_to);
         m_index_map.erase(it.value());
@@ -285,6 +299,262 @@ public:
         }
         sort_buffers();
     }
+
+
+    auto compute_child_neighbors(patch_index_t parent_id, size_t local_child_id) -> neighbor_array_t
+    {
+        // Get the linear index of the parent to access its neighbors
+        auto parent_it = find_index(parent_id);
+        assert(parent_it.has_value() && "Parent must exist in the tree");
+        linear_index_t parent_linear_idx = parent_it.value()->second;
+        auto local_multiindex = static_child_layout_t::multi_index(local_child_id);
+        auto relations = s_neighbor_relation_maps[local_child_id];
+        neighbor_array_t child_neighbor_array{};
+        neighbor_array_t parent_neighbor_array = m_neighbors[parent_linear_idx];
+
+        for (size_t direction = 0; direction < 2 * s_dimension; direction++)
+        {
+            auto directional_relation = relations[direction];
+            
+            if (directional_relation == amr::ndt::utils::NeighborRelation::Sibling)
+            {
+                // Calculate which sibling child this direction points to
+               auto  sibling_offset = get_sibling_offset(local_child_id, direction);
+                auto sibling_id = patch_index_t::child_of(parent_id, sibling_offset);
+                
+                // FIXED: Use the same pattern as your working solution
+                NeighborVariant nb;
+                nb.data = typename NeighborVariant::Same{ sibling_id };
+                child_neighbor_array[direction] = nb;
+            }
+            else // ParentNeighbor case
+            {
+                NeighborVariant parent_directional_neighbor = parent_neighbor_array[direction];
+                
+                // Handle different types of parent neighbors
+                std::visit([&](auto&& neighbor) {
+                    using Neighbor_T = std::decay_t<decltype(neighbor)>;
+                    
+                    if constexpr (std::is_same_v<Neighbor_T, typename NeighborVariant::None>) {
+                        // Parent has no neighbor in this direction (boundary)
+                        NeighborVariant nb;
+                        nb.data = typename NeighborVariant::None{};
+                        child_neighbor_array[direction] = nb;
+                    }
+                    else if constexpr (std::is_same_v<Neighbor_T, typename NeighborVariant::Same>) {
+                        // Parent's neighbor is at same level -> becomes coarser for child
+                        NeighborVariant nb;
+                        // FIXED: Only access .id for types that have it
+                        if constexpr (requires { neighbor.id; }) {
+                            nb.data = typename NeighborVariant::Coarser{ neighbor.id };
+                        }
+                        child_neighbor_array[direction] = nb;
+                    }
+                    else if constexpr (std::is_same_v<Neighbor_T,typename NeighborVariant::Finer>) {
+
+                            size_t direction_dim = direction / 2;  // 0=x, 1=y for 2D
+                            size_t relevant_coord = 0;
+                            if constexpr (s_dimension == 2) {
+                                relevant_coord = local_multiindex[(direction_dim + 1) % s_dimension];
+                            } else{
+                                assert(false);
+                            }
+                            
+                            // The fine neighbor at this position becomes the same-level neighbor
+                            auto fine_neighbor_id = neighbor.ids[relevant_coord];
+                            
+                            // Create same-level neighbor relationship
+                            NeighborVariant nb;
+                            nb.data = typename NeighborVariant::Same{ fine_neighbor_id };
+                            child_neighbor_array[direction] = nb;
+                        }
+                    else if constexpr (std::is_same_v<Neighbor_T,typename NeighborVariant::Coarser>) {
+            
+                        assert(false && "sth isogin wrong as your neighbro is coarser and u try to refine my friend");
+                    }
+                    else {
+                        assert(false && "Unknown neighbor variant type");
+                    }
+                }, parent_directional_neighbor.data);
+            }
+        }
+        
+        return child_neighbor_array;
+    }
+
+
+    typename patch_index_t::offset_t get_sibling_offset(size_t local_child_id, size_t direction) const
+{
+    // Convert local_child_id to coordinates
+    std::array<typename patch_index_t::offset_t, s_dimension> coords{};
+    size_t remainder = local_child_id;
+    for (size_t d = 0; d < s_dimension; ++d) {
+        coords[d] = remainder % s_fanout;
+        remainder /= s_fanout;
+    }
+    
+    // Calculate sibling coordinates based on direction
+    size_t dim = direction / 2;  // Which dimension (0=x, 1=y)
+    bool positive = (direction % 2) == 1;  // true for +direction, false for -direction
+    
+    if (positive) {
+        coords[dim] = (coords[dim] + 1) % s_fanout;
+    } else {
+        coords[dim] = (coords[dim] + s_fanout - 1) % s_fanout;
+    }
+    
+    // Convert back to flat index
+    typename patch_index_t::offset_t result = 0;
+    typename patch_index_t::offset_t multiplier = 1;
+    for (size_t d = 0; d < s_dimension; ++d) {
+        result += coords[d] * multiplier;
+        multiplier *= s_fanout;
+    }
+    
+    return result;
+}
+
+
+// Helper function to get specific fine neighbors for a child
+ patch_index_t get_fine_neighbors_for_child(
+    const std::array<patch_index_t, NeighborVariant::s_num_fine>& fine_neighbors,
+    size_t local_child_id, 
+    size_t direction) const
+{
+    auto relevant_coord = local_child_id / s_fanout *(direction / 2);
+
+    std::array<size_t, s_dimension> coords{};
+    size_t remainder = local_child_id;
+    for (size_t d = 0; d < s_dimension; ++d) {
+        coords[d] = remainder % s_fanout;
+        remainder /= s_fanout;
+    }
+    return fine_neighbors[relevant_coord];
+
+}
+
+ void enforce_symmetric_neighbors(patch_index_t patch_id, neighbor_array_t& neighbor_array){
+
+    for (size_t direction = 0; direction < 2 * s_dimension; direction++) {
+        auto& neighbor_variant = neighbor_array[direction]; // retrieve variant
+        
+        // Calculate opposite direction
+        size_t opposite_direction;
+        if (direction % 2 == 0) {
+            opposite_direction = direction + 1; // -x -> +x, -y -> +y
+        } else {
+            opposite_direction = direction - 1; // +x -> -x, +y -> -y
+        }
+        
+        // Handle different neighbor types
+        std::visit([&](auto&& neighbor) {
+            using Neighbor_T = std::decay_t<decltype(neighbor)>;
+            
+            if constexpr (std::is_same_v<Neighbor_T, typename NeighborVariant::None>) {
+                // No neighbor - nothing to enforce
+                return;
+            }
+            else if constexpr (std::is_same_v<Neighbor_T, typename NeighborVariant::Same>) {
+                // Single same-level neighbor
+                enforce_neighbor_symmetry_single(patch_id, neighbor.id, opposite_direction);
+            }
+            else if constexpr (std::is_same_v<Neighbor_T, typename NeighborVariant::Coarser>) {
+                // Single coarser neighbor - patch_id should appear in the coarser neighbor's Finer list
+                enforce_neighbor_symmetry_coarser(patch_id, neighbor.id, opposite_direction);
+            }
+            else{
+                assert(false);
+            }
+        }, neighbor_variant.data);
+    }
+}
+
+private:
+// Helper function for same-level neighbor symmetry
+void enforce_neighbor_symmetry_single(patch_index_t patch_id, patch_index_t neighbor_id, 
+                                    size_t opposite_direction) {
+    auto neighbor_it = find_index(neighbor_id);
+    if (!neighbor_it.has_value()) {
+        return; // Neighbor doesn't exist in tree yet
+    }
+    
+    linear_index_t neighbor_linear_idx = neighbor_it.value()->second;
+    auto& neighbor_neighbor_array = m_neighbors[neighbor_linear_idx];
+    
+    // Always overwrite with correct symmetry
+    NeighborVariant nb;
+    nb.data = typename NeighborVariant::Same{ patch_id };
+    neighbor_neighbor_array[opposite_direction] = nb;
+}
+
+// Helper function for coarser neighbor symmetry
+void enforce_neighbor_symmetry_coarser(patch_index_t patch_id, patch_index_t coarser_neighbor_id,
+                                     size_t opposite_direction) {
+    auto patch_local_offset = patch_index_t::offset_of(patch_id);
+    auto multi_index = static_child_layout_t::multi_index(patch_local_offset);
+
+    auto neighbor_it = find_index(coarser_neighbor_id);
+    if (!neighbor_it.has_value()) {
+        assert(false); 
+    }
+    
+    linear_index_t neighbor_linear_idx = neighbor_it.value()->second;
+    auto& neighbor_neighbor_array = m_neighbors[neighbor_linear_idx];
+    
+    // FIXED: Fill ALL fine neighbors on the boundary face
+    std::array<patch_index_t, NeighborVariant::s_num_fine> finer_ids{};
+    
+    // Get the parent of patch_id to find all siblings on the boundary
+    auto parent_id = patch_index_t::parent_of(patch_id);
+    
+    // Determine which coordinate is parallel to the boundary (the one that varies)
+    size_t direction_dim = opposite_direction / 2;  // 0=x, 1=y for 2D
+    size_t parallel_dim = (direction_dim + 1) % s_dimension;  // The perpendicular dimension
+    
+    // Fill all fine neighbors along the boundary face
+    for (size_t i = 0; i < s_fanout; i++) {
+        // Create coordinates for each sibling on the boundary
+        std::array<typename patch_index_t::offset_t, s_dimension> sibling_coords{};
+        
+        // Copy the fixed coordinate from our patch
+        sibling_coords[direction_dim] = multi_index[direction_dim];
+        
+        // Vary the parallel coordinate
+        sibling_coords[parallel_dim] = static_cast<typename patch_index_t::offset_t>(i);
+        
+        // Convert back to flat index
+        typename patch_index_t::offset_t sibling_offset = 0;
+        typename patch_index_t::offset_t multiplier = 1;
+        for (size_t d = 0; d < s_dimension; ++d) {
+            sibling_offset += sibling_coords[d] * multiplier;
+            multiplier *= s_fanout;
+        }
+        
+        // Get the sibling patch ID
+        auto sibling_id = patch_index_t::child_of(parent_id, sibling_offset);
+        finer_ids[i] = sibling_id;
+    }
+    
+    NeighborVariant nb;
+    nb.data = typename NeighborVariant::Finer{ finer_ids };
+    neighbor_neighbor_array[opposite_direction] = nb;
+}
+// // Helper function for finer neighbor symmetry  
+// void enforce_neighbor_symmetry_finer(patch_index_t patch_id, patch_index_t finer_neighbor_id,
+//                                    size_t direction, size_t opposite_direction) {
+//     auto neighbor_it = find_index(finer_neighbor_id);
+//     if (!neighbor_it.has_value()) {
+//         return; // Neighbor doesn't exist in tree yet
+//     }
+    
+//     linear_index_t neighbor_linear_idx = neighbor_it.value()->second;
+//     auto& neighbor_neighbor_array = m_neighbors[neighbor_linear_idx];
+    
+//     // Always overwrite with Coarser neighbor
+//     NeighborVariant nb;
+//     nb.data = typename NeighborVariant::Coarser{ patch_id };
+//     neighbor_neighbor_array[opposite_direction] = nb;
+// }
 
     template <typename Fn>
     auto update_refine_flags(Fn&& fn) noexcept(
@@ -657,6 +927,7 @@ public:
         linear_index_t        backup_start_pos;
         patch_index_t         backup_node_index;
         refine_status_t       backup_refine_status;
+        neighbor_array_t      backup_neighbors;
         
         // NEW: Backup buffer for entire patches instead of single elements
         using backup_patch_t = std::array<deconstructed_types_t, patch_layout_t::s_flat_size>;
@@ -674,6 +945,7 @@ public:
             backup_start_pos     = i;
             backup_node_index    = m_linear_index_map[i];
             backup_refine_status = m_refine_status_buffer[i];
+            backup_neighbors = m_neighbors[i];
             
             // Backup entire patch
             auto patch_i_start = i * patch_layout_t::s_flat_size;
@@ -689,6 +961,7 @@ public:
             {
                 m_linear_index_map[dst]     = m_linear_index_map[src];
                 m_refine_status_buffer[dst] = m_refine_status_buffer[src];
+                m_neighbors[dst] = m_neighbors[src];
                 
                 // Copy entire patches instead of single elements
                 auto patch_src_start = src * patch_layout_t::s_flat_size;
@@ -712,6 +985,7 @@ public:
 
             m_linear_index_map[dst]     = backup_node_index;
             m_refine_status_buffer[dst] = backup_refine_status;
+            m_neighbors[dst] = backup_neighbors; 
             
             // Restore backed up patch
             auto patch_dst_start = dst * patch_layout_t::s_flat_size;
@@ -801,26 +1075,13 @@ auto interpolate_patch(
     linear_index_t const start_to
 ) noexcept -> void
 {
-    std::cout << "\n=== INTERPOLATE_PATCH DEBUG ===" << std::endl;
-    std::cout << "From parent patch: " << from << std::endl;
-    std::cout << "To children starting at: " << start_to << std::endl;
-    std::cout << "Number of child patches: " << s_nd_fanout << std::endl;
-    std::cout << "Patch flat size: " << patch_layout_t::flat_size() << std::endl;
-    
-    // Debug: Print patch maps structure
-    std::cout << "\nPatch maps structure:" << std::endl;
-    std::cout << "s_patch_maps dimensions: " << s_patch_maps.size(0) << "x" << s_patch_maps.size(1) << std::endl;
-    
-    // For all new patches patch_idx
+
     for(size_t patch_idx = 0; patch_idx < s_nd_fanout; patch_idx++) {
-        std::cout << "\n--- Processing child patch " << patch_idx << " ---" << std::endl;
-        
-        // For all nodes in this patch node_idx  
+
         for(size_t linear_idx = 0; linear_idx < static_cast<size_t>(patch_layout_t::layout_t::s_logical_flat_size); linear_idx++) {
             
-            // Get mapping from patch maps
+
             auto map_value = s_patch_maps[static_cast<int>(patch_idx)][static_cast<int>(linear_idx)];
-            std::cout << "  patch_maps[" << patch_idx << "][" << linear_idx << "] = " << map_value << std::endl;
             
             auto full_map_value = patch_layout_t::layout_t::logical_to_full_index(map_value);
             auto full_linear_idx = patch_layout_t::layout_t::logical_to_full_index(linear_idx);
@@ -828,36 +1089,17 @@ auto interpolate_patch(
             auto parent_linear_idx = from +  full_map_value;
             auto child_linear_idx = start_to + patch_layout_t::s_flat_size * patch_idx + full_linear_idx;
 
-            
-            
-            std::cout << "  Copying: parent[" << parent_linear_idx << "] -> child[" << child_linear_idx << "]" << std::endl;
-            std::cout << "    Child patch " << patch_idx << ", local idx " << full_linear_idx << std::endl;
-            
-            // Debug: Print values being copied
             std::apply(
                 [parent_linear_idx, child_linear_idx, patch_idx, linear_idx](auto&... b)
                 {
-                    size_t buffer_idx = 0;
                     ((void)(
-                        std::cout << "    Buffer " << buffer_idx++ 
-                                  << ": " << b[parent_linear_idx] 
-                                  << " -> " << b[child_linear_idx] << " (before)" << std::endl,
-                        b[child_linear_idx] = b[parent_linear_idx],
-                        std::cout << "    Buffer " << (buffer_idx-1) 
-                                  << ": " << b[child_linear_idx] << " (after)" << std::endl
+                        b[child_linear_idx] = b[parent_linear_idx]
                     ), ...);
                 },
                 m_data_buffers
             );
         }
-        
-        std::cout << "Child patch " << patch_idx << " complete. Total elements copied: " 
-                  << patch_layout_t::flat_size() << std::endl;
     }
-    
-    std::cout << "\n=== INTERPOLATE_PATCH COMPLETE ===" << std::endl;
-    std::cout << "Total child patches created: " << s_nd_fanout << std::endl;
-    std::cout << "Total elements copied: " << s_nd_fanout * patch_layout_t::flat_size() << std::endl;
 }
 
     auto interpolate_node(
@@ -961,11 +1203,11 @@ auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
     {
         return;
     }
-    std::cout << "switching " << i << " and " << j << "with block size "<<  patch_layout_t::s_flat_size << std::endl;
+    // std::cout << "switching " << i << " and " << j << "with block size "<<  patch_layout_t::s_flat_size << std::endl;
     assert(m_linear_index_map[i] != m_linear_index_map[j]);
     std::swap(m_linear_index_map[i], m_linear_index_map[j]);
     std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
-    
+    std::swap(m_neighbors[i], m_neighbors[j]);
     auto patch_i_start = i * patch_layout_t::s_flat_size;
     auto patch_j_start = j * patch_layout_t::s_flat_size;
     

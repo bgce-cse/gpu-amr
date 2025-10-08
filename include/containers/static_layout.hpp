@@ -149,6 +149,29 @@ public:
     }
 
 
+
+    [[nodiscard]]
+constexpr static auto multi_index(size_t linear_index) noexcept -> multi_index_t
+{
+    assert(linear_index < s_flat_size);
+    if constexpr (std::is_signed_v<index_t>)
+        assert(linear_index >= 0);
+
+    multi_index_t multi_idx{};
+    auto remainder = linear_index;
+    
+    // Decode linear index back to multi-dimensional coordinates
+    for (rank_t d = 0; d < s_rank; ++d)
+    {
+        auto stride = s_strides[d];
+        multi_idx[d] = remainder / stride;
+        remainder %= stride;
+    }
+    
+    return multi_idx;
+}
+
+
     [[nodiscard]]
     constexpr static auto linear_logical_index(index_t const (&idxs)[s_rank]) noexcept -> index_t
     {
