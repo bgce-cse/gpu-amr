@@ -105,25 +105,25 @@ int main()
     };
 
 
-    auto coarsen_criterion =[](const patch_index_t& idx)
-            {
-                auto [coords, level] = patch_index_t::decode(idx.id());
-                auto max_size        = 1u << idx.max_depth();
-                auto cell_size       = 1u << (idx.max_depth() - level);
+    // auto coarsen_criterion =[](const patch_index_t& idx)
+    //         {
+    //             auto [coords, level] = patch_index_t::decode(idx.id());
+    //             auto max_size        = 1u << idx.max_depth();
+    //             auto cell_size       = 1u << (idx.max_depth() - level);
 
-                double mid_x  = coords[0] + 0.5 * cell_size;
-                double mid_y  = coords[1] + 0.5 * cell_size;
-                double center = 0.5 * max_size;
-                double dist2  = (mid_x - center) * (mid_x - center) +
-                               (mid_y - center) * (mid_y - center);
+    //             double mid_x  = coords[0] + 0.5 * cell_size;
+    //             double mid_y  = coords[1] + 0.5 * cell_size;
+    //             double center = 0.5 * max_size;
+    //             double dist2  = (mid_x - center) * (mid_x - center) +
+    //                            (mid_y - center) * (mid_y - center);
 
-                // Only coarsen if not at min level!
-                if (level > 0 && dist2 < 0.3 / idx.level() * max_size * max_size)
-                {
-                    return tree_t::refine_status_t::Coarsen;
-                }
-                return tree_t::refine_status_t::Stable;
-            };
+    //             // Only coarsen if not at min level!
+    //             if (level > 0 && dist2 < 0.3 / idx.level() * max_size * max_size)
+    //             {
+    //                 return tree_t::refine_status_t::Coarsen;
+    //             }
+    //             return tree_t::refine_status_t::Stable;
+    //         };
 
     
     for(size_t idx = 0; idx < h.size(); idx++){
@@ -171,12 +171,12 @@ int main()
     // }
 
 
-    for (; i != 6; ++i)
-    {
-        h.reconstruct_tree(coarsen_criterion);
-        std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
-        printer.print(h, file_extension);
-    }
+    // for (; i != 2; ++i)
+    // {
+    //     h.reconstruct_tree(coarsen_criterion);
+    //     std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
+    //     printer.print(h, file_extension);
+    // }
 
 
 

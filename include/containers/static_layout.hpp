@@ -164,7 +164,7 @@ constexpr static auto multi_index(size_t linear_index) noexcept -> multi_index_t
     for (rank_t d = 0; d < s_rank; ++d)
     {
         auto stride = s_strides[d];
-        multi_idx[d] = remainder / stride;
+        multi_idx[s_rank - 1- d] = remainder / stride;
         remainder %= stride;
     }
     
