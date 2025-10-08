@@ -69,8 +69,8 @@ int main()
 {
     std::cout << "Hello balancing world\n";
     constexpr size_t N = 4;
-    constexpr size_t M = 4;
-    constexpr size_t Halo = 1;
+    constexpr size_t M = 2;
+    constexpr size_t Halo = 2;
     // using linear_index_t    = std::uint32_t;
     [[maybe_unused]]
     constexpr auto Fanout = 2;
@@ -105,25 +105,25 @@ int main()
     };
 
 
-    // auto coarsen_criterion =[](const patch_index_t& idx)
-    //         {
-    //             auto [coords, level] = patch_index_t::decode(idx.id());
-    //             auto max_size        = 1u << idx.max_depth();
-    //             auto cell_size       = 1u << (idx.max_depth() - level);
+    auto coarsen_criterion =[](const patch_index_t& idx)
+            {
+                auto [coords, level] = patch_index_t::decode(idx.id());
+                auto max_size        = 1u << idx.max_depth();
+                auto cell_size       = 1u << (idx.max_depth() - level);
 
-    //             double mid_x  = coords[0] + 0.5 * cell_size;
-    //             double mid_y  = coords[1] + 0.5 * cell_size;
-    //             double center = 0.5 * max_size;
-    //             double dist2  = (mid_x - center) * (mid_x - center) +
-    //                            (mid_y - center) * (mid_y - center);
+                double mid_x  = coords[0] + 0.5 * cell_size;
+                double mid_y  = coords[1] + 0.5 * cell_size;
+                double center = 0.5 * max_size;
+                double dist2  = (mid_x - center) * (mid_x - center) +
+                               (mid_y - center) * (mid_y - center);
 
-    //             // Only coarsen if not at min level!
-    //             if (level > 0 && dist2 < 0.3 / idx.level() * max_size * max_size)
-    //             {
-    //                 return tree_t::refine_status_t::Coarsen;
-    //             }
-    //             return tree_t::refine_status_t::Stable;
-    //         };
+                // Only coarsen if not at min level!
+                if (level > 0 && dist2 < 0.3 / idx.level() * max_size * max_size)
+                {
+                    return tree_t::refine_status_t::Coarsen;
+                }
+                return tree_t::refine_status_t::Stable;
+            };
 
     
     for(size_t idx = 0; idx < h.size(); idx++){
@@ -136,17 +136,17 @@ int main()
         }
 
     }
-    for(size_t idx = 0; idx < h.size(); idx++){
-        // Access S1 values (float)
-        std::cout << "patch " << idx << std::endl;
-        tensor_t& s1_patch = h.template get_patch<S1>(idx);
+    // for(size_t idx = 0; idx < h.size(); idx++){
+    //     // Access S1 values (float)
+    //     std::cout << "patch " << idx << std::endl;
+    //     tensor_t& s1_patch = h.template get_patch<S1>(idx);
 
-        for(size_t linear_idx = 0; linear_idx < 36; linear_idx++) {
+    //     for(size_t linear_idx = 0; linear_idx < 36; linear_idx++) {
 
-            std::cout << s1_patch[linear_idx] << std::endl; 
-        }
+    //         std::cout << s1_patch[linear_idx] << std::endl; 
+    //     }
 
-    }
+    // }
 // 
     printer.print(h, "_iteration_0.vtk");
 
@@ -171,12 +171,12 @@ int main()
     // }
 
 
-    // for (; i != 2; ++i)
-    // {
-    //     h.reconstruct_tree(coarsen_criterion);
-    //     std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
-    //     printer.print(h, file_extension);
-    // }
+    for (; i != 13; ++i)
+    {
+        h.reconstruct_tree(coarsen_criterion);
+        std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
+        printer.print(h, file_extension);
+    }
 
 
 
