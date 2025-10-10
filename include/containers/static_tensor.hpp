@@ -1,6 +1,7 @@
 #ifndef AMR_INCLUDED_STATIC_TENSOR
 #define AMR_INCLUDED_STATIC_TENSOR
 
+#include "container_concepts.hpp"
 #include "multi_index.hpp"
 #include "static_layout.hpp"
 #include "utility/compile_time_utility.hpp"
@@ -17,14 +18,12 @@
 namespace amr::containers
 {
 
-template <typename T, std::integral auto N, std::integral auto... Ns>
-    requires utility::concepts::are_same<decltype(N), decltype(Ns)...> && (N > 0) &&
-             ((Ns > 0) && ...)
+template <typename T, concepts::StaticLayout Layout>
 class static_tensor
 {
 public:
     using value_type      = std::remove_cv_t<T>;
-    using layout_t        = static_layout<N, Ns...>;
+    using layout_t        = Layout;
     using size_type       = typename layout_t::size_type;
     using index_t         = typename layout_t::index_t;
     using rank_t          = typename layout_t::rank_t;
@@ -163,8 +162,8 @@ private:
     value_type data_[s_flat_size];
 };
 
-template <typename T, std::integral auto N, std::integral auto... Ns>
-auto operator<<(std::ostream& os, static_tensor<T, N, Ns...> const& t) noexcept
+template <typename T, concepts::StaticLayout Layout>
+auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
     -> std::ostream&
 {
     using tensor_t                 = std::remove_cvref_t<decltype(t)>;
