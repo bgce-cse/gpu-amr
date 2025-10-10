@@ -58,13 +58,11 @@ concept PatchIndex =
     std::integral<typename I::size_type> && std::unsigned_integral<typename I::mask_t> &&
     std::equality_comparable<I>;
 
-template <typename S>
-concept StaticLayout = requires() {
-    S::flat_index();
-    S::s_strides;
-    S::s_sizes;
-    S::s_rank;
-};
+template <typename I>
+concept MultiIndex = requires() {
+    { I::elements() } -> std::same_as<typename I::size_type>;
+    { I::rank() } -> std::same_as<typename I::rank_t>;
+} && std::ranges::range<I>;
 
 } // namespace amr::ndt::concepts
 

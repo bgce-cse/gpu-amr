@@ -1,6 +1,7 @@
-#ifndef AMR_INCLUDED_STATIC_SHAPE
-#define AMR_INCLUDED_STATIC_SHAPE
+#ifndef AMR_INCLUDED_STATIC_LAYOUT
+#define AMR_INCLUDED_STATIC_LAYOUT
 
+#include "static_shape.hpp"
 #include "utility/compile_time_utility.hpp"
 #include "utility/utility_concepts.hpp"
 #include <array>
@@ -20,14 +21,13 @@ template <std::integral auto N, std::integral auto... Ns>
 class static_layout
 {
 public:
-    // TODO: This can be dangerous, maybe hardcode a type once we know what we
-    // need
-    using size_type       = std::common_type_t<decltype(N), decltype(Ns)...>;
-    using index_t         = size_type;
-    using rank_t          = size_type;
-    using multi_index_t   = index::static_multi_index<index_t, N, Ns...>;
+    using shape_t       = static_shape<N, Ns...>;
+    using size_type     = typename shape_t::size_type;
+    using rank_t        = typename shape_t::size_type;
+    using index_t       = size_type;
+    using multi_index_t = index::static_multi_index<index_t, shape_t>;
 
-    inline static constexpr rank_t                        s_rank = sizeof...(Ns) + 1;
+    inline static constexpr rank_t                        s_rank = shape_t::s_rank;
     inline static constexpr std::array<size_type, s_rank> s_sizes =
         multi_index_t::s_sizes;
     inline static constexpr auto s_strides = []
@@ -43,6 +43,11 @@ public:
     inline static constexpr size_type s_flat_size = (N * ... * Ns);
 
     static_assert(s_rank > 0);
+
+public:
+    // This class is just an interface
+    static_layout() noexcept  = delete;
+    ~static_layout() noexcept = delete;
 
 public:
     [[nodiscard]]
@@ -105,7 +110,6 @@ public:
         return linear_idx;
     }
 
-
 private:
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
     static auto assert_in_bounds(index_t const (&idxs)[s_rank]) noexcept -> void
@@ -124,4 +128,4 @@ private:
 
 } // namespace amr::containers
 
-#endif // AMR_INCLUDED_STATIC_SHAPE
+#endif // AMR_INCLUDED_STATIC_LAYOUT

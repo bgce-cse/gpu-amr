@@ -1,4 +1,5 @@
 #include "containers/container_algorithms.hpp"
+#include "containers/static_layout.hpp"
 #include "containers/static_tensor.hpp"
 #include "containers/static_vector.hpp"
 #include "utility/random.hpp"
@@ -8,9 +9,10 @@
 
 int main()
 {
+    using namespace amr::containers;
     constexpr auto N = 5;
     using F          = int;
-    using tensor_t   = amr::containers::static_tensor<F, N, 3, 4, 2, 3>;
+    using tensor_t   = static_tensor<F, static_layout<N, 3, 4, 2, 3>>;
 
     std::cout << tensor_t::flat_size() << '\n';
     for (int i = 0; i != tensor_t::rank(); ++i)

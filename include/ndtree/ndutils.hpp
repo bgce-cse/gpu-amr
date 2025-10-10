@@ -1,6 +1,7 @@
 #ifndef AMR_INCLUDED_NDUTILS
 #define AMR_INCLUDED_NDUTILS
 
+#include "containers/container_concepts.hpp"
 #include "containers/container_utils.hpp"
 #include "containers/static_layout.hpp"
 #include "containers/static_tensor.hpp"
@@ -39,19 +40,18 @@ consteval auto multiples_of(
 }
 
 template <
-    std::integral      Index_Type,
-    std::integral auto Fanout,
-    std::integral auto N,
-    std::integral auto... Ns>
+    std::integral                      Index_Type,
+    std::integral auto                 Fanout,
+    containers::concepts::StaticLayout Layout>
 [[nodiscard]]
-consteval auto fragmentation_patch_maps(containers::static_layout<N, Ns...>) noexcept
+consteval auto fragmentation_patch_maps() noexcept
     -> containers::utils::types::tensor::hypercube_t<
-        containers::static_tensor<Index_Type, N, Ns...>,
+        containers::static_tensor<Index_Type, Layout>,
         Fanout,
-        containers::static_tensor<Index_Type, N, Ns...>::s_rank>
+        containers::static_tensor<Index_Type, Layout>::s_rank>
 {
     using index_t  = Index_Type;
-    using tensor_t = containers::static_tensor<index_t, N, Ns...>;
+    using tensor_t = containers::static_tensor<index_t, Layout>;
     using patch_shape_t =
         containers::utils::types::tensor::hypercube_t<tensor_t, Fanout, tensor_t::s_rank>;
     patch_shape_t to{};

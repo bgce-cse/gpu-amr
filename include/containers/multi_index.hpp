@@ -1,6 +1,7 @@
 #ifndef AMR_INCLUDED_MULTI_INDEX
 #define AMR_INCLUDED_MULTI_INDEX
 
+#include "container_concepts.hpp"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -12,21 +13,35 @@
 namespace amr::containers::index
 {
 
-template <std::integral Index_Type, std::integral auto N, std::integral auto... Ns>
+template <std::integral Index_Type, concepts::StaticShape Shape>
 struct static_multi_index
 {
 public:
+    using shape_t         = Shape;
     using index_t         = Index_Type;
-    using size_type       = std::common_type_t<decltype(N), decltype(Ns)...>;
+    using size_type       = typename shape_t::size_type;
     using rank_t          = size_type;
     using const_iterator  = index_t const*;
     using iterator        = index_t*;
     using const_reference = index_t const&;
     using reference       = index_t&;
 
-    inline static constexpr size_type                     s_rank     = sizeof...(Ns) + 1;
-    inline static constexpr size_type                     s_sentinel = s_rank;
-    inline static constexpr std::array<size_type, s_rank> s_sizes    = { N, Ns... };
+    inline static constexpr size_type s_rank     = shape_t::s_rank;
+    inline static constexpr size_type s_sentinel = s_rank;
+    inline static constexpr auto      s_sizes    = shape_t::s_sizes;
+    inline static constexpr auto      s_elements = shape_t::s_elements;
+
+    [[nodiscard]]
+    static constexpr auto rank() noexcept -> rank_t
+    {
+        return s_rank;
+    }
+
+    [[nodiscard]]
+    static constexpr auto elements() noexcept -> size_type
+    {
+        return s_elements;
+    }
 
     struct increment_result_t
     {
@@ -134,15 +149,15 @@ private:
     std::array<index_t, s_rank> value_;
 };
 
-template <std::integral Index_Type, std::integral auto N, std::integral auto... Ns>
+template <std::integral Index_Type, concepts::StaticShape Shape>
 auto operator<<(
-    std::ostream&                                   os,
-    static_multi_index<Index_Type, N, Ns...> const& idx
+    std::ostream&                                os,
+    static_multi_index<Index_Type, Shape> const& idx
 ) noexcept -> std::ostream&
 {
     using idx_t = std::remove_cvref_t<decltype(idx)>;
     os << "{ ";
-    for (typename idx_t::index_t d{}; d != idx_t::s_rank;)
+    for (typename idx_t::rank_t d{}; d != idx_t::s_rank;)
     {
         os << idx[d];
         os << (++d != idx_t::s_rank ? ", " : " ");
