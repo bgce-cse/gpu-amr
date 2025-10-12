@@ -4,6 +4,8 @@
 #include "containers/container_utils.hpp"
 #include "containers/static_tensor.hpp"
 #include "ndconcepts.hpp"
+#include "ndutils.hpp"
+#include "utility/constexpr_functions.hpp"
 #include <concepts>
 
 namespace amr::ndt::patches
@@ -12,61 +14,85 @@ namespace amr::ndt::patches
 template <
     typename T,
     containers::concepts::StaticLayout Data_Layout,
+    std::integral auto                 Fanout,
     std::integral auto                 Halo_Width>
 class patch
 {
-    using data_layout_t = Data_Layout;
-    using patch_layout_t =
-        typename utils::layout::padded_layout<data_layout_t>::type<Halo_Width * 2>;
+public:
+    using data_layout_t   = Data_Layout;
+    using padded_layout_t = typename containers::utils::types::layout::padded_layout<
+        data_layout_t>::type<Halo_Width * 2>;
 
     using value_type      = std::remove_cv_t<T>;
-    using size_type       = data_layout_t::size_type;
+    using size_type       = typename data_layout_t::size_type;
     using const_iterator  = value_type const*;
     using iterator        = value_type*;
     using const_reference = value_type const&;
     using reference       = value_type&;
 
-    using index_t     = typename data_layout_t::indext_t;
-    using container_t = containers::static_tensor<value_type, patch_layout_t>;
+    using index_t     = typename data_layout_t::index_t;
+    using padded_multi_index_t = typename padded_layout_t::multi_index_t;
+    using container_t = containers::static_tensor<value_type, padded_layout_t>;
+
+    static constexpr auto      s_dim       = data_layout_t::s_rank;
+    static constexpr size_type s_1d_fanout = Fanout;
+    static constexpr size_type s_nd_fanout =
+        utility::cx_functions::pow(s_1d_fanout, s_dim);
+
+    static_assert(s_nd_fanout > 1);
+    static_assert(
+        utils::patches::multiples_of(data_layout_t::s_sizes, s_1d_fanout),
+        "All patch dimensions must be multiples of the fanout"
+    );
 
     inline static constexpr auto s_halo_width = Halo_Width;
 
-    template <typename Multi_Index>
-    [[nodiscard]]
-    constexpr static auto to_multi_index(index_t const linear_index) noexcept
-        -> Multi_Index
+    constexpr auto data() const -> container_t const&
     {
-        using multi_index_t = Multi_Index;
-        using rank_t        = typename multi_index_t::rank_t;
-        using size_type     = typename multi_index_t::size_type;
-        using index_t       = typename multi_index_t::index_t;
+        return m_data;
+    }
 
-        constexpr auto rank = multi_index_t::rank();
-        assert(linear_index < multi_index_t::elements());
-        if constexpr (std::is_signed_v<size_type>)
-        {
-            assert(linear_index >= 0);
-        }
+    template <class... I>
+        requires(sizeof...(I) == s_dim) && (std::integral<std::remove_cvref_t<I>> && ...)
+    [[nodiscard]]
+    constexpr auto operator[](I&&... idxs) const noexcept -> const_reference
+    {
+        return m_data[std::forward<decltype(idxs)>(idxs)...];
+    }
 
-        multi_index_t multi_idx{};
+    template <class... I>
+        requires(sizeof...(I) == s_dim) && (std::integral<std::remove_cvref_t<I>> && ...)
+    [[nodiscard]]
+    constexpr auto operator[](I&&... idxs) noexcept -> reference
+    {
+        return const_cast<reference>(
+            std::as_const(*this).operator[](std::forward<decltype(idxs)>(idxs)...)
+        );
+    }
 
-        if constexpr (std::is_same_v<Multi_Index, typename patch_layout_t::multi_index_t>)
-        {
-            using layout_t = patch_layout_t;
-            auto remainder = linear_index;
-            for (rank_t d = 0; d < multi_index_t::s_rank; ++d)
-            {
-                const auto stride = layout_t::s_strides[d];
-                multi_idx[d]      = static_cast<index_t>(remainder / stride);
-                remainder %= stride;
-            }
-        }
-        else if constexpr (std::is_same_v<
-                               Multi_Index,
-                               typename data_layout_t::multi_index_t>){
-        }
+    [[nodiscard]]
+    constexpr auto operator[](padded_multi_index_t const& multi_idx) const noexcept
+        -> const_reference
+    {
+        return m_data[std::forward<decltype(multi_idx)>(multi_idx)];
+    }
 
-            return multi_idx;
+    [[nodiscard]]
+    constexpr auto operator[](padded_multi_index_t const& multi_idx) noexcept -> reference
+    {
+        return const_cast<reference>(std::as_const(*this).operator[](multi_idx));
+    }
+
+    [[nodiscard]]
+    constexpr auto operator[](index_t const linear_idx) const noexcept -> const_reference
+    {
+        return m_data[linear_idx];
+    }
+
+    [[nodiscard]]
+    constexpr auto operator[](index_t const linear_idx) noexcept -> reference
+    {
+        return const_cast<reference>(std::as_const(*this).operator[](linear_idx));
     }
 
 private:

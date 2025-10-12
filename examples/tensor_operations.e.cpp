@@ -14,7 +14,7 @@ int main()
     using F          = int;
     using tensor_t   = static_tensor<F, static_layout<N, 3, 4, 2, 3>>;
 
-    std::cout << tensor_t::flat_size() << '\n';
+    std::cout << tensor_t::elements() << '\n';
     for (int i = 0; i != tensor_t::rank(); ++i)
     {
         std::cout << tensor_t::size(i) << ", ";

@@ -21,7 +21,7 @@ struct padded_layout;
 template <std::integral auto N, std::integral auto... Ns>
 struct padded_layout<static_layout<N, Ns...>>
 {
-    using size_type = std::common_type_t<decltype(N), decltype(Ns)...>;
+    using size_type = typename static_layout<N, Ns...>::size_type;
     template <std::integral auto Pad>
     using type = static_layout<
         static_cast<size_type>(N + Pad),
