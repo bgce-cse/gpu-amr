@@ -79,7 +79,7 @@ consteval auto fragmentation_patch_maps() noexcept -> containers::utils::types::
 
     using layout_t = typename patch_t::padded_layout_t;
     using index_t  = typename patch_t::index_t;
-    using tensor_t = containers::static_tensor<index_t, layout_t>;
+    using tensor_t = typename patch_t::container_t;
     using patch_shape_t =
         containers::utils::types::tensor::hypercube_t<patch_t, fanout, tensor_t::rank()>;
     patch_shape_t to{};
