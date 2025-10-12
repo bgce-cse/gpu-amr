@@ -36,7 +36,7 @@ public:
     inline static constexpr rank_t                        s_rank    = layout_t::s_rank;
     inline static constexpr std::array<size_type, s_rank> s_sizes   = layout_t::s_sizes;
     inline static constexpr auto                          s_strides = layout_t::s_strides;
-    inline static constexpr size_type s_flat_size = layout_t::s_flat_size;
+    inline static constexpr size_type s_elements = layout_t::s_flat_size;
 
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::is_standard_layout_v<T>);
@@ -44,9 +44,9 @@ public:
 
 public:
     [[nodiscard]]
-    constexpr static auto flat_size() noexcept -> size_type
+    constexpr static auto elements() noexcept -> size_type
     {
-        return s_flat_size;
+        return s_elements;
     }
 
     [[nodiscard]]
@@ -122,6 +122,18 @@ public:
     }
 
     [[nodiscard]]
+    constexpr auto operator[](index_t const linear_idx) const noexcept -> const_reference
+    {
+        return data_[linear_idx];
+    }
+
+    [[nodiscard]]
+    constexpr auto operator[](index_t const linear_idx) noexcept -> reference
+    {
+        return const_cast<reference>(std::as_const(*this).operator[](linear_idx));
+    }
+
+    [[nodiscard]]
     constexpr auto cbegin() const noexcept -> const_iterator
     {
         return std::cbegin(data_);
@@ -159,7 +171,7 @@ public:
 
 private:
     // TODO: Alignment?
-    value_type data_[s_flat_size];
+    value_type data_[s_elements];
 };
 
 template <typename T, concepts::StaticLayout Layout>

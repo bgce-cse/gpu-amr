@@ -533,7 +533,7 @@ index 2528f04..fa8ca23 100644
 -
 -    [[nodiscard]]
 -constexpr static auto multi_index(size_t linear_index) noexcept -> multi_index_t
--{
+-
 -    assert(linear_index < s_flat_size);
 -    if constexpr (std::is_signed_v<index_t>)
 -        assert(linear_index >= 0);

@@ -3,13 +3,12 @@
 
 #include "containers/container_concepts.hpp"
 #include "containers/container_utils.hpp"
-#include "containers/static_layout.hpp"
 #include "containers/static_tensor.hpp"
-#include "ndconcepts.hpp"
 #include "utility/constexpr_functions.hpp"
 #include <algorithm>
 #include <concepts>
 #include <type_traits>
+#include <cassert>
 
 namespace amr::ndt::utils
 {
@@ -34,30 +33,63 @@ consteval auto multiples_of(
 ) noexcept -> bool
     requires std::is_same_v<
         std::ranges::range_value_t<std::remove_cvref_t<decltype(r)>>,
-        decltype(x)>
+        std::remove_const_t<decltype(x)>>
 {
     return std::ranges::all_of(r, [x](auto const& e) { return e % x == 0; });
 }
 
-template <
-    std::integral                      Index_Type,
-    std::integral auto                 Fanout,
-    containers::concepts::StaticLayout Layout>
+template <containers::concepts::StaticLayout Layout>
 [[nodiscard]]
-consteval auto fragmentation_patch_maps() noexcept
-    -> containers::utils::types::tensor::hypercube_t<
-        containers::static_tensor<Index_Type, Layout>,
-        Fanout,
-        containers::static_tensor<Index_Type, Layout>::s_rank>
+constexpr auto is_halo_cell(
+    typename Layout::index_t   linear_index,
+    typename Layout::size_type halo_width
+) noexcept -> bool
 {
-    using index_t  = Index_Type;
-    using tensor_t = containers::static_tensor<index_t, Layout>;
+    using layout_t                       = Layout;
+    using size_type                      = layout_t::size_type;
+    static constexpr auto        rank    = layout_t::s_rank;
+    static constexpr auto const& strides = layout_t::s_strides;
+    static constexpr auto const& sizes   = layout_t::s_sizes;
+
+    assert(linear_index < layout_t::flat_size());
+
+    if (std::is_signed_v<size_type>)
+    {
+        assert(linear_index >= 0);
+    }
+    for (auto j = decltype(rank){}; j != rank; ++j)
+    {
+        const size_type relative_idx = linear_index / strides[j];
+        assert(relative_idx < sizes[j]);
+        if (relative_idx < halo_width || relative_idx >= sizes[j] - halo_width)
+        {
+            return true;
+        }
+        linear_index %= strides[j];
+    }
+    return false;
+}
+
+template <typename Patch>
+[[nodiscard]]
+consteval auto fragmentation_patch_maps() noexcept -> containers::utils::types::tensor::
+    hypercube_t<Patch, Patch::s_1d_fanout, Patch::s_dim>
+{
+    using patch_t = Patch;
+
+    static constexpr auto fanout = patch_t::s_1d_fanout;
+
+    using layout_t = typename patch_t::padded_layout_t;
+    using index_t  = typename patch_t::index_t;
+    using tensor_t = containers::static_tensor<index_t, layout_t>;
     using patch_shape_t =
-        containers::utils::types::tensor::hypercube_t<tensor_t, Fanout, tensor_t::s_rank>;
+        containers::utils::types::tensor::hypercube_t<patch_t, fanout, tensor_t::s_rank>;
     patch_shape_t to{};
 
-    auto idx           = typename tensor_t::multi_index_t{};
-    auto sized_strides = decltype(tensor_t::s_strides){};
+    auto                  idx           = typename tensor_t::multi_index_t{};
+    auto                  sized_strides = decltype(tensor_t::s_strides){};
+    static constexpr auto strides       = tensor_t::s_strides;
+    static constexpr auto data_shape    = patch_t::data_layout_t::s_sizes;
     std::transform(
         std::cbegin(tensor_t::s_strides),
         std::cend(tensor_t::s_strides),
@@ -67,25 +99,36 @@ consteval auto fragmentation_patch_maps() noexcept
     );
     do
     {
-        const auto offset = std::transform_reduce(
-            std::cbegin(idx),
-            std::cend(idx),
-            std::cbegin(tensor_t::s_strides),
-            index_t{},
-            std::plus{},
-            [](index_t const i, index_t const s) { return (i / Fanout) * s; }
-        );
-        auto out_patch_idx = typename patch_shape_t::multi_index_t{};
+        static constexpr index_t halo_width = patch_t::s_halo_width;
+        const auto               linear_idx = layout_t::linear_index(idx);
+        const auto               is_halo = is_halo_cell<layout_t>(linear_idx, halo_width);
+        const auto               offset  = is_halo ? index_t{}
+                                                   : std::transform_reduce(
+                                          std::cbegin(idx),
+                                          std::cend(idx),
+                                          std::cbegin(strides),
+                                          index_t{},
+                                          std::plus{},
+                                          [](auto const i, auto const s)
+                                          { return ((i - halo_width) / fanout) * s; }
+                                      );
+        auto                     out_patch_idx = typename patch_shape_t::multi_index_t{};
         do
         {
-            const auto base = std::transform_reduce(
-                                  std::cbegin(out_patch_idx),
-                                  std::cend(out_patch_idx),
-                                  std::cbegin(sized_strides),
-                                  index_t{}
-                              ) /
-                              Fanout;
-            to[out_patch_idx][idx] = offset + base;
+            const auto linear_out_idx      = patch_shape_t::linear_index(out_patch_idx);
+            const auto base                = is_halo ? index_t{ -(linear_out_idx + 1) }
+                                                     : [&out_patch_idx]()
+            {
+                index_t ret{};
+                for (index_t i = 0; i != layout_t::rank(); ++i)
+                {
+                    assert(data_shape[i] % fanout == 0);
+                    ret += (out_patch_idx[i] * (data_shape[i] / fanout) + halo_width) *
+                           strides[i];
+                }
+                return ret;
+            }();
+            to[linear_out_idx][linear_idx] = offset + base;
         } while (out_patch_idx.increment());
     } while (idx.increment());
     return to;
