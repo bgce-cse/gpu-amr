@@ -100,7 +100,10 @@ consteval auto fragmentation_patch_maps() noexcept -> containers::utils::types::
                                           index_t{},
                                           std::plus{},
                                           [](auto const i, auto const s)
-                                          { return ((i - halo_width) / fanout) * s; }
+                                          {
+                                              assert(i >= halo_width);
+                                              return ((i - halo_width) / fanout) * s;
+                                          }
                                       );
         auto                     out_patch_idx = typename patch_shape_t::multi_index_t{};
         do
