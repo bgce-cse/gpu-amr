@@ -33,10 +33,11 @@ public:
     using const_reference = value_type const&;
     using reference       = value_type&;
 
-    inline static constexpr rank_t                        s_rank    = layout_t::s_rank;
-    inline static constexpr std::array<size_type, s_rank> s_sizes   = layout_t::s_sizes;
-    inline static constexpr auto                          s_strides = layout_t::s_strides;
-    inline static constexpr size_type s_elements = layout_t::s_flat_size;
+private:
+    inline static constexpr rank_t                        s_rank    = layout_t::rank();
+    inline static constexpr std::array<size_type, s_rank> s_sizes   = layout_t::sizes();
+    inline static constexpr auto                          s_strides = layout_t::strides();
+    inline static constexpr size_type s_elements = layout_t::flat_size();
 
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::is_standard_layout_v<T>);
@@ -60,6 +61,12 @@ public:
     {
         assert(i < s_rank);
         return s_sizes[i];
+    }
+
+    [[nodiscard]]
+    constexpr static auto strides() noexcept -> auto const&
+    {
+        return s_strides;
     }
 
     [[nodiscard]]
@@ -179,7 +186,7 @@ auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
     -> std::ostream&
 {
     using tensor_t                 = std::remove_cvref_t<decltype(t)>;
-    static constexpr auto rank     = tensor_t::s_rank;
+    static constexpr auto rank     = tensor_t::rank();
     static constexpr auto newlines = []
     {
         static constexpr auto pool = []

@@ -20,16 +20,16 @@ concept Vector = requires(V v, typename V::size_type i) { v[i]; } && Container<V
 template <typename L>
 concept StaticLayout = requires(
     const typename L::multi_index_t midx,
-    const typename L::index_t (&idxs)[L::s_rank]
+    const typename L::index_t (&idxs)[L::rank()]
 ) {
     typename L::size_type;
     typename L::index_t;
     typename L::rank_t;
     typename L::multi_index_t;
-    L::s_rank;
-    L::s_sizes;
-    L::s_strides;
-    L::s_flat_size;
+    L::rank();
+    L::sizes();
+    L::strides();
+    L::flat_size();
     { L::linear_index(midx) } -> std::same_as<typename L::index_t>;
     { L::linear_index(idxs) } -> std::same_as<typename L::index_t>;
 };
@@ -38,9 +38,9 @@ template <typename L>
 concept StaticShape = requires() {
     typename L::size_type;
     typename L::rank_t;
-    L::s_rank;
-    L::s_sizes;
-    L::s_elements;
+    L::rank();
+    L::sizes();
+    L::elements();
 };
 
 } // namespace amr::containers::concepts

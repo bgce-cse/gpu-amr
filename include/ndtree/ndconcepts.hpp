@@ -64,6 +64,22 @@ concept MultiIndex = requires() {
     { I::rank() } -> std::same_as<typename I::rank_t>;
 } && std::ranges::range<I>;
 
+template <typename P>
+concept PatchType = requires(
+    P const                                cp,
+    P                                      p,
+    typename P::padded_multi_index_t const midx,
+    typename P::index_t const              i
+) {
+    typename P::data_layout_t;
+    { P::halo_width() } -> std::same_as<typename P::size_type>;
+    { p.data() } -> std::same_as<typename P::container_t&>;
+    { p.data() } -> std::same_as<typename P::container_t&>;
+    { cp.data() } -> std::same_as<typename P::container_t const&>;
+    { cp[midx] } -> std::same_as<typename P::value_type const&>;
+    { cp[i] } -> std::same_as<typename P::value_type const&>;
+};
+
 } // namespace amr::ndt::concepts
 
 #endif // AMR_INCLUDED_NDT_CONCEPTS

@@ -24,11 +24,30 @@ public:
     // need
     using size_type = std::common_type_t<decltype(N), decltype(Ns)...>;
     using rank_t    = size_type;
-    inline static constexpr size_type s_elements = (N * ... * Ns);
 
-    inline static constexpr rank_t                        s_rank  = sizeof...(Ns) + 1;
-    inline static constexpr std::array<size_type, s_rank> s_sizes = { N, Ns... };
+private:
+    inline static constexpr size_type                     s_elements = (N * ... * Ns);
+    inline static constexpr rank_t                        s_rank     = sizeof...(Ns) + 1;
+    inline static constexpr std::array<size_type, s_rank> s_sizes    = { N, Ns... };
 
+public:
+    [[nodiscard]]
+    static constexpr auto rank() noexcept -> rank_t
+    {
+        return s_rank;
+    }
+
+    [[nodiscard]]
+    static constexpr auto elements() noexcept -> size_type
+    {
+        return s_elements;
+    }
+
+    [[nodiscard]]
+    static constexpr auto sizes() noexcept -> auto const&
+    {
+        return s_sizes;
+    }
 };
 
 } // namespace amr::containers

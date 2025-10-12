@@ -27,9 +27,10 @@ public:
     using index_t       = size_type;
     using multi_index_t = index::static_multi_index<index_t, shape_t>;
 
-    inline static constexpr rank_t                        s_rank = shape_t::s_rank;
+private:
+    inline static constexpr rank_t                        s_rank = shape_t::rank();
     inline static constexpr std::array<size_type, s_rank> s_sizes =
-        multi_index_t::s_sizes;
+        multi_index_t::sizes();
     inline static constexpr auto s_strides = []
     {
         std::array<size_type, s_rank> strides{};
@@ -41,7 +42,6 @@ public:
         return strides;
     }();
     inline static constexpr size_type s_flat_size = (N * ... * Ns);
-
     static_assert(s_rank > 0);
 
 public:
@@ -63,10 +63,22 @@ public:
     }
 
     [[nodiscard]]
+    constexpr static auto sizes() noexcept -> auto const&
+    {
+        return s_sizes;
+    }
+
+    [[nodiscard]]
     constexpr static auto size(index_t const i) noexcept -> size_type
     {
         assert(i < s_rank);
         return s_sizes[i];
+    }
+
+    [[nodiscard]]
+    constexpr static auto strides() noexcept -> auto const&
+    {
+        return s_strides;
     }
 
     [[nodiscard]]
