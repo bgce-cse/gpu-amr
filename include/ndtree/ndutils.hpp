@@ -6,9 +6,9 @@
 #include "containers/static_tensor.hpp"
 #include "utility/constexpr_functions.hpp"
 #include <algorithm>
+#include <cassert>
 #include <concepts>
 #include <type_traits>
-#include <cassert>
 
 namespace amr::ndt::utils
 {
@@ -75,8 +75,7 @@ template <typename Patch>
 consteval auto fragmentation_patch_maps() noexcept -> containers::utils::types::tensor::
     hypercube_t<Patch, Patch::s_1d_fanout, Patch::s_dim>
 {
-    using patch_t = Patch;
-
+    using patch_t                = Patch;
     static constexpr auto fanout = patch_t::s_1d_fanout;
 
     using layout_t = typename patch_t::padded_layout_t;
@@ -87,16 +86,8 @@ consteval auto fragmentation_patch_maps() noexcept -> containers::utils::types::
     patch_shape_t to{};
 
     auto                  idx           = typename tensor_t::multi_index_t{};
-    auto                  sized_strides = decltype(tensor_t::s_strides){};
     static constexpr auto strides       = tensor_t::s_strides;
     static constexpr auto data_shape    = patch_t::data_layout_t::s_sizes;
-    std::transform(
-        std::cbegin(tensor_t::s_strides),
-        std::cend(tensor_t::s_strides),
-        std::cbegin(tensor_t::s_sizes),
-        std::begin(sized_strides),
-        std::multiplies{}
-    );
     do
     {
         static constexpr index_t halo_width = patch_t::s_halo_width;
