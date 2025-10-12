@@ -27,12 +27,14 @@ struct static_vector
     using const_reference = value_type const&;
     using reference       = value_type&;
 
+private:
     // TODO: Alignment
     static constexpr auto s_size = N;
 
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::is_standard_layout_v<T>);
 
+public:
     [[nodiscard]]
     constexpr static auto size() noexcept -> size_type
     {

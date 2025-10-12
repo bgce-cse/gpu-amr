@@ -31,22 +31,24 @@ namespace amr::ndt::tree
 template <
     concepts::DeconstructibleType T,
     concepts::PatchIndex          Patch_Index,
-    concepts::StaticLayout         Patch_Layout>
+    concepts::StaticLayout        Patch_Layout>
 class ndtree
 {
 public:
-    using value_type                  = T;
-    using size_type                   = std::size_t;
-    using patch_index_t               = Patch_Index;
-    using patch_index_directon_t      = typename patch_index_t::direction_t;
-    using linear_index_t              = size_type;
-    using patch_layout_t              = Patch_Layout;
+    using value_type             = T;
+    using size_type              = std::size_t;
+    using patch_index_t          = Patch_Index;
+    using patch_index_directon_t = typename patch_index_t::direction_t;
+    using linear_index_t         = size_type;
+    using patch_layout_t         = Patch_Layout;
+
+private:
     static constexpr auto s_nd_fanout = patch_index_t::nd_fanout();
-    static constexpr auto dimension   = patch_layout_t::s_rank;
+    static constexpr auto s_dimension = patch_layout_t::rank();
 
     static_assert(s_nd_fanout > 1);
     static_assert(
-        utils::patches::multiples_of(patch_layout_t::s_sizes, s_nd_fanout),
+        utils::patches::multiples_of(patch_layout_t::sizes(), s_nd_fanout),
         "All patch dimensions must be multiples of the fanout"
     );
 
@@ -87,6 +89,7 @@ public:
     using deconstructed_types_t =
         typename deconstructed_types_impl<typename T::deconstructed_types_map_t>::type;
 
+public:
     enum struct RefinementStatus : char
     {
         Stable  = 0,
@@ -101,6 +104,19 @@ public:
     using index_map_t                = std::unordered_map<patch_index_t, linear_index_t>;
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
+
+public:
+    [[nodiscard]]
+    static constexpr auto dimension() noexcept -> auto const&
+    {
+        return s_dimension;
+    }
+
+    [[nodiscard]]
+    static constexpr auto nd_fanout() noexcept -> auto const&
+    {
+        return s_nd_fanout;
+    }
 
 public:
     ndtree(size_type size) noexcept

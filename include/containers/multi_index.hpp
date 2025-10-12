@@ -26,11 +26,13 @@ public:
     using const_reference = index_t const&;
     using reference       = index_t&;
 
-    inline static constexpr size_type s_rank     = shape_t::s_rank;
+private:
+    inline static constexpr size_type s_rank     = shape_t::rank();
     inline static constexpr size_type s_sentinel = s_rank;
-    inline static constexpr auto      s_sizes    = shape_t::s_sizes;
-    inline static constexpr auto      s_elements = shape_t::s_elements;
+    inline static constexpr auto&     s_sizes    = shape_t::sizes();
+    inline static constexpr auto      s_elements = shape_t::elements();
 
+public:
     [[nodiscard]]
     static constexpr auto rank() noexcept -> rank_t
     {
@@ -41,6 +43,19 @@ public:
     static constexpr auto elements() noexcept -> size_type
     {
         return s_elements;
+    }
+
+    [[nodiscard]]
+    constexpr static auto sizes() noexcept -> auto const&
+    {
+        return s_sizes;
+    }
+
+    [[nodiscard]]
+    constexpr static auto size(index_t const i) noexcept -> size_type
+    {
+        assert(i < s_rank);
+        return s_sizes[i];
     }
 
     struct increment_result_t
@@ -157,10 +172,10 @@ auto operator<<(
 {
     using idx_t = std::remove_cvref_t<decltype(idx)>;
     os << "{ ";
-    for (typename idx_t::rank_t d{}; d != idx_t::s_rank;)
+    for (typename idx_t::rank_t d{}; d != idx_t::rank();)
     {
         os << idx[d];
-        os << (++d != idx_t::s_rank ? ", " : " ");
+        os << (++d != idx_t::rank() ? ", " : " ");
     }
     return os << '}';
 }
