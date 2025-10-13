@@ -58,12 +58,6 @@ concept PatchIndex =
     std::integral<typename I::size_type> && std::unsigned_integral<typename I::mask_t> &&
     std::equality_comparable<I>;
 
-template <typename I>
-concept MultiIndex = requires() {
-    { I::elements() } -> std::same_as<typename I::size_type>;
-    { I::rank() } -> std::same_as<typename I::rank_t>;
-} && std::ranges::range<I>;
-
 template <typename P>
 concept PatchType = requires(
     P const                                cp,
@@ -71,13 +65,30 @@ concept PatchType = requires(
     typename P::padded_multi_index_t const midx,
     typename P::index_t const              i
 ) {
+    typename P::value_type;
+    typename P::size_type;
+    typename P::index_t;
+    typename P::container_t;
     typename P::data_layout_t;
+    typename P::padded_multi_index_t;
     { P::halo_width() } -> std::same_as<typename P::size_type>;
     { p.data() } -> std::same_as<typename P::container_t&>;
     { p.data() } -> std::same_as<typename P::container_t&>;
     { cp.data() } -> std::same_as<typename P::container_t const&>;
     { cp[midx] } -> std::same_as<typename P::value_type const&>;
     { cp[i] } -> std::same_as<typename P::value_type const&>;
+};
+
+template <typename L>
+concept PatchLayout = requires() {
+    typename L::rank_t;
+    typename L::index_t;
+    typename L::size_type;
+    typename L::data_layout_t;
+    typename L::padded_layout_t;
+    { L::dimension() } -> std::same_as<typename L::rank_t>;
+    { L::flat_size() } -> std::same_as<typename L::size_type>;
+    { L::halo_width() } -> std::same_as<typename L::size_type>;
 };
 
 } // namespace amr::ndt::concepts

@@ -17,6 +17,12 @@ template <typename V>
 concept Vector = requires(V v, typename V::size_type i) { v[i]; } && Container<V> &&
                  std::is_trivially_constructible_v<V>;
 
+template <typename I>
+concept MultiIndex = requires() {
+    { I::elements() } -> std::same_as<typename I::size_type>;
+    { I::rank() } -> std::same_as<typename I::rank_t>;
+} && std::ranges::range<I>;
+
 template <typename L>
 concept StaticLayout = requires(
     const typename L::multi_index_t midx,
@@ -26,21 +32,21 @@ concept StaticLayout = requires(
     typename L::index_t;
     typename L::rank_t;
     typename L::multi_index_t;
-    L::rank();
+    { L::rank() } -> std::same_as<typename L::rank_t>;
+    { L::flat_size() } -> std::same_as<typename L::size_type>;
     L::sizes();
     L::strides();
-    L::flat_size();
     { L::linear_index(midx) } -> std::same_as<typename L::index_t>;
     { L::linear_index(idxs) } -> std::same_as<typename L::index_t>;
 };
 
-template <typename L>
+template <typename S>
 concept StaticShape = requires() {
-    typename L::size_type;
-    typename L::rank_t;
-    L::rank();
-    L::sizes();
-    L::elements();
+    typename S::size_type;
+    typename S::rank_t;
+    { S::rank() } -> std::same_as<typename S::rank_t>;
+    S::sizes();
+    S::elements();
 };
 
 } // namespace amr::containers::concepts

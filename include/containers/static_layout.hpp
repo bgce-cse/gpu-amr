@@ -1,12 +1,12 @@
 #ifndef AMR_INCLUDED_STATIC_LAYOUT
 #define AMR_INCLUDED_STATIC_LAYOUT
 
+#include "container_concepts.hpp"
+#include "multi_index.hpp"
 #include "static_shape.hpp"
-#include "utility/compile_time_utility.hpp"
 #include "utility/utility_concepts.hpp"
 #include <array>
 #include <cassert>
-#include <numeric>
 
 #ifndef NDEBUG
 #    define AMR_CONTAINERS_CHECKBOUNDS
@@ -15,13 +15,11 @@
 namespace amr::containers
 {
 
-template <std::integral auto N, std::integral auto... Ns>
-    requires utility::concepts::are_same<decltype(N), decltype(Ns)...> && (N > 0) &&
-             ((Ns > 0) && ...)
+template <concepts::StaticShape Shape>
 class static_layout
 {
 public:
-    using shape_t       = static_shape<N, Ns...>;
+    using shape_t       = Shape;
     using size_type     = typename shape_t::size_type;
     using rank_t        = typename shape_t::size_type;
     using index_t       = size_type;
@@ -41,7 +39,7 @@ private:
         }
         return strides;
     }();
-    inline static constexpr size_type s_flat_size = (N * ... * Ns);
+    inline static constexpr size_type s_flat_size = shape_t::elements();
     static_assert(s_rank > 0);
 
 public:
