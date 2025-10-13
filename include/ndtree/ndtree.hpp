@@ -202,7 +202,7 @@ public:
     {
         const auto it = find_index(node_id);
         assert(it.has_value());
-        auto const start_to = m_size * patch_layout_t::flat_size();
+        auto const start_to = m_size;
         for (size_type i = 0; i != s_nd_fanout; ++i)
         {
             auto child_id = patch_index_t::child_of(
@@ -220,7 +220,7 @@ public:
         //     enforce_symmetric_neighbors(child_id, m_neighbors[m_index_map[child_id]]);
         // }
 
-        const auto from = it.value()->second * patch_layout_t::flat_size();
+        const auto from = it.value()->second;
         interpolate_patch(from, start_to);
         m_index_map.erase(it.value());
 #ifdef AMR_NDTREE_ENABLE_CHECKS
@@ -236,8 +236,8 @@ public:
         const auto child_0_it = find_index(child_0);
         assert(child_0_it.has_value());
 
-        const auto       start = child_0_it.value()->second * patch_layout_t::flat_size();
-        auto const       to    = m_size * patch_layout_t::flat_size();
+        const auto       start = child_0_it.value()->second;
+        auto const       to    = m_size ;
         // neighbor_array_t neighbor_array = compute_parent_neighbors(child_0);
 
         append(parent_node_id);
@@ -638,107 +638,77 @@ private:
 
     // TODO: make private
 public:
-    auto sort_buffers() noexcept -> void
+   auto sort_buffers() noexcept -> void
+{
+    compact();
+    std::sort(
+        m_reorder_buffer,
+        &m_reorder_buffer[m_size],
+        [this](auto const i, auto const j)
+        { return m_linear_index_map[i] < m_linear_index_map[j]; }
+    );
+
+    linear_index_t  backup_start_pos;
+    patch_index_t   backup_node_index;
+    refine_status_t backup_refine_status;
+    deconstructed_types_t backup_patch;
+
+    for (linear_index_t i = 0; i != back_idx();)
     {
-        compact();
-        std::sort(
-            m_reorder_buffer,
-            &m_reorder_buffer[m_size],
-            [this](auto const i, auto const j)
-            { return m_linear_index_map[i] < m_linear_index_map[j]; }
-        );
-
-        linear_index_t   backup_start_pos;
-        patch_index_t    backup_node_index;
-        refine_status_t  backup_refine_status;
-        // neighbor_array_t backup_neighbors;
-
-        // NEW: Backup buffer for entire patches instead of single elements
-        using backup_patch_t =
-            std::array<deconstructed_types_t, patch_layout_t::flat_size()>;
-        backup_patch_t backup_patch;
-
-        for (linear_index_t i = 0; i != back_idx();)
+        auto src = m_reorder_buffer[i];
+        if (i == src)
         {
-            auto src = m_reorder_buffer[i];
-            if (i == src)
-            {
-                ++i;
-                continue;
-            }
-
-            backup_start_pos     = i;
-            backup_node_index    = m_linear_index_map[i];
-            backup_refine_status = m_refine_status_buffer[i];
-            // backup_neighbors     = m_neighbors[i];
-
-            // Backup entire patch
-            auto patch_i_start = i * patch_layout_t::flat_size();
-            [this,
-             &backup_patch,
-             patch_i_start]<std::size_t... I>(std::index_sequence<I...>)
-            {
-                for (size_t k = 0; k < patch_layout_t::flat_size(); k++)
-                {
-                    ((void)(std::get<I>(backup_patch[k]) =
-                                std::get<I>(m_data_buffers)[patch_i_start + k]),
-                     ...);
-                }
-            }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
-
-            auto dst = i;
-            do
-            {
-                m_linear_index_map[dst]     = m_linear_index_map[src];
-                m_refine_status_buffer[dst] = m_refine_status_buffer[src];
-                // m_neighbors[dst]            = m_neighbors[src];
-
-                // Copy entire patches instead of single elements
-                auto patch_src_start = src * patch_layout_t::flat_size();
-                auto patch_dst_start = dst * patch_layout_t::flat_size();
-
-                std::apply(
-                    [patch_src_start, patch_dst_start](auto&... b)
-                    {
-                        for (size_t k = 0; k < patch_layout_t::flat_size(); k++)
-                        {
-                            ((b[patch_dst_start + k] = b[patch_src_start + k]), ...);
-                        }
-                    },
-                    m_data_buffers
-                );
-
-                m_index_map[m_linear_index_map[dst]] = dst;
-                m_reorder_buffer[dst]                = dst;
-                dst                                  = src;
-                src                                  = m_reorder_buffer[src];
-                assert(src != dst);
-            } while (src != backup_start_pos);
-
-            m_linear_index_map[dst]     = backup_node_index;
-            m_refine_status_buffer[dst] = backup_refine_status;
-            // m_neighbors[dst]            = backup_neighbors;
-
-            // Restore backed up patch
-            auto patch_dst_start = dst * patch_layout_t::flat_size();
-            [this,
-             &backup_patch,
-             patch_dst_start]<std::size_t... I>(std::index_sequence<I...>)
-            {
-                for (size_t k = 0; k < patch_layout_t::flat_size(); k++)
-                {
-                    ((void)(std::get<I>(m_data_buffers)[patch_dst_start + k] =
-                                std::get<I>(backup_patch[k])),
-                     ...);
-                }
-            }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
-
-            m_index_map[backup_node_index] = dst;
-            m_reorder_buffer[dst]          = dst;
+            ++i;
+            continue;
         }
-        assert(is_sorted());
-        assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
+
+        backup_start_pos     = i;
+        backup_node_index    = m_linear_index_map[i];
+        backup_refine_status = m_refine_status_buffer[i];
+
+        // Backup entire patch
+        [this, i, &backup_patch]<std::size_t... I>(std::index_sequence<I...>)
+        {
+            ((void)(std::get<I>(backup_patch) = std::get<I>(m_data_buffers)[i]), ...);
+        }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
+
+        auto dst = i;
+        do
+        {
+            m_linear_index_map[dst]     = m_linear_index_map[src];
+            m_refine_status_buffer[dst] = m_refine_status_buffer[src];
+
+            // Copy entire patches
+            std::apply(
+                [dst, src](auto&... b)
+                {
+                    ((void)(b[dst] = b[src]), ...);
+                },
+                m_data_buffers
+            );
+
+            m_index_map[m_linear_index_map[dst]] = dst;
+            m_reorder_buffer[dst]                = dst;
+            dst                                  = src;
+            src                                  = m_reorder_buffer[src];
+            assert(src != dst);
+        } while (src != backup_start_pos);
+
+        m_linear_index_map[dst]     = backup_node_index;
+        m_refine_status_buffer[dst] = backup_refine_status;
+
+        // Restore backed up patch
+        [this, dst, &backup_patch]<std::size_t... I>(std::index_sequence<I...>)
+        {
+            ((void)(std::get<I>(m_data_buffers)[dst] = std::get<I>(backup_patch)), ...);
+        }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
+
+        m_index_map[backup_node_index] = dst;
+        m_reorder_buffer[dst]          = dst;
     }
+    assert(is_sorted());
+    assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
+}
 
 public:
     [[nodiscard]]
@@ -894,6 +864,7 @@ auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
     {
         return;
     }
+    std::cout << "swapping "<< i << "and " << j << std::endl; 
     
     assert(m_linear_index_map[i] != m_linear_index_map[j]);
     std::swap(m_linear_index_map[i], m_linear_index_map[j]);

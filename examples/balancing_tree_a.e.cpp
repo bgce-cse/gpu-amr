@@ -149,7 +149,7 @@ int main()
     // for(size_t idx = 0; idx < tree.size(); idx++){
     //     // Access S1 values (float)
     //     std::cout << "patch " << idx << std::endl;
-    //     tensor_t& s1_patch = tree.template get_patch<S1>(idx);
+    //     auto& s1_patch = tree.template get_patch<S1>(idx);
 
     //     for(size_t linear_idx = 0; linear_idx < 36; linear_idx++) {
 
@@ -157,11 +157,11 @@ int main()
     //     }
 
     // }
-    //
+    
     printer.print(tree, "_iteration_0.vtk");
 
     int i = 1;
-    for (; i != 3; ++i)
+    for (; i != 5; ++i)
     {
         tree.reconstruct_tree(refine_criterion);
         std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
@@ -171,7 +171,7 @@ int main()
     // for(size_t idx = 0; idx < tree.size(); idx++){
     //     // Access S1 values (float)
     //     std::cout << "patch " << idx << std::endl;
-    //     tensor_t& s1_patch = tree.template get_patch<S1>(idx);
+    //     auto& s1_patch = tree.template get_patch<S1>(idx);
 
     //     for(size_t linear_idx = 0; linear_idx < 36; linear_idx++) {
 
