@@ -787,7 +787,7 @@ public:
             {
                 for (size_type k = 0; k != patch_size; k++)
                 {
-                    ((b[to + k] /= static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)), ...);
+                    ((b[to][k] /= static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)), ...);
                 }
             },
             m_data_buffers
@@ -799,9 +799,9 @@ public:
         linear_index_t const start_to
     ) noexcept -> void
     {
-        // static constexpr auto patch_size = patch_layout_t::flat_size();
         for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
         {
+            const auto child_patch_index = start_to + patch_idx;
             for (linear_index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
                  ++linear_idx)
             {
@@ -812,46 +812,14 @@ public:
                 const auto from_linear_idx =
                     s_fragmentation_patch_maps[patch_idx][linear_idx];
 
-                const auto parent_linear_idx = from + from_linear_idx;
-                const auto child_linear_idx =
-                    start_to + patch_idx * patch_layout_t::flat_size() + linear_idx;
-
                 std::apply(
-                    [parent_linear_idx, child_linear_idx, patch_idx, linear_idx](
+                    [ child_patch_index,from , patch_idx, from_linear_idx, linear_idx](
                         auto&... b
-                    ) { ((void)(b[child_linear_idx] = b[parent_linear_idx]), ...); },
+                    ) { ((void)(b[child_patch_index][linear_idx] = b[from][from_linear_idx]), ...); },
                     m_data_buffers
                 );
             }
         }
-    }
-
-    auto interpolate_node(
-        linear_index_t const from,
-        linear_index_t const start_to
-    ) const noexcept -> void
-    {
-        auto const old_node = gather_node(from);
-        std::cout << old_node << '\n';
-#ifdef AMR_NDTREE_ENABLE_CHECKS
-        for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
-        {
-            assert(m_index_map.at(m_linear_index_map[start_to + i]) == start_to + i);
-        }
-#endif
-        std::apply(
-            [from, start_to](auto&... b)
-            {
-                // TODO: Implement
-                for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
-                {
-                    ((void)(b[start_to + i] =
-                                b[from] + static_cast<unwrap_value_t<decltype(b)>>(i + 1)),
-                     ...);
-                }
-            },
-            m_data_buffers
-        );
     }
 
     [[nodiscard]]
@@ -917,37 +885,28 @@ public:
     }
 
     [[gnu::always_inline, gnu::flatten]]
-    auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
-        -> void
+auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
+    -> void
+{
+    assert(i < m_size);
+    assert(j < m_size);
+    if (i == j)
     {
-        assert(i < m_size);
-        assert(j < m_size);
-        if (i == j)
-        {
-            return;
-        }
-        // std::cout << "switching " << i << " and " << j << "with block size "<<
-        // patch_layout_t::flat_size() << std::endl;
-        assert(m_linear_index_map[i] != m_linear_index_map[j]);
-        std::swap(m_linear_index_map[i], m_linear_index_map[j]);
-        std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
-        // std::swap(m_neighbors[i], m_neighbors[j]);
-        auto patch_i_start = i * patch_layout_t::flat_size();
-        auto patch_j_start = j * patch_layout_t::flat_size();
-
-        std::apply(
-            [patch_i_start, patch_j_start](auto&... b)
-            {
-                ((void)(std::swap_ranges(
-                     &b[patch_i_start],
-                     &b[patch_i_start + patch_layout_t::flat_size()],
-                     &b[patch_j_start]
-                 )),
-                 ...);
-            },
-            m_data_buffers
-        );
+        return;
     }
+    
+    assert(m_linear_index_map[i] != m_linear_index_map[j]);
+    std::swap(m_linear_index_map[i], m_linear_index_map[j]);
+    std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
+    
+    std::apply(
+        [i, j](auto&... b)
+        {
+            ((void)std::swap(b[i], b[j]), ...);
+        },
+        m_data_buffers
+    );
+}
 
     [[nodiscard]]
     auto is_sorted() const noexcept -> bool
