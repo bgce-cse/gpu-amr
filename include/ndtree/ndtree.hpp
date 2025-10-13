@@ -61,7 +61,7 @@ private:
     template <typename Type>
     using value_t = std::remove_pointer_t<std::remove_cvref_t<Type>>;
     template <typename Type>
-    using unwrap_value_t = value_t<typename Type::value_type>;
+    using unwrap_value_t = typename value_t<Type>::value_type;
     template <typename Type>
     using pointer_t = Type*;
     template <typename Type>
@@ -156,8 +156,8 @@ public:
         std::apply(
             [size](auto&... b)
             {
-                ((void)(b = (pointer_t<unwrap_value_t<decltype(b)>>)
-                            std::malloc(size * sizeof(unwrap_value_t<decltype(b)>))),
+                ((void)(b = (pointer_t<value_t<decltype(b)>>)
+                            std::malloc(size * sizeof(value_t<decltype(b)>))),
                  ...);
             },
             m_data_buffers
