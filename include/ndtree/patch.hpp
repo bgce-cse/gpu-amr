@@ -1,52 +1,36 @@
 #ifndef AMR_INCLUDED_PATCH
 #define AMR_INCLUDED_PATCH
 
-#include "containers/container_utils.hpp"
 #include "containers/static_tensor.hpp"
 #include "ndconcepts.hpp"
-#include "ndutils.hpp"
-#include "utility/constexpr_functions.hpp"
 #include <concepts>
 
 namespace amr::ndt::patches
 {
 
-template <
-    typename T,
-    containers::concepts::StaticLayout Data_Layout,
-    std::integral auto                 Fanout,
-    std::integral auto                 Halo_Width>
+template <typename T, concepts::PatchLayout Patch_Layout>
 class patch
 {
 public:
-    using data_layout_t   = Data_Layout;
-    using padded_layout_t = typename containers::utils::types::layout::padded_layout<
-        data_layout_t>::type<Halo_Width * 2>;
+    using patch_layout_t  = Patch_Layout;
+    using data_layout_t   = typename patch_layout_t::data_layout_t;
+    using padded_layout_t = typename patch_layout_t::padded_layout_t;
 
     using value_type      = std::remove_cv_t<T>;
-    using size_type       = typename data_layout_t::size_type;
+    using size_type       = typename patch_layout_t::size_type;
     using const_iterator  = value_type const*;
     using iterator        = value_type*;
     using const_reference = value_type const&;
     using reference       = value_type&;
 
-    using index_t              = typename data_layout_t::index_t;
-    using rank_t               = typename data_layout_t::rank_t;
+    using index_t              = typename patch_layout_t::index_t;
+    using rank_t               = typename patch_layout_t::rank_t;
     using padded_multi_index_t = typename padded_layout_t::multi_index_t;
     using container_t          = containers::static_tensor<value_type, padded_layout_t>;
 
 private:
-    static constexpr auto      s_dim       = data_layout_t::rank();
-    static constexpr size_type s_1d_fanout = Fanout;
-    static constexpr size_type s_nd_fanout =
-        utility::cx_functions::pow(s_1d_fanout, s_dim);
-    static constexpr size_type s_halo_width = Halo_Width;
-
-    static_assert(s_nd_fanout > 1);
-    static_assert(
-        utils::patches::multiples_of(data_layout_t::sizes(), s_1d_fanout),
-        "All patch dimensions must be multiples of the fanout"
-    );
+    static constexpr auto      s_dim        = patch_layout_t::dimension();
+    static constexpr size_type s_halo_width = patch_layout_t::dimension();
 
 public:
     [[nodiscard]]
@@ -59,18 +43,6 @@ public:
     static constexpr auto halo_width() noexcept -> size_type
     {
         return s_halo_width;
-    }
-
-    [[nodiscard]]
-    static constexpr auto fanout() noexcept -> size_type
-    {
-        return s_1d_fanout;
-    }
-
-    [[nodiscard]]
-    static constexpr auto nd_fanout() noexcept -> size_type
-    {
-        return s_nd_fanout;
     }
 
     [[nodiscard]]

@@ -70,7 +70,6 @@ perf.script
 
 # Languages
 ##### C++
->>>>>>> feature/building_blocks
 # Prerequisites
 *.d
 
@@ -103,8 +102,6 @@ perf.script
 *.exe
 *.out
 *.app
-<<<<<<< HEAD
-=======
 
 # C/C++ binary extension file
 *.bin
