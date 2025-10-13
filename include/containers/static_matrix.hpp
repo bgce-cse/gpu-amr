@@ -18,8 +18,6 @@
 #    define AMR_CONTAINERS_CHECKBOUNDS
 #endif
 
-#define LU_DETERTMINANT_TOL 1e-7
-
 namespace amr::containers
 {
 
