@@ -17,7 +17,8 @@ int main()
     using index_t       = std::int32_t;
     [[maybe_unused]]
     constexpr auto Fanout = 2;
-    using layout_t        = static_layout<N, M>;
+    using shape_t         = amr::containers::static_shape<N, M>;
+    using layout_t        = static_layout<shape_t>;
     using patch_t         = amr::ndt::patches::patch<index_t, layout_t, Fanout, Halo>;
     using tensor_t        = typename patch_t::container_t;
 
