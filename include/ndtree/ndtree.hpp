@@ -61,6 +61,8 @@ private:
     template <typename Type>
     using value_t = std::remove_pointer_t<std::remove_cvref_t<Type>>;
     template <typename Type>
+    using unwrap_value_t = value_t<typename Type::value_type>;
+    template <typename Type>
     using pointer_t = Type*;
     template <typename Type>
     using const_pointer_t = Type const*;
@@ -154,8 +156,8 @@ public:
         std::apply(
             [size](auto&... b)
             {
-                ((void)(b = (pointer_t<value_t<decltype(b)>>)
-                            std::malloc(size * sizeof(value_t<decltype(b)>))),
+                ((void)(b = (pointer_t<unwrap_value_t<decltype(b)>>)
+                            std::malloc(size * sizeof(unwrap_value_t<decltype(b)>))),
                  ...);
             },
             m_data_buffers
@@ -817,7 +819,7 @@ public:
             {
                 for (size_type k = 0; k != patch_size; k++)
                 {
-                    ((b[to + k] /= static_cast<value_t<decltype(b)>>(s_nd_fanout)), ...);
+                    ((b[to + k] /= static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)), ...);
                 }
             },
             m_data_buffers
@@ -876,7 +878,7 @@ public:
                 for (auto i = decltype(s_nd_fanout){}; i != s_nd_fanout; ++i)
                 {
                     ((void)(b[start_to + i] =
-                                b[from] + static_cast<value_t<decltype(b)>>(i + 1)),
+                                b[from] + static_cast<unwrap_value_t<decltype(b)>>(i + 1)),
                      ...);
                 }
             },
