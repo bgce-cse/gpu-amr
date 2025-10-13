@@ -98,36 +98,7 @@ public:
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
 
-    struct neighbor_variant
-    {
-        struct none
-        {
-        };
-
-        struct same
-        {
-            patch_index_t id;
-        };
-
-        struct coarser
-        {
-            patch_index_t id;
-            // TODO: Maybe store information about relative position?
-        };
-
-        struct finer
-        {
-            static constexpr decltype(s_nd_fanout) s_num_fine = s_nd_fanout / s_1d_fanout;
-            using container_t = std::array<patch_index_t, s_num_fine>;
-            container_t ids;
-        };
-
-        using type = std::variant<none, same, finer, coarser>;
-        type data  = none{};
-    };
-
-    using neighbor_array_t  = std::array<neighbor_variant, 2 * s_dimension>;
-    using neighbor_buffer_t = pointer_t<neighbor_array_t>;
+    
 
 private:
     static constexpr auto s_fragmentation_patch_maps =
@@ -168,10 +139,10 @@ public:
             (pointer_t<refine_status_t>)std::malloc(size * sizeof(refine_status_t));
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
 
-        m_neighbors = (neighbor_buffer_t)std::malloc(size * sizeof(neighbor_variant));
+        // m_neighbors = (neighbor_buffer_t)std::malloc(size * sizeof(neighbor_variant));
 
-        neighbor_array_t root_neighbor_array{};
-        append(patch_index_t::root(), root_neighbor_array);
+        // neighbor_array_t root_neighbor_array{};
+        append(patch_index_t::root());
     }
 
     ~ndtree() noexcept
@@ -179,7 +150,7 @@ public:
         std::free(m_refine_status_buffer);
         std::free(m_reorder_buffer);
         std::free(m_linear_index_map);
-        std::free(m_neighbors);
+        // std::free(m_neighbors);
         std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_data_buffers);
     }
 
@@ -236,16 +207,16 @@ public:
                 node_id, static_cast<typename patch_index_t::offset_t>(i)
             );
             assert(!find_index(child_id).has_value());
-            neighbor_array_t neighbor_array = compute_child_neighbors(node_id, i);
-            append(child_id, neighbor_array);
+            // neighbor_array_t neighbor_array = compute_child_neighbors(node_id, i);
+            append(child_id);
             assert(m_index_map[child_id] == back_idx());
             assert(m_linear_index_map[back_idx()] == child_id);
         }
-        for (size_type i = 0; i != s_nd_fanout; ++i)
-        {
-            auto child_id = patch_index_t::child_of(node_id, i);
-            enforce_symmetric_neighbors(child_id, m_neighbors[m_index_map[child_id]]);
-        }
+        // for (size_type i = 0; i != s_nd_fanout; ++i)
+        // {
+        //     auto child_id = patch_index_t::child_of(node_id, i);
+        //     enforce_symmetric_neighbors(child_id, m_neighbors[m_index_map[child_id]]);
+        // }
 
         const auto from = it.value()->second * patch_layout_t::flat_size();
         interpolate_patch(from, start_to);
@@ -265,12 +236,12 @@ public:
 
         const auto       start = child_0_it.value()->second * patch_layout_t::flat_size();
         auto const       to    = m_size * patch_layout_t::flat_size();
-        neighbor_array_t neighbor_array = compute_parent_neighbors(child_0);
+        // neighbor_array_t neighbor_array = compute_parent_neighbors(child_0);
 
-        append(parent_node_id, neighbor_array);
+        append(parent_node_id);
         assert(m_linear_index_map[back_idx()] == parent_node_id);
         restrict_patches(start, to);
-        for (size_type i = 0; i != s_nd_fanout; ++i)
+        for (typename patch_index_t::offset_t i = 0; i != s_nd_fanout; ++i)
         {
             const auto child_i    = patch_index_t::child_of(parent_node_id, i);
             auto       child_i_it = find_index(child_i);
@@ -279,9 +250,9 @@ public:
             m_index_map.erase(child_i_it.value());
         }
 
-        enforce_symmetric_neighbors(
-            parent_node_id, m_neighbors[m_index_map[parent_node_id]]
-        );
+        // enforce_symmetric_neighbors(
+        //     parent_node_id, m_neighbors[m_index_map[parent_node_id]]
+        // );
     }
 
     auto fragment() -> void
@@ -638,12 +609,12 @@ private:
         return m_size - 1;
     }
 
-    auto append(patch_index_t const node_id, neighbor_array_t neighbor_array) noexcept
+    auto append(patch_index_t const node_id) noexcept
         -> void
     {
         m_linear_index_map[m_size] = node_id;
         m_index_map[node_id]       = m_size;
-        m_neighbors[m_size]        = neighbor_array;
+        // m_neighbors[m_size]        = neighbor_array;
         ++m_size;
     }
 
@@ -678,7 +649,7 @@ public:
         linear_index_t   backup_start_pos;
         patch_index_t    backup_node_index;
         refine_status_t  backup_refine_status;
-        neighbor_array_t backup_neighbors;
+        // neighbor_array_t backup_neighbors;
 
         // NEW: Backup buffer for entire patches instead of single elements
         using backup_patch_t =
@@ -697,7 +668,7 @@ public:
             backup_start_pos     = i;
             backup_node_index    = m_linear_index_map[i];
             backup_refine_status = m_refine_status_buffer[i];
-            backup_neighbors     = m_neighbors[i];
+            // backup_neighbors     = m_neighbors[i];
 
             // Backup entire patch
             auto patch_i_start = i * patch_layout_t::flat_size();
@@ -718,7 +689,7 @@ public:
             {
                 m_linear_index_map[dst]     = m_linear_index_map[src];
                 m_refine_status_buffer[dst] = m_refine_status_buffer[src];
-                m_neighbors[dst]            = m_neighbors[src];
+                // m_neighbors[dst]            = m_neighbors[src];
 
                 // Copy entire patches instead of single elements
                 auto patch_src_start = src * patch_layout_t::flat_size();
@@ -744,7 +715,7 @@ public:
 
             m_linear_index_map[dst]     = backup_node_index;
             m_refine_status_buffer[dst] = backup_refine_status;
-            m_neighbors[dst]            = backup_neighbors;
+            // m_neighbors[dst]            = backup_neighbors;
 
             // Restore backed up patch
             auto patch_dst_start = dst * patch_layout_t::flat_size();
@@ -796,29 +767,33 @@ public:
         static constexpr auto patch_size = patch_layout_t::flat_size();
         for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
         {
+            const auto child_patch_index = start_from + patch_idx;
             for (linear_index_t linear_idx = 0; linear_idx != patch_size; ++linear_idx)
             {
                 const auto to_linear_idx =
                     s_fragmentation_patch_maps[patch_idx][linear_idx];
-                const auto parent_linear_idx = to + to_linear_idx;
-                const auto child_linear_idx =
-                    start_from + static_cast<linear_index_t>(patch_idx * patch_size) +
-                    linear_idx;
-
+            
                 std::apply(
-                    [parent_linear_idx, child_linear_idx](auto&... b)
-                    { ((void)(b[parent_linear_idx] += b[child_linear_idx]), ...); },
+                    [to, to_linear_idx, child_patch_index,linear_idx ](auto&... b)
+                    { ((void)(b[to][to_linear_idx] += b[child_patch_index][linear_idx]), ...); },
                     m_data_buffers
                 );
             }
         }
-        std::apply(
+            std::apply(
             [to](auto&... b)
             {
-                for (size_type k = 0; k != patch_size; k++)
-                {
-                    ((b[to + k] /= static_cast<value_t<decltype(b)>>(s_nd_fanout)), ...);
-                }
+                (
+                    [&b, to]()
+                    {
+                        using patch_type = value_t<decltype(b)>;
+                        using element_type = typename patch_type::value_type;
+                        for (linear_index_t k = 0; k != patch_size; k++)
+                        {
+                            b[to][k] /= static_cast<element_type>(s_nd_fanout);
+                        }
+                    }(), ...
+                );
             },
             m_data_buffers
         );
@@ -829,7 +804,7 @@ public:
         linear_index_t const start_to
     ) noexcept -> void
     {
-        static constexpr auto patch_size = patch_layout_t::flat_size();
+        // static constexpr auto patch_size = patch_layout_t::flat_size();
         for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
         {
             for (linear_index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
@@ -961,7 +936,7 @@ public:
         assert(m_linear_index_map[i] != m_linear_index_map[j]);
         std::swap(m_linear_index_map[i], m_linear_index_map[j]);
         std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
-        std::swap(m_neighbors[i], m_neighbors[j]);
+        // std::swap(m_neighbors[i], m_neighbors[j]);
         auto patch_i_start = i * patch_layout_t::flat_size();
         auto patch_j_start = j * patch_layout_t::flat_size();
 
@@ -1022,7 +997,7 @@ private:
     size_type                  m_size;
     std::vector<patch_index_t> m_to_refine;
     std::vector<patch_index_t> m_to_coarsen;
-    neighbor_buffer_t          m_neighbors;
+    // neighbor_buffer_t          m_neighbors;
 };
 
 } // namespace amr::ndt::tree

@@ -8,6 +8,38 @@ enum class NeighborRelation : std::uint8_t
     ParentNeighbor,
 };
 
+struct neighbor_variant
+    {
+        struct none
+        {
+        };
+
+        struct same
+        {
+            patch_index_t id;
+        };
+
+        struct coarser
+        {
+            patch_index_t id;
+            // TODO: Maybe store information about relative position?
+        };
+
+        struct finer
+        {
+            static constexpr decltype(s_nd_fanout) s_num_fine = s_nd_fanout / s_1d_fanout;
+            using container_t = std::array<patch_index_t, s_num_fine>;
+            container_t ids;
+        };
+
+        using type = std::variant<none, same, finer, coarser>;
+        type data  = none{};
+    };
+
+    using neighbor_array_t  = std::array<neighbor_variant, 2 * s_dimension>;
+    using neighbor_buffer_t = pointer_t<neighbor_array_t>;
+    
+
 template <std::integral auto Dim, std::integral auto Fanout>
 [[nodiscard]]
 consteval auto compute_neighbor_relation_maps()
