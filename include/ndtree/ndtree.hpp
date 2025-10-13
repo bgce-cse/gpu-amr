@@ -737,6 +737,8 @@ public:
     ) noexcept -> void
     {
         static constexpr auto patch_size = patch_layout_t::flat_size();
+
+        //TODO: remove 
         std::apply(
             [to](auto&... b)
             {
