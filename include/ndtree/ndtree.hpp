@@ -737,8 +737,19 @@ public:
     ) noexcept -> void
     {
         static constexpr auto patch_size = patch_layout_t::flat_size();
+        std::apply(
+            [to](auto&... b)
+            {
+                for (linear_index_t k = 0; k != patch_size; k++)
+                {
+                    ((b[to][k] = static_cast<unwrap_value_t<decltype(b)>>(0)), ...);
+                }
+            },
+            m_data_buffers);
+        
         for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
         {
+
             const auto child_patch_index = start_from + patch_idx;
             for (linear_index_t linear_idx = 0; linear_idx != patch_size; ++linear_idx)
             {
@@ -755,7 +766,7 @@ public:
             std::apply(
             [to](auto&... b)
             {
-                for (size_type k = 0; k != patch_size; k++)
+                for (linear_index_t k = 0; k != patch_size; k++)
                 {
                     ((b[to][k] /= static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)), ...);
                 }
