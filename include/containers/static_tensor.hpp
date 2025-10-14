@@ -1,6 +1,7 @@
 #ifndef AMR_INCLUDED_STATIC_TENSOR
 #define AMR_INCLUDED_STATIC_TENSOR
 
+#include "container_concepts.hpp"
 #include "multi_index.hpp"
 #include "static_layout.hpp"
 #include "utility/compile_time_utility.hpp"
@@ -17,14 +18,12 @@
 namespace amr::containers
 {
 
-template <typename T, std::integral auto N, std::integral auto... Ns>
-    requires utility::concepts::are_same<decltype(N), decltype(Ns)...> && (N > 0) &&
-             ((Ns > 0) && ...)
+template <typename T, concepts::StaticLayout Layout>
 class static_tensor
 {
 public:
     using value_type      = std::remove_cv_t<T>;
-    using layout_t        = static_layout<N, Ns...>;
+    using layout_t        = Layout;
     using size_type       = typename layout_t::size_type;
     using index_t         = typename layout_t::index_t;
     using rank_t          = typename layout_t::rank_t;
@@ -34,10 +33,11 @@ public:
     using const_reference = value_type const&;
     using reference       = value_type&;
 
-    inline static constexpr rank_t                        s_rank    = layout_t::s_rank;
-    inline static constexpr std::array<size_type, s_rank> s_sizes   = layout_t::s_sizes;
-    inline static constexpr auto                          s_strides = layout_t::s_strides;
-    inline static constexpr size_type s_flat_size = layout_t::s_flat_size;
+private:
+    inline static constexpr rank_t                        s_rank    = layout_t::rank();
+    inline static constexpr std::array<size_type, s_rank> s_sizes   = layout_t::sizes();
+    inline static constexpr auto                          s_strides = layout_t::strides();
+    inline static constexpr size_type s_elements = layout_t::flat_size();
 
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::is_standard_layout_v<T>);
@@ -45,9 +45,9 @@ public:
 
 public:
     [[nodiscard]]
-    constexpr static auto flat_size() noexcept -> size_type
+    constexpr static auto elements() noexcept -> size_type
     {
-        return s_flat_size;
+        return s_elements;
     }
 
     [[nodiscard]]
@@ -61,6 +61,12 @@ public:
     {
         assert(i < s_rank);
         return s_sizes[i];
+    }
+
+    [[nodiscard]]
+    constexpr static auto strides() noexcept -> auto const&
+    {
+        return s_strides;
     }
 
     [[nodiscard]]
@@ -123,6 +129,18 @@ public:
     }
 
     [[nodiscard]]
+    constexpr auto operator[](index_t const linear_idx) const noexcept -> const_reference
+    {
+        return data_[linear_idx];
+    }
+
+    [[nodiscard]]
+    constexpr auto operator[](index_t const linear_idx) noexcept -> reference
+    {
+        return const_cast<reference>(std::as_const(*this).operator[](linear_idx));
+    }
+
+    [[nodiscard]]
     constexpr auto cbegin() const noexcept -> const_iterator
     {
         return std::cbegin(data_);
@@ -160,15 +178,15 @@ public:
 
 private:
     // TODO: Alignment?
-    value_type data_[s_flat_size];
+    value_type data_[s_elements];
 };
 
-template <typename T, std::integral auto N, std::integral auto... Ns>
-auto operator<<(std::ostream& os, static_tensor<T, N, Ns...> const& t) noexcept
+template <typename T, concepts::StaticLayout Layout>
+auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
     -> std::ostream&
 {
     using tensor_t                 = std::remove_cvref_t<decltype(t)>;
-    static constexpr auto rank     = tensor_t::s_rank;
+    static constexpr auto rank     = tensor_t::rank();
     static constexpr auto newlines = []
     {
         static constexpr auto pool = []

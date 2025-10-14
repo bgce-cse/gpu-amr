@@ -16,10 +16,10 @@ namespace tensor
 template <std::size_t Rank, typename T, std::integral auto Size>
 [[nodiscard]]
 constexpr auto cartesian_expansion(static_vector<T, Size> const& v) noexcept
-    -> utils::types::tensor::hypercube_t<static_vector<T, Rank>, Size, Rank>
+    -> utils::types::tensor::hypercube_t<static_vector<T, Rank>,0, Size, Rank>
 {
     using hypercube_t =
-        utils::types::tensor::hypercube_t<static_vector<T, Rank>, Size, Rank>;
+        utils::types::tensor::hypercube_t<static_vector<T, Rank>,0, Size, Rank>;
     using multi_index_t = typename hypercube_t::multi_index_t;
     using index_t       = typename multi_index_t::index_t;
     auto ret            = hypercube_t::zero();
@@ -42,7 +42,7 @@ template <
     std::integral auto  Dofs>
 [[nodiscard]]
 constexpr auto evaluate_basis(
-    utils::types::tensor::hypercube_t<static_vector<F, Dofs>, Order, Rank> const& coeffs,
+    utils::types::tensor::hypercube_t<static_vector<F, Dofs>,0, Order, Rank> const& coeffs,
     static_vector<F, Rank> const&                                                 x,
     static_vector<F, Order> const& quad_points
 ) noexcept -> F

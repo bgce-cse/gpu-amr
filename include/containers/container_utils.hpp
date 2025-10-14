@@ -12,6 +12,24 @@ namespace amr::containers::utils
 namespace types
 {
 
+namespace layout
+{
+
+template <typename T>
+struct padded_layout;
+
+template <std::integral auto N, std::integral auto... Ns>
+struct padded_layout<static_layout<static_shape<N, Ns...>>>
+{
+    using size_type = typename static_layout<static_shape<N, Ns...>>::size_type;
+    template <std::integral auto Pad>
+    using type = static_layout<static_shape<
+        static_cast<size_type>(N + Pad),
+        static_cast<size_type>(Ns + Pad)...>>;
+};
+
+} // namespace layout
+
 namespace tensor
 {
 
@@ -19,7 +37,7 @@ namespace detail
 {
 template <typename T, std::integral auto Size, std::size_t Rank, std::size_t... Is>
 constexpr auto make_hypercube_type_impl(std::index_sequence<Is...>)
-    -> static_tensor<T, ((void)Is, Size)...>
+    -> static_tensor<T, static_layout<static_shape<((void)Is, Size)...>>>
 {
     return {};
 }
