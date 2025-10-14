@@ -9,7 +9,7 @@
 #include <ranges>
 #include <type_traits>
 
-namespace amr::containers
+namespace amr::containers::manipulators
 {
 
 template <concepts::Container C>
@@ -32,13 +32,49 @@ constexpr auto fill(C& c, Fn&& fn, Args&&... args) noexcept(
     }
 }
 
-template <concepts::Container C, typename Fn>
-    requires std::is_invocable_r_v<typename C::value_type, Fn, typename C::value_type>
-constexpr void transform(C& c, Fn&& fn)
+namespace detail
 {
-    std::transform(begin(c), end(c), begin(c), std::forward<Fn>(fn));
+
+template <std::integral auto I, typename... Indices>
+constexpr auto for_each_impl(auto&& a, auto&& fn, Indices&&... idxs) noexcept -> void
+    requires concepts::StaticMDArray<std::remove_cvref_t<decltype(a)>>
+{
+    using a_t    = std::remove_cvref_t<decltype(a)>;
+    using rank_t = typename a_t::rank_t;
+    if constexpr (I == a_t::rank())
+    {
+        std::invoke(
+            std::forward<decltype(fn)>(fn),
+            std::forward<decltype(a)>(a),
+            std::forward<decltype(idxs)>(idxs)...
+        );
+    }
+    else
+    {
+        for (typename a_t::index_t i = 0; i != a_t::size(I); ++i)
+        {
+            for_each_impl<I + rank_t{ 1 }>(
+                std::forward<decltype(a)>(a),
+                std::forward<decltype(fn)>(fn),
+                std::forward<decltype(idxs)>(idxs)...,
+                i
+            );
+        }
+    }
 }
 
-} // namespace amr::containers
+} // namespace detail
+
+constexpr auto apply(auto&& a, auto&& fn) noexcept -> void
+    requires concepts::StaticMDArray<std::remove_cvref_t<decltype(a)>>
+{
+    using a_t    = std::remove_cvref_t<decltype(a)>;
+    using rank_t = typename a_t::rank_t;
+    detail::for_each_impl<rank_t{}>(
+        std::forward<decltype(a)>(a), std::forward<decltype(fn)>(fn)
+    );
+}
+
+} // namespace amr::containers::manipulators
 
 #endif // AMR_INCLUDED_CONTAINER_MANIPULATIONS

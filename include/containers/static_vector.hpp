@@ -1,6 +1,8 @@
 #ifndef AMR_INCLUDED_STATIC_VECTOR
 #define AMR_INCLUDED_STATIC_VECTOR
 
+#include "static_layout.hpp"
+#include "static_shape.hpp"
 #include "utility/casts.hpp"
 #include <array>
 #include <concepts>
@@ -21,22 +23,56 @@ template <typename T, std::integral auto N>
 struct static_vector
 {
     using value_type      = std::remove_cv_t<T>;
-    using size_type       = std::size_t;
+    using layout_t        = static_layout<static_shape<N>>;
+    using size_type       = typename layout_t::size_type;
+    using index_t         = typename layout_t::index_t;
+    using rank_t          = typename layout_t::rank_t;
     using const_iterator  = value_type const*;
     using iterator        = value_type*;
     using const_reference = value_type const&;
     using reference       = value_type&;
 
-    // TODO: Alignment
-    static constexpr auto s_size = N;
-
+private:
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::is_standard_layout_v<T>);
 
+public:
     [[nodiscard]]
-    constexpr static auto size() noexcept -> size_type
+    constexpr static auto flat_size() noexcept -> size_type
     {
-        return s_size;
+        return layout_t::flat_size();
+    }
+
+    [[nodiscard]]
+    constexpr static auto elements() noexcept -> size_type
+    {
+        return layout_t::elements();
+    }
+
+    [[nodiscard]]
+    constexpr static auto rank() noexcept -> rank_t
+    {
+        return layout_t::rank();
+    }
+
+    [[nodiscard]]
+    constexpr static auto size(index_t const i) noexcept -> size_type
+    {
+        assert(i < rank());
+        return layout_t::size(i);
+    }
+
+    [[nodiscard]]
+    constexpr static auto strides() noexcept -> auto const&
+    {
+        return layout_t::strides;
+    }
+
+    [[nodiscard]]
+    constexpr static auto stride(index_t const i) noexcept -> size_type
+    {
+        assert(i < rank());
+        return layout_t::stride(i);
     }
 
     [[nodiscard]]
@@ -93,7 +129,7 @@ struct static_vector
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
     constexpr auto assert_in_bounds(size_type const idx) const noexcept -> void
     {
-        assert(idx < s_size);
+        assert(idx < elements());
         if constexpr (std::is_signed_v<size_type>)
         {
             assert(idx >= size_type{});
@@ -105,7 +141,7 @@ struct static_vector
     constexpr auto operator<=>(static_vector const&) const noexcept = default;
 
 public:
-    value_type data_[s_size];
+    value_type data_[flat_size()];
 };
 
 template <typename Value_Type, std::integral auto N>
