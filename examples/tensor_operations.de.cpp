@@ -1,5 +1,7 @@
 #include "containers/container_algorithms.hpp"
+#include "containers/container_manipulations.hpp"
 #include "containers/static_layout.hpp"
+#include "containers/static_shape.hpp"
 #include "containers/static_tensor.hpp"
 #include "containers/static_vector.hpp"
 #include "utility/random.hpp"
@@ -12,8 +14,7 @@ int main()
     using namespace amr::containers;
     constexpr auto N = 5;
     using F          = int;
-    using tensor_t   = static_tensor<F, static_layout<N, 3, 4, 2, 3>>;
-
+    using tensor_t   = static_tensor<F, static_layout<static_shape<N, 3, 4, 2, 3>>>;
     std::cout << tensor_t::elements() << '\n';
     for (int i = 0; i != tensor_t::rank(); ++i)
     {
@@ -29,15 +30,15 @@ int main()
     tensor_t t{};
     F        check{};
     std::iota(std::begin(t), std::end(t), check);
-    for (int i = 0; i != N; ++i)
-        for (int j = 0; j != 3; ++j)
-            for (int k = 0; k != 4; ++k)
-                for (int l = 0; l != 2; ++l)
-                    for (int m = 0; m != 3; ++m)
-                    {
-                        std::cout << t[i, j, k, l, m] << '\n';
-                        assert((t[i, j, k, l, m] == check++));
-                    }
+    amr::containers::manipulators::for_each(
+        t,
+        [&check](auto const& a, auto... idxs)
+        {
+            const auto& e = a[idxs...];
+            std::cout << e << '\n';
+            assert((e == check++));
+        }
+    );
 
     auto idx = typename tensor_t::multi_index_t{};
     do

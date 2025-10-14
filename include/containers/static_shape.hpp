@@ -30,6 +30,8 @@ private:
     inline static constexpr rank_t                        s_rank     = sizeof...(Ns) + 1;
     inline static constexpr std::array<size_type, s_rank> s_sizes    = { N, Ns... };
 
+    static_assert(s_rank > 0);
+
 public:
     [[nodiscard]]
     static constexpr auto rank() noexcept -> rank_t

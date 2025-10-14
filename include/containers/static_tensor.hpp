@@ -34,50 +34,50 @@ public:
     using reference       = value_type&;
 
 private:
-    inline static constexpr rank_t                        s_rank    = layout_t::rank();
-    inline static constexpr std::array<size_type, s_rank> s_sizes   = layout_t::sizes();
-    inline static constexpr auto                          s_strides = layout_t::strides();
-    inline static constexpr size_type s_elements = layout_t::flat_size();
-
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::is_standard_layout_v<T>);
-    static_assert(s_rank > 0);
 
 public:
     [[nodiscard]]
+    constexpr static auto flat_size() noexcept -> size_type
+    {
+        return layout_t::flat_size();
+    }
+
+    [[nodiscard]]
     constexpr static auto elements() noexcept -> size_type
     {
-        return s_elements;
+        return layout_t::elements();
     }
 
     [[nodiscard]]
     constexpr static auto rank() noexcept -> rank_t
     {
-        return s_rank;
+        return layout_t::rank();
     }
 
     [[nodiscard]]
     constexpr static auto size(index_t const i) noexcept -> size_type
     {
-        assert(i < s_rank);
-        return s_sizes[i];
+        assert(i < rank());
+        return layout_t::size(i);
     }
 
     [[nodiscard]]
     constexpr static auto strides() noexcept -> auto const&
     {
-        return s_strides;
+        return layout_t::strides;
     }
 
     [[nodiscard]]
     constexpr static auto stride(index_t const i) noexcept -> size_type
     {
-        assert(i < s_rank);
-        return s_strides[i];
+        assert(i < rank());
+        return layout_t::stride(i);
     }
 
     [[nodiscard]]
-    constexpr static auto linear_index(index_t const (&idxs)[s_rank]) noexcept -> index_t
+    constexpr static auto linear_index(index_t const (&idxs)[rank()]) noexcept -> index_t
     {
         return layout_t::linear_index(idxs);
     }
@@ -101,7 +101,7 @@ public:
     [[nodiscard]]
     constexpr auto operator[](I&&... idxs) const noexcept -> const_reference
     {
-        index_t indices[s_rank] = { static_cast<index_t>(idxs)... };
+        index_t indices[rank()] = { static_cast<index_t>(idxs)... };
         return data_[linear_index(indices)];
     }
 
@@ -178,7 +178,7 @@ public:
 
 private:
     // TODO: Alignment?
-    value_type data_[s_elements];
+    value_type data_[flat_size()];
 };
 
 template <typename T, concepts::StaticLayout Layout>
