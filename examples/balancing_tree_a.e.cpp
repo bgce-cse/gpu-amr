@@ -110,25 +110,25 @@ int main()
         return tree_t::refine_status_t::Stable;
     };
 
-    auto coarsen_criterion = [](const patch_index_t& idx)
-    {
-        auto [coords, level] = patch_index_t::decode(idx.id());
-        auto max_size        = 1u << idx.max_depth();
-        auto cell_size       = 1u << (idx.max_depth() - level);
+    // auto coarsen_criterion = [](const patch_index_t& idx)
+    // {
+    //     auto [coords, level] = patch_index_t::decode(idx.id());
+    //     auto max_size        = 1u << idx.max_depth();
+    //     auto cell_size       = 1u << (idx.max_depth() - level);
 
-        double mid_x  = coords[0] + 0.5 * cell_size;
-        double mid_y  = coords[1] + 0.5 * cell_size;
-        double center = 0.5 * max_size;
-        double dist2 =
-            (mid_x - center) * (mid_x - center) + (mid_y - center) * (mid_y - center);
+    //     double mid_x  = coords[0] + 0.5 * cell_size;
+    //     double mid_y  = coords[1] + 0.5 * cell_size;
+    //     double center = 0.5 * max_size;
+    //     double dist2 =
+    //         (mid_x - center) * (mid_x - center) + (mid_y - center) * (mid_y - center);
 
-        // Only coarsen if not at min level!
-        if (level > 0 && dist2 < 0.3 / idx.level() * max_size * max_size)
-        {
-            return tree_t::refine_status_t::Coarsen;
-        }
-        return tree_t::refine_status_t::Stable;
-    };
+    //     // Only coarsen if not at min level!
+    //     if (level > 0 && dist2 < 0.3 / idx.level() * max_size * max_size)
+    //     {
+    //         return tree_t::refine_status_t::Coarsen;
+    //     }
+    //     return tree_t::refine_status_t::Stable;
+    // };
 
     int ii = 0;
     for (std::size_t idx = 0; idx < tree.size(); idx++)
@@ -161,7 +161,7 @@ int main()
     printer.print(tree, "_iteration_0.vtk");
 
     int i = 1;
-    for (; i != 6; ++i)
+    for (; i != 3; ++i)
     {
         tree.reconstruct_tree(refine_criterion);
         std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
@@ -180,12 +180,12 @@ int main()
 
     // }
 
-    for (; i != 11; ++i)
-    {
-        tree.reconstruct_tree(coarsen_criterion);
-        std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
-        printer.print(tree, file_extension);
-    }
+    // for (; i != 11; ++i)
+    // {
+    //     tree.reconstruct_tree(coarsen_criterion);
+    //     std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
+    //     printer.print(tree, file_extension);
+    // }
 
     std::cout << "adios balancing world\n";
     return EXIT_SUCCESS;
