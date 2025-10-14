@@ -186,7 +186,7 @@ constexpr auto operator_impl(auto const& lhs, auto const& rhs, auto&& binary_op)
     };
 
     common_type ret{};
-    for (auto i = typename common_type::size_type{}; i != ret.size(); ++i)
+    for (auto i = typename common_type::size_type{}; i != ret.elements(); ++i)
     {
         ret[i] = std::invoke(
             std::forward<decltype(binary_op)>(binary_op), at_idx(lhs, i), at_idx(rhs, i)

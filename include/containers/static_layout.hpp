@@ -41,6 +41,7 @@ private:
     }();
     inline static constexpr size_type s_flat_size = shape_t::elements();
     static_assert(s_rank > 0);
+    static_assert(s_flat_size >= shape_t::elements());
 
 public:
     // This class is just an interface
@@ -52,6 +53,12 @@ public:
     constexpr static auto flat_size() noexcept -> size_type
     {
         return s_flat_size;
+    }
+
+    [[nodiscard]]
+    constexpr static auto elements() noexcept -> size_type
+    {
+        return shape_t::elements();
     }
 
     [[nodiscard]]
@@ -95,7 +102,7 @@ public:
         auto linear_idx = std::transform_reduce(
             std::cbegin(idxs), std::cend(idxs), std::cbegin(s_strides), index_t{}
         );
-        assert(linear_idx < flat_size());
+        assert(linear_idx < elements());
         if constexpr (std::is_signed_v<index_t>)
         {
             assert(linear_idx >= 0);
@@ -112,7 +119,7 @@ public:
             std::cbegin(s_strides),
             index_t{}
         );
-        assert(linear_idx < flat_size());
+        assert(linear_idx < elements());
         if constexpr (std::is_signed_v<index_t>)
         {
             assert(linear_idx >= 0);

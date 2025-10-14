@@ -25,6 +25,7 @@ concept MultiIndex = requires() {
 
 template <typename L>
 concept StaticLayout = requires(
+    const typename L::index_t       i,
     const typename L::multi_index_t midx,
     const typename L::index_t (&idxs)[L::rank()]
 ) {
@@ -33,9 +34,12 @@ concept StaticLayout = requires(
     typename L::rank_t;
     typename L::multi_index_t;
     { L::rank() } -> std::same_as<typename L::rank_t>;
+    { L::elements() } -> std::same_as<typename L::size_type>;
     { L::flat_size() } -> std::same_as<typename L::size_type>;
     L::sizes();
+    { L::size(i) } -> std::same_as<typename L::size_type>;
     L::strides();
+    { L::stride(i) } -> std::same_as<typename L::size_type>;
     { L::linear_index(midx) } -> std::same_as<typename L::index_t>;
     { L::linear_index(idxs) } -> std::same_as<typename L::index_t>;
 };
@@ -47,6 +51,11 @@ concept StaticShape = requires() {
     { S::rank() } -> std::same_as<typename S::rank_t>;
     S::sizes();
     S::elements();
+};
+
+template <typename A>
+concept StaticMDArray = requires(A a, typename A::size_type s, typename A::index_t i) {
+    { A::rank() } -> std::same_as<typename A::rank_t>;
 };
 
 } // namespace amr::containers::concepts
