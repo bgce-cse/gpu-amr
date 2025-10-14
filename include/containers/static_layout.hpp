@@ -1,0 +1,143 @@
+#ifndef AMR_INCLUDED_STATIC_LAYOUT
+#define AMR_INCLUDED_STATIC_LAYOUT
+
+#include "container_concepts.hpp"
+#include "multi_index.hpp"
+#include "static_shape.hpp"
+#include "utility/utility_concepts.hpp"
+#include <array>
+#include <cassert>
+
+#ifndef NDEBUG
+#    define AMR_CONTAINERS_CHECKBOUNDS
+#endif
+
+namespace amr::containers
+{
+
+template <concepts::StaticShape Shape>
+class static_layout
+{
+public:
+    using shape_t       = Shape;
+    using size_type     = typename shape_t::size_type;
+    using rank_t        = typename shape_t::size_type;
+    using index_t       = size_type;
+    using multi_index_t = index::static_multi_index<index_t, shape_t>;
+
+private:
+    inline static constexpr rank_t                        s_rank = shape_t::rank();
+    inline static constexpr std::array<size_type, s_rank> s_sizes =
+        multi_index_t::sizes();
+    inline static constexpr auto s_strides = []
+    {
+        std::array<size_type, s_rank> strides{};
+        strides[s_rank - 1] = size_type{ 1 };
+        for (rank_t d = s_rank - 1; d-- > 0;)
+        {
+            strides[d] = strides[d + 1] * s_sizes[d + 1];
+        }
+        return strides;
+    }();
+    inline static constexpr size_type s_flat_size = shape_t::elements();
+    static_assert(s_rank > 0);
+    static_assert(s_flat_size >= shape_t::elements());
+
+public:
+    [[nodiscard]]
+    constexpr static auto flat_size() noexcept -> size_type
+    {
+        return s_flat_size;
+    }
+
+    [[nodiscard]]
+    constexpr static auto elements() noexcept -> size_type
+    {
+        return shape_t::elements();
+    }
+
+    [[nodiscard]]
+    constexpr static auto rank() noexcept -> rank_t
+    {
+        return s_rank;
+    }
+
+    [[nodiscard]]
+    constexpr static auto sizes() noexcept -> auto const&
+    {
+        return s_sizes;
+    }
+
+    [[nodiscard]]
+    constexpr static auto size(index_t const i) noexcept -> size_type
+    {
+        assert(i < s_rank);
+        return s_sizes[i];
+    }
+
+    [[nodiscard]]
+    constexpr static auto strides() noexcept -> auto const&
+    {
+        return s_strides;
+    }
+
+    [[nodiscard]]
+    constexpr static auto stride(index_t const i) noexcept -> size_type
+    {
+        assert(i < s_rank);
+        return s_strides[i];
+    }
+
+    [[nodiscard]]
+    constexpr static auto linear_index(index_t const (&idxs)[s_rank]) noexcept -> index_t
+    {
+#ifdef AMR_CONTAINERS_CHECKBOUNDS
+        assert_in_bounds(idxs);
+#endif
+        auto linear_idx = std::transform_reduce(
+            std::cbegin(idxs), std::cend(idxs), std::cbegin(s_strides), index_t{}
+        );
+        assert(linear_idx < elements());
+        if constexpr (std::is_signed_v<index_t>)
+        {
+            assert(linear_idx >= 0);
+        }
+        return linear_idx;
+    }
+
+    [[nodiscard]]
+    constexpr static auto linear_index(multi_index_t const& multi_idx) noexcept -> index_t
+    {
+        auto linear_idx = std::transform_reduce(
+            std::cbegin(multi_idx),
+            std::cend(multi_idx),
+            std::cbegin(s_strides),
+            index_t{}
+        );
+        assert(linear_idx < elements());
+        if constexpr (std::is_signed_v<index_t>)
+        {
+            assert(linear_idx >= 0);
+        }
+        return linear_idx;
+    }
+
+private:
+#ifdef AMR_CONTAINERS_CHECKBOUNDS
+    static auto assert_in_bounds(index_t const (&idxs)[s_rank]) noexcept -> void
+    {
+        for (auto d = rank_t{}; d != s_rank; ++d)
+        {
+            assert(idxs[d] < s_sizes[d]);
+            if constexpr (std::is_signed_v<index_t>)
+            {
+                assert(idxs[d] >= 0);
+            }
+        }
+    }
+#endif
+};
+
+} // namespace amr::containers
+
+#endif // AMR_INCLUDED_STATIC_LAYOUT
