@@ -35,6 +35,7 @@ public:
     using const_reference = value_type const&;
     using reference       = value_type&;
 
+private:
     inline static constexpr auto      s_size_y = M;
     inline static constexpr auto      s_size_x = N;
     inline static constexpr size_type s_flat_size{ N * M };
@@ -42,6 +43,7 @@ public:
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::is_standard_layout_v<T>);
 
+public:
     [[nodiscard]]
     constexpr static auto flat_size() noexcept -> size_type
     {

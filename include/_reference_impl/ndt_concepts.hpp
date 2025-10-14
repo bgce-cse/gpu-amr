@@ -33,6 +33,7 @@ concept cell = requires(T t) {
     { merge(std::array{ t, t }) } -> std::same_as<std::optional<T>>;
 } && std::is_destructible_v<T>;
 
+
 } // namespace ndt_concepts
 
 #endif // GPU_ARM_NDT_CONCEPTS
