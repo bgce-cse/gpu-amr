@@ -225,33 +225,34 @@ public:
     }
 
     static constexpr auto compute_child_multi_idx(size_type linear_idx)
-{
-    std::array<size_type, s_dimension> coords{};
-    size_type remainder = linear_idx;
-    
-    // Row-major: last dimension varies fastest
-    for (int d = s_dimension - 1; d >= 0; --d)
     {
-        coords[d] = remainder % s_1d_fanout;
-        remainder /= s_1d_fanout;
-    }
-    return coords;
-}
+        std::array<size_type, s_dimension> coords{};
+        size_type                          remainder = linear_idx;
 
-   static constexpr auto compute_child_linear_idx(std::array<size_type, s_dimension> coords) -> size_type
-{
-    size_type linear_idx = 0;
-    size_type multiplier = 1;
-    
-    // Row-major: last dimension varies fastest
-    for (int d = s_dimension - 1; d >= 0; --d)
-    {
-        linear_idx += coords[d] * multiplier;
-        multiplier *= s_1d_fanout;
+        // Row-major: last dimension varies fastest
+        for (int d = s_dimension - 1; d >= 0; --d)
+        {
+            coords[d] = remainder % s_1d_fanout;
+            remainder /= s_1d_fanout;
+        }
+        return coords;
     }
-    
-    return linear_idx;
-}
+
+    static constexpr auto
+        compute_child_linear_idx(std::array<size_type, s_dimension> coords) -> size_type
+    {
+        size_type linear_idx = 0;
+        size_type multiplier = 1;
+
+        // Row-major: last dimension varies fastest
+        for (int d = s_dimension - 1; d >= 0; --d)
+        {
+            linear_idx += coords[d] * multiplier;
+            multiplier *= s_1d_fanout;
+        }
+
+        return linear_idx;
+    }
 
     static constexpr auto compute_fine_boundary_linear_index(
         std::array<size_type, s_dimension> coords,
@@ -294,12 +295,12 @@ public:
         return static_cast<patch_index_t::offset_t>(compute_child_linear_idx(coords));
     }
 
-
-
-    static constexpr auto compute_boundary_children(size_type direction){
-        constexpr size_type num_boundary_children = utility::cx_functions::pow(s_1d_fanout, s_dimension - 1);
+    static constexpr auto compute_boundary_children(size_type direction)
+    {
+        constexpr size_type num_boundary_children =
+            utility::cx_functions::pow(s_1d_fanout, s_dimension - 1);
         std::array<size_type, num_boundary_children> boundary_children{};
-        
+
         size_type boundary_idx = 0;
         for (size_type i = 0; i < s_nd_fanout; i++)
         {
@@ -339,7 +340,6 @@ public:
             }
             else
             {
-                
                 auto visitor = [&](auto&& neighbor) -> neighbor_variant_t
                 {
                     using T = std::decay_t<decltype(neighbor)>;
@@ -348,42 +348,53 @@ public:
                     {
                         return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                     }
-                    else if constexpr (std::is_same_v<T, typename neighbor_variant_t::same>)
+                    else if constexpr (std::is_same_v<
+                                           T,
+                                           typename neighbor_variant_t::same>)
                     {
-                        return neighbor_variant_t{ typename neighbor_variant_t::coarser{ neighbor.id } };
+                        return neighbor_variant_t{ typename neighbor_variant_t::coarser{
+                            neighbor.id } };
                     }
-                    else if constexpr (std::is_same_v<T, typename neighbor_variant_t::finer>)
+                    else if constexpr (std::is_same_v<
+                                           T,
+                                           typename neighbor_variant_t::finer>)
                     {
-                        auto fine_index = compute_fine_boundary_linear_index(child_multiindex, direction / 2);
+                        auto fine_index = compute_fine_boundary_linear_index(
+                            child_multiindex, direction / 2
+                        );
                         auto fine_neighbor_id = neighbor.ids[fine_index];
-                        return neighbor_variant_t{ typename neighbor_variant_t::same{ fine_neighbor_id } };
+                        return neighbor_variant_t{ typename neighbor_variant_t::same{
+                            fine_neighbor_id } };
                     }
-                    else if constexpr (std::is_same_v<T, typename neighbor_variant_t::coarser>)
+                    else if constexpr (std::is_same_v<
+                                           T,
+                                           typename neighbor_variant_t::coarser>)
                     {
                         return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                     }
                 };
-                
-                child_neighbor_array[direction] = std::visit(visitor, parent_neighbor_array[direction].data);
+
+                child_neighbor_array[direction] =
+                    std::visit(visitor, parent_neighbor_array[direction].data);
             }
-        } 
+        }
         return child_neighbor_array;
-    } 
+    }
 
     static auto compute_parent_neighbors(
         std::array<neighbor_array_t, s_nd_fanout> child_neighbor_arrays
     ) -> neighbor_array_t
     {
         neighbor_array_t parent_neighbor_array{};
-        
+
         for (size_type direction = 0; direction < 2 * s_dimension; direction++)
         {
-
             auto boundary_children = compute_boundary_children(direction);
 
             // Use the first boundary child's neighbor to determine parent's neighbor type
-            auto first_boundary_child_neighbor = child_neighbor_arrays[boundary_children[0]][direction];
-            
+            auto first_boundary_child_neighbor =
+                child_neighbor_arrays[boundary_children[0]][direction];
+
             auto visitor = [&](auto&& neighbor) -> neighbor_variant_t
             {
                 using T = std::decay_t<decltype(neighbor)>;
@@ -398,37 +409,52 @@ public:
                     typename neighbor_variant_t::finer::container_t fine_neighbor_ids{};
                     for (size_type i = 0; i < boundary_children.size(); i++)
                     {
-                        auto child_neighbor = child_neighbor_arrays[boundary_children[i]][direction];
+                        auto child_neighbor =
+                            child_neighbor_arrays[boundary_children[i]][direction];
                         // Extract the same-level neighbor ID from each boundary child
-                        std::visit([&](auto&& child_nb) {
-                            using ChildT = std::decay_t<decltype(child_nb)>;
-                            if constexpr (std::is_same_v<ChildT, typename neighbor_variant_t::same>) {
-                                fine_neighbor_ids[i] = child_nb.id;
-                            }
-                        }, child_neighbor.data);
+                        std::visit(
+                            [&](auto&& child_nb)
+                            {
+                                using ChildT = std::decay_t<decltype(child_nb)>;
+                                if constexpr (std::is_same_v<
+                                                  ChildT,
+                                                  typename neighbor_variant_t::same>)
+                                {
+                                    fine_neighbor_ids[i] = child_nb.id;
+                                }
+                            },
+                            child_neighbor.data
+                        );
                     }
-                    return neighbor_variant_t{ typename neighbor_variant_t::finer{ fine_neighbor_ids } };
+                    return neighbor_variant_t{ typename neighbor_variant_t::finer{
+                        fine_neighbor_ids } };
                 }
-                else if constexpr (std::is_same_v<T, typename neighbor_variant_t::coarser>)
+                else if constexpr (std::
+                                       is_same_v<T, typename neighbor_variant_t::coarser>)
                 {
                     // Child has coarser neighbor -> parent has same-level neighbor
-                    return neighbor_variant_t{ typename neighbor_variant_t::same{ neighbor.id } };
+                    return neighbor_variant_t{ typename neighbor_variant_t::same{
+                        neighbor.id } };
                 }
                 else if constexpr (std::is_same_v<T, typename neighbor_variant_t::finer>)
                 {
-                    assert(false && "Child has finer neighbor during coarsening - unexpected!");
+                    assert(
+                        false &&
+                        "Child has finer neighbor during coarsening - unexpected!"
+                    );
                     return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                 }
             };
-            
-            parent_neighbor_array[direction] = std::visit(visitor, first_boundary_child_neighbor.data);
+
+            parent_neighbor_array[direction] =
+                std::visit(visitor, first_boundary_child_neighbor.data);
         }
 
         return parent_neighbor_array;
-    } 
+    }
 
 }; // End of neighbor_utils class
 
-} // End of neighbors namespace
-} // End of amr::ndt::utils namespace
+} // namespace neighbors
+} // namespace amr::ndt::utils
 #endif // AMR_INCLUDED_NDUTILS

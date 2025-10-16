@@ -99,16 +99,15 @@ public:
     using index_map_t                = std::unordered_map<patch_index_t, linear_index_t>;
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
-    using neighbor_variant_t = utils::neighbors::neighbor_variant<patch_index_t>;
-    using neighbor_array_t = utils::neighbors::neighbor_array_t<patch_index_t>;
-    using neighbor_utils_t = utils::neighbors::neighbor_utils<patch_index_t, patch_layout_t>;
+    using neighbor_variant_t         = utils::neighbors::neighbor_variant<patch_index_t>;
+    using neighbor_array_t           = utils::neighbors::neighbor_array_t<patch_index_t>;
+    using neighbor_utils_t =
+        utils::neighbors::neighbor_utils<patch_index_t, patch_layout_t>;
     using neighbor_buffer_t = pointer_t<neighbor_array_t>;
-
 
 private:
     static constexpr auto s_fragmentation_patch_maps =
         amr::ndt::utils::patches::fragmentation_patch_maps<patch_layout_t, s_1d_fanout>();
-
 
 public:
     [[nodiscard]]
@@ -204,7 +203,7 @@ public:
 
     auto fragment(patch_index_t const node_id) -> void
     {
-        const auto it = find_index(node_id);
+        const auto it   = find_index(node_id);
         const auto from = it.value()->second;
         assert(it.has_value());
         auto const start_to = m_size;
@@ -215,7 +214,8 @@ public:
             );
             assert(!find_index(child_id).has_value());
 
-            neighbor_array_t neighbor_array = neighbor_utils_t::compute_child_neighbors(node_id, m_neighbors[from], i);
+            neighbor_array_t neighbor_array =
+                neighbor_utils_t::compute_child_neighbors(node_id, m_neighbors[from], i);
             append(child_id, neighbor_array);
             assert(m_index_map[child_id] == back_idx());
             assert(m_linear_index_map[back_idx()] == child_id);
@@ -247,7 +247,8 @@ public:
             m_index_map.erase(child_i_it.value());
         }
 
-        neighbor_array_t neighbor_array = neighbor_utils_t::compute_parent_neighbors(child_neighbor_arrays);
+        neighbor_array_t neighbor_array =
+            neighbor_utils_t::compute_parent_neighbors(child_neighbor_arrays);
         const auto start = child_0_it.value()->second;
         auto const to    = m_size;
         append(parent_node_id, neighbor_array);
@@ -327,172 +328,256 @@ public:
         }
     }
 
-
-auto enforce_symmetry_after_refinement(patch_index_t parent_id) -> void
-{
-    auto parent_neighbor = m_neighbors[m_index_map.at(parent_id)];
-    
-    for (size_t direction = 0; direction < 2 * s_dimension; direction++)
+    auto enforce_symmetry_after_refinement(patch_index_t parent_id) -> void
     {
-        auto& neighbor = parent_neighbor[direction];
-        
-        std::visit([&](auto&& neighbor_data) {
-            using Type = std::decay_t<decltype(neighbor_data)>;
-            
-            if constexpr (std::is_same_v<Type, typename neighbor_variant_t::none>) {
-                return;
-            }
-            else if constexpr (std::is_same_v<Type, typename neighbor_variant_t::same>) {
-                auto neighbor_id = neighbor_data.id;
-                auto opposite_direction = (direction % 2 == 0) ? direction + 1 : direction - 1;
-                
-                auto offsets = neighbor_utils_t::compute_boundary_children(direction);
-                typename neighbor_variant_t::finer::container_t fine_neighbor_ids;
-                
-                for (size_t i = 0; i < offsets.size(); i++) {
-                    auto offset = static_cast<patch_index_t::offset_t>(offsets[i]);
-                    fine_neighbor_ids[i] = patch_index_t::child_of(parent_id, offset);
-                }
+        auto parent_neighbor = m_neighbors[m_index_map.at(parent_id)];
 
-                neighbor_variant_t new_neighbor;
-                new_neighbor.data = typename neighbor_variant_t::finer{ fine_neighbor_ids };
-                
-                m_neighbors[m_index_map.at(neighbor_id)][opposite_direction] = new_neighbor;
-            }
-            else if constexpr (std::is_same_v<Type, typename neighbor_variant_t::finer>) {
-                auto neighbor_ids = neighbor_data.ids;
-                auto opposite_direction = (direction % 2 == 0) ? direction + 1 : direction - 1;
+        for (size_t direction = 0; direction < 2 * s_dimension; direction++)
+        {
+            auto& neighbor = parent_neighbor[direction];
 
-                auto offsets = neighbor_utils_t::compute_boundary_children(direction);
-
-                for (size_t i = 0; i < neighbor_ids.size() && i < offsets.size(); i++) {
-                    auto offset = static_cast<patch_index_t::offset_t>(offsets[i]);
-                    auto same_neighbor_id = patch_index_t::child_of(parent_id, offset);
-                    neighbor_variant_t new_neighbor;
-                    new_neighbor.data = typename neighbor_variant_t::same{ same_neighbor_id };
-
-                    m_neighbors[m_index_map.at(neighbor_ids[i])][opposite_direction] = new_neighbor;
-                }
-            }
-            else if constexpr (std::is_same_v<Type, typename neighbor_variant_t::coarser>) {
-                assert(false && "Coarser neighbor during refinement shouldn't happen");
-            }
-        }, neighbor.data);
-    }
-}
-
-auto enforce_symmetry_after_recombining(patch_index_t parent_node_id, neighbor_array_t parent_neighbor) -> void
-{
-    for (size_t direction = 0; direction < 2 * s_dimension; direction++)
-    {
-        auto opposite_direction = (direction % 2 == 0) ? direction + 1 : direction - 1;
-        auto& neighbor = parent_neighbor[direction];
-        
-        std::visit([&](auto&& neighbor_data) {
-            using Type = std::decay_t<decltype(neighbor_data)>;
-            
-            if constexpr (std::is_same_v<Type, typename neighbor_variant_t::none>) {
-                return; // No neighbor to update
-            }
-            else if constexpr (std::is_same_v<Type, typename neighbor_variant_t::same>) {
-                // Same-level neighbor now sees the parent instead of children
-                neighbor_variant_t new_neighbor;
-                new_neighbor.data = typename neighbor_variant_t::same{ parent_node_id };
-                m_neighbors[m_index_map.at(neighbor_data.id)][opposite_direction] = new_neighbor;
-            }
-            else if constexpr (std::is_same_v<Type, typename neighbor_variant_t::finer>) {
-                // Finer neighbors now see the parent as a coarser neighbor
-                for (size_type i = 0; i < neighbor_data.ids.size(); i++)
+            std::visit(
+                [&](auto&& neighbor_data)
                 {
-                    neighbor_variant_t new_neighbor;
-                    new_neighbor.data = typename neighbor_variant_t::coarser{ parent_node_id };
-                    m_neighbors[m_index_map.at(neighbor_data.ids[i])][opposite_direction] = new_neighbor;
-                }
-            }
-            else if constexpr (std::is_same_v<Type, typename neighbor_variant_t::coarser>) {
-                assert(false && "Having a coarser neighbor after recombining does not make sense.");
-            }
-        }, neighbor.data);
+                    using Type = std::decay_t<decltype(neighbor_data)>;
+
+                    if constexpr (std::is_same_v<Type, typename neighbor_variant_t::none>)
+                    {
+                        return;
+                    }
+                    else if constexpr (std::is_same_v<
+                                           Type,
+                                           typename neighbor_variant_t::same>)
+                    {
+                        auto neighbor_id = neighbor_data.id;
+                        auto opposite_direction =
+                            (direction % 2 == 0) ? direction + 1 : direction - 1;
+
+                        auto offsets =
+                            neighbor_utils_t::compute_boundary_children(direction);
+                        typename neighbor_variant_t::finer::container_t fine_neighbor_ids;
+
+                        for (size_t i = 0; i < offsets.size(); i++)
+                        {
+                            auto offset =
+                                static_cast<patch_index_t::offset_t>(offsets[i]);
+                            fine_neighbor_ids[i] =
+                                patch_index_t::child_of(parent_id, offset);
+                        }
+
+                        neighbor_variant_t new_neighbor;
+                        new_neighbor.data =
+                            typename neighbor_variant_t::finer{ fine_neighbor_ids };
+
+                        m_neighbors[m_index_map.at(neighbor_id)][opposite_direction] =
+                            new_neighbor;
+                    }
+                    else if constexpr (std::is_same_v<
+                                           Type,
+                                           typename neighbor_variant_t::finer>)
+                    {
+                        auto neighbor_ids = neighbor_data.ids;
+                        auto opposite_direction =
+                            (direction % 2 == 0) ? direction + 1 : direction - 1;
+
+                        auto offsets =
+                            neighbor_utils_t::compute_boundary_children(direction);
+
+                        for (size_t i = 0; i < neighbor_ids.size() && i < offsets.size();
+                             i++)
+                        {
+                            auto offset =
+                                static_cast<patch_index_t::offset_t>(offsets[i]);
+                            auto same_neighbor_id =
+                                patch_index_t::child_of(parent_id, offset);
+                            neighbor_variant_t new_neighbor;
+                            new_neighbor.data =
+                                typename neighbor_variant_t::same{ same_neighbor_id };
+
+                            m_neighbors[m_index_map.at(neighbor_ids[i])]
+                                       [opposite_direction] = new_neighbor;
+                        }
+                    }
+                    else if constexpr (std::is_same_v<
+                                           Type,
+                                           typename neighbor_variant_t::coarser>)
+                    {
+                        assert(
+                            false && "Coarser neighbor during refinement shouldn't happen"
+                        );
+                    }
+                },
+                neighbor.data
+            );
+        }
     }
-}
+
+    auto enforce_symmetry_after_recombining(
+        patch_index_t    parent_node_id,
+        neighbor_array_t parent_neighbor
+    ) -> void
+    {
+        for (size_t direction = 0; direction < 2 * s_dimension; direction++)
+        {
+            auto opposite_direction =
+                (direction % 2 == 0) ? direction + 1 : direction - 1;
+            auto& neighbor = parent_neighbor[direction];
+
+            std::visit(
+                [&](auto&& neighbor_data)
+                {
+                    using Type = std::decay_t<decltype(neighbor_data)>;
+
+                    if constexpr (std::is_same_v<Type, typename neighbor_variant_t::none>)
+                    {
+                        return; // No neighbor to update
+                    }
+                    else if constexpr (std::is_same_v<
+                                           Type,
+                                           typename neighbor_variant_t::same>)
+                    {
+                        // Same-level neighbor now sees the parent instead of children
+                        neighbor_variant_t new_neighbor;
+                        new_neighbor.data =
+                            typename neighbor_variant_t::same{ parent_node_id };
+                        m_neighbors[m_index_map.at(neighbor_data.id)]
+                                   [opposite_direction] = new_neighbor;
+                    }
+                    else if constexpr (std::is_same_v<
+                                           Type,
+                                           typename neighbor_variant_t::finer>)
+                    {
+                        // Finer neighbors now see the parent as a coarser neighbor
+                        for (size_type i = 0; i < neighbor_data.ids.size(); i++)
+                        {
+                            neighbor_variant_t new_neighbor;
+                            new_neighbor.data =
+                                typename neighbor_variant_t::coarser{ parent_node_id };
+                            m_neighbors[m_index_map.at(neighbor_data.ids[i])]
+                                       [opposite_direction] = new_neighbor;
+                        }
+                    }
+                    else if constexpr (std::is_same_v<
+                                           Type,
+                                           typename neighbor_variant_t::coarser>)
+                    {
+                        assert(
+                            false && "Having a coarser neighbor after recombining does "
+                                     "not make sense."
+                        );
+                    }
+                },
+                neighbor.data
+            );
+        }
+    }
 
     auto balancing()
     {
-
-    // Refinement balancing
-    for (size_t i = 0; i < m_to_refine.size(); i++)
-    {
-        auto node_id = m_to_refine[i];
-
-        for (size_type dir = 0; dir < 2 * s_dimension; dir++) 
+        // Refinement balancing
+        for (size_t i = 0; i < m_to_refine.size(); i++)
         {
-            auto neighbor_array = m_neighbors[m_index_map.at(node_id)];
-            auto& neighbor = neighbor_array[dir];
+            auto node_id = m_to_refine[i];
 
-            std::visit([&](auto&& neighbor_data) {
-                using Type = std::decay_t<decltype(neighbor_data)>;
-                
-                if constexpr (std::is_same_v<Type, typename neighbor_variant_t::coarser>) {
-                    auto coarser_neighbor_id = neighbor_data.id;
-                    
-                    
-                    auto it = std::find(m_to_refine.begin(), m_to_refine.end(), coarser_neighbor_id);
-                    if (it == m_to_refine.end()) {
-                        m_to_refine.push_back(coarser_neighbor_id);
-                    }
-                }
-            }, neighbor.data);
+            for (size_type dir = 0; dir < 2 * s_dimension; dir++)
+            {
+                auto  neighbor_array = m_neighbors[m_index_map.at(node_id)];
+                auto& neighbor       = neighbor_array[dir];
+
+                std::visit(
+                    [&](auto&& neighbor_data)
+                    {
+                        using Type = std::decay_t<decltype(neighbor_data)>;
+
+                        if constexpr (std::is_same_v<
+                                          Type,
+                                          typename neighbor_variant_t::coarser>)
+                        {
+                            auto coarser_neighbor_id = neighbor_data.id;
+
+                            auto it = std::find(
+                                m_to_refine.begin(),
+                                m_to_refine.end(),
+                                coarser_neighbor_id
+                            );
+                            if (it == m_to_refine.end())
+                            {
+                                m_to_refine.push_back(coarser_neighbor_id);
+                            }
+                        }
+                    },
+                    neighbor.data
+                );
+            }
         }
-    }
 
         std::vector<patch_index_t> blocks_to_remove;
-for (size_t i = 0; i < m_to_coarsen.size(); i++)
-{
-    auto parent_id = m_to_coarsen[i]; 
-    bool should_remove = false;
-
-    for (size_type dir = 0; dir < 2 * s_dimension; dir++) 
-    {
-        auto boundary_children = neighbor_utils_t::compute_boundary_children(dir); 
-
-        // Check all boundary children for this direction
-        for (size_t j = 0; j < boundary_children.size(); j++)
+        for (size_t i = 0; i < m_to_coarsen.size(); i++)
         {
-            auto child_id = patch_index_t::child_of(parent_id, static_cast<typename patch_index_t::offset_t>(boundary_children[j])); // Fix: variable name
-            auto& neighbor = m_neighbors[m_index_map.at(child_id)][dir];
+            auto parent_id     = m_to_coarsen[i];
+            bool should_remove = false;
 
-            std::visit([&](auto&& neighbor_data) {
-                using Type = std::decay_t<decltype(neighbor_data)>;
-                
-                if constexpr (std::is_same_v<Type, typename neighbor_variant_t::finer>) {
-                    should_remove = true;
+            for (size_type dir = 0; dir < 2 * s_dimension; dir++)
+            {
+                auto boundary_children = neighbor_utils_t::compute_boundary_children(dir);
+
+                // Check all boundary children for this direction
+                for (size_t j = 0; j < boundary_children.size(); j++)
+                {
+                    auto child_id = patch_index_t::child_of(
+                        parent_id,
+                        static_cast<typename patch_index_t::offset_t>(boundary_children[j]
+                        )
+                    ); // Fix: variable name
+                    auto& neighbor = m_neighbors[m_index_map.at(child_id)][dir];
+
+                    std::visit(
+                        [&](auto&& neighbor_data)
+                        {
+                            using Type = std::decay_t<decltype(neighbor_data)>;
+
+                            if constexpr (std::is_same_v<
+                                              Type,
+                                              typename neighbor_variant_t::finer>)
+                            {
+                                should_remove = true;
+                            }
+                            else if constexpr (std::is_same_v<
+                                                   Type,
+                                                   typename neighbor_variant_t::same>)
+                            {
+                                auto same_neighbor_id = neighbor_data.id;
+                                auto it               = std::find(
+                                    m_to_refine.begin(),
+                                    m_to_refine.end(),
+                                    same_neighbor_id
+                                );
+                                if (it != m_to_refine.end())
+                                {
+                                    should_remove = true;
+                                }
+                            }
+                        },
+                        neighbor.data
+                    );
+
+                    if (should_remove) break;
                 }
-                else if constexpr (std::is_same_v<Type, typename neighbor_variant_t::same>) {
-                    auto same_neighbor_id = neighbor_data.id;
-                    auto it = std::find(m_to_refine.begin(), m_to_refine.end(), same_neighbor_id);
-                    if (it != m_to_refine.end()) {
-                        should_remove = true; 
-                    }
-                }
-                
-            }, neighbor.data);
-            
-            if (should_remove) break; 
+                if (should_remove) break;
+            }
+            if (should_remove)
+            {
+                blocks_to_remove.push_back(parent_id);
+            }
         }
-        if (should_remove) break;
-    }
-    if (should_remove) {
-        blocks_to_remove.push_back(parent_id);
-    }
-}
 
-for (const auto& id : blocks_to_remove)
-{
-    m_to_coarsen.erase(
-        std::remove(m_to_coarsen.begin(), m_to_coarsen.end(), id),
-        m_to_coarsen.end()
-    );
-}
+        for (const auto& id : blocks_to_remove)
+        {
+            m_to_coarsen.erase(
+                std::remove(m_to_coarsen.begin(), m_to_coarsen.end(), id),
+                m_to_coarsen.end()
+            );
+        }
     }
 
 public:
@@ -520,7 +605,8 @@ private:
         return m_size - 1;
     }
 
-    auto append(patch_index_t const node_id, neighbor_array_t neighbor_array ) noexcept -> void
+    auto append(patch_index_t const node_id, neighbor_array_t neighbor_array) noexcept
+        -> void
     {
         m_linear_index_map[m_size] = node_id;
         m_index_map[node_id]       = m_size;
@@ -560,7 +646,7 @@ public:
         patch_index_t         backup_node_index;
         refine_status_t       backup_refine_status;
         deconstructed_types_t backup_patch;
-        neighbor_array_t backup_neighbors;
+        neighbor_array_t      backup_neighbors;
 
         for (linear_index_t i = 0; i != back_idx();)
         {
@@ -574,7 +660,7 @@ public:
             backup_start_pos     = i;
             backup_node_index    = m_linear_index_map[i];
             backup_refine_status = m_refine_status_buffer[i];
-            backup_neighbors = m_neighbors[i];
+            backup_neighbors     = m_neighbors[i];
 
             // Backup entire patch
             [this, i, &backup_patch]<std::size_t... I>(std::index_sequence<I...>)
@@ -587,7 +673,7 @@ public:
             {
                 m_linear_index_map[dst]     = m_linear_index_map[src];
                 m_refine_status_buffer[dst] = m_refine_status_buffer[src];
-                m_neighbors[dst] = m_neighbors[src];
+                m_neighbors[dst]            = m_neighbors[src];
 
                 // Copy entire patches
                 std::apply(
@@ -604,7 +690,7 @@ public:
 
             m_linear_index_map[dst]     = backup_node_index;
             m_refine_status_buffer[dst] = backup_refine_status;
-            m_neighbors[dst] = backup_neighbors;
+            m_neighbors[dst]            = backup_neighbors;
 
             // Restore backed up patch
             [this, dst, &backup_patch]<std::size_t... I>(std::index_sequence<I...>)
