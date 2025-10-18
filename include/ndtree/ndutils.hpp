@@ -164,7 +164,6 @@ struct neighbor_variant
     struct coarser
     {
         patch_index_t id;
-        // TODO: Maybe store information about relative position?
     };
 
     struct finer
