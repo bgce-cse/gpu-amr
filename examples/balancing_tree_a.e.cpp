@@ -164,6 +164,6 @@ int main()
         printer.print(tree, file_extension);
     }
 
-    std::cout << "adios balancing world\n";
+    std::cout << "Adiós balancing world\n";
     return EXIT_SUCCESS;
 }

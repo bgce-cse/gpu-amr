@@ -82,7 +82,9 @@ public:
     [[nodiscard]]
     constexpr static auto stride(index_t const i) noexcept -> size_type
     {
-        assert(i < s_rank);
+#ifdef AMR_CONTAINERS_CHECKBOUNDS
+        assert_in_bounds(i);
+#endif
         return s_strides[i];
     }
 
@@ -120,9 +122,25 @@ public:
         return linear_idx;
     }
 
+    [[nodiscard]]
+    constexpr static auto multi_index(index_t linear_idx) noexcept -> multi_index_t
+    {
+#ifdef AMR_CONTAINERS_CHECKBOUNDS
+        assert_in_bounds(linear_idx);
+#endif
+        multi_index_t ret{};
+        for (rank_t d = 0; d != s_rank; ++d)
+        {
+            ret[d] = linear_idx / s_strides[d];
+            linear_idx %= s_strides[d];
+        }
+        return ret;
+    }
+
 private:
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
     static auto assert_in_bounds(index_t const (&idxs)[s_rank]) noexcept -> void
+        requires(s_rank != 1)
     {
         for (auto d = rank_t{}; d != s_rank; ++d)
         {
@@ -130,6 +148,18 @@ private:
             if constexpr (std::is_signed_v<index_t>)
             {
                 assert(idxs[d] >= 0);
+            }
+        }
+    }
+
+    constexpr static auto assert_in_bounds(index_t idx) noexcept -> void
+    {
+        if (!std::is_constant_evaluated())
+        {
+            assert(idx < s_flat_size);
+            if constexpr (std::is_signed_v<index_t>)
+            {
+                assert(idx >= 0);
             }
         }
     }
