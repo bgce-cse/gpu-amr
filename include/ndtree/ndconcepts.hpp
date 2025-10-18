@@ -81,12 +81,12 @@ concept PatchType = requires(
 
 template <typename L>
 concept PatchLayout = requires() {
-    typename L::rank_t;
+    typename L::dimension_t;
     typename L::index_t;
     typename L::size_type;
     typename L::data_layout_t;
     typename L::padded_layout_t;
-    { L::dimension() } -> std::same_as<typename L::rank_t>;
+    { L::dimension() } -> std::same_as<typename L::dimension_t>;
     { L::flat_size() } -> std::same_as<typename L::size_type>;
     { L::halo_width() } -> std::same_as<typename L::size_type>;
 };

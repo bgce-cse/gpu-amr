@@ -27,10 +27,10 @@ public:
     using reference       = index_t&;
 
 private:
-    inline static constexpr size_type s_rank     = shape_t::rank();
-    inline static constexpr size_type s_sentinel = s_rank;
-    inline static constexpr auto&     s_sizes    = shape_t::sizes();
-    inline static constexpr auto      s_elements = shape_t::elements();
+    static constexpr size_type s_rank     = shape_t::rank();
+    static constexpr size_type s_sentinel = s_rank;
+    static constexpr auto&     s_sizes    = shape_t::sizes();
+    static constexpr auto      s_elements = shape_t::elements();
 
 public:
     [[nodiscard]]

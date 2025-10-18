@@ -5,6 +5,7 @@
 #include "ndhierarchy.hpp"
 #include "ndtype_traits.hpp"
 #include "ndutils.hpp"
+#include "neighbor.hpp"
 #include "patch.hpp"
 #include "patch_layout.hpp"
 #include "utility/compile_time_utility.hpp"
@@ -99,11 +100,10 @@ public:
     using index_map_t                = std::unordered_map<patch_index_t, linear_index_t>;
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
-    using neighbor_variant_t         = utils::neighbors::neighbor_variant<patch_index_t>;
-    using neighbor_array_t           = utils::neighbors::neighbor_array_t<patch_index_t>;
-    using neighbor_utils_t =
-        utils::neighbors::neighbor_utils<patch_index_t, patch_layout_t>;
-    using neighbor_buffer_t = pointer_t<neighbor_array_t>;
+    using neighbor_utils_t   = neighbors::neighbor_utils<patch_index_t, patch_layout_t>;
+    using neighbor_variant_t = typename neighbor_utils_t::neighbor_variant_t;
+    using patch_neighbors_t  = typename neighbor_utils_t::patch_neighbors_t;
+    using neighbor_buffer_t  = pointer_t<patch_neighbors_t>;
 
 private:
     static constexpr auto s_fragmentation_patch_maps =
@@ -144,9 +144,9 @@ public:
             (pointer_t<refine_status_t>)std::malloc(size * sizeof(refine_status_t));
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
 
-        m_neighbors = (neighbor_buffer_t)std::malloc(size * sizeof(neighbor_array_t));
+        m_neighbors = (neighbor_buffer_t)std::malloc(size * sizeof(patch_neighbors_t));
 
-        neighbor_array_t root_neighbor_array{};
+        patch_neighbors_t root_neighbor_array{};
         append(patch_index_t::root(), root_neighbor_array);
     }
 
@@ -176,8 +176,8 @@ public:
 
     template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
-    auto get(linear_index_t const idx
-    ) const noexcept -> const_reference_t<typename Map_Type::type>
+    auto get(linear_index_t const idx) const noexcept
+        -> const_reference_t<typename Map_Type::type>
     {
         assert(idx < m_size);
         return std::get<Map_Type::index()>(m_data_buffers)[idx];
@@ -194,8 +194,8 @@ public:
 
     template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
-    auto get_patch(linear_index_t const patch_idx
-    ) const noexcept -> patch_t<Map_Type> const&
+    auto get_patch(linear_index_t const patch_idx) const noexcept
+        -> patch_t<Map_Type> const&
     {
         assert(patch_idx < m_size);
         return std::get<Map_Type::index()>(m_data_buffers)[patch_idx];
@@ -214,7 +214,7 @@ public:
             );
             assert(!find_index(child_id).has_value());
 
-            neighbor_array_t neighbor_array =
+            patch_neighbors_t neighbor_array =
                 neighbor_utils_t::compute_child_neighbors(node_id, m_neighbors[from], i);
             append(child_id, neighbor_array);
             assert(m_index_map[child_id] == back_idx());
@@ -236,7 +236,7 @@ public:
         const auto child_0_it = find_index(child_0);
         assert(child_0_it.has_value());
 
-        std::array<neighbor_array_t, s_nd_fanout> child_neighbor_arrays;
+        std::array<patch_neighbors_t, s_nd_fanout> child_neighbor_arrays;
         for (typename patch_index_t::offset_t i = 0; i != s_nd_fanout; ++i)
         {
             const auto child_i    = patch_index_t::child_of(parent_node_id, i);
@@ -247,7 +247,7 @@ public:
             m_index_map.erase(child_i_it.value());
         }
 
-        neighbor_array_t neighbor_array =
+        patch_neighbors_t neighbor_array =
             neighbor_utils_t::compute_parent_neighbors(child_neighbor_arrays);
         const auto start = child_0_it.value()->second;
         auto const to    = m_size;
@@ -281,8 +281,9 @@ public:
     }
 
     template <typename Fn>
-    auto update_refine_flags(Fn&& fn
-    ) noexcept(noexcept(fn(std::declval<linear_index_t&>())))
+    auto update_refine_flags(Fn&& fn) noexcept(
+        noexcept(fn(std::declval<linear_index_t&>()))
+    )
     {
         for (linear_index_t i = 0; i < m_size; ++i)
         {
@@ -413,8 +414,8 @@ public:
     }
 
     auto enforce_symmetry_after_recombining(
-        patch_index_t    parent_node_id,
-        neighbor_array_t parent_neighbor
+        patch_index_t     parent_node_id,
+        patch_neighbors_t parent_neighbor
     ) -> void
     {
         for (size_t direction = 0; direction < 2 * s_dimension; direction++)
@@ -526,7 +527,8 @@ public:
                 {
                     auto child_id = patch_index_t::child_of(
                         parent_id,
-                        static_cast<typename patch_index_t::offset_t>(boundary_children[j]
+                        static_cast<typename patch_index_t::offset_t>(
+                            boundary_children[j]
                         )
                     ); // Fix: variable name
                     auto& neighbor = m_neighbors[m_index_map.at(child_id)][dir];
@@ -605,7 +607,7 @@ private:
         return m_size - 1;
     }
 
-    auto append(patch_index_t const node_id, neighbor_array_t neighbor_array) noexcept
+    auto append(patch_index_t const node_id, patch_neighbors_t neighbor_array) noexcept
         -> void
     {
         m_linear_index_map[m_size] = node_id;
@@ -615,16 +617,16 @@ private:
     }
 
     [[nodiscard]]
-    auto find_index(patch_index_t const node_id
-    ) const noexcept -> std::optional<index_map_const_iterator_t>
+    auto find_index(patch_index_t const node_id) const noexcept
+        -> std::optional<index_map_const_iterator_t>
     {
         const auto it = m_index_map.find(node_id);
         return it == m_index_map.end() ? std::nullopt : std::optional{ it };
     }
 
     [[nodiscard]]
-    auto find_index(patch_index_t const node_id
-    ) noexcept -> std::optional<index_map_iterator_t>
+    auto find_index(patch_index_t const node_id) noexcept
+        -> std::optional<index_map_iterator_t>
     {
         const auto it = m_index_map.find(node_id);
         return it == m_index_map.end() ? std::nullopt : std::optional{ it };
@@ -646,7 +648,7 @@ public:
         patch_index_t         backup_node_index;
         refine_status_t       backup_refine_status;
         deconstructed_types_t backup_patch;
-        neighbor_array_t      backup_neighbors;
+        patch_neighbors_t     backup_neighbors;
 
         for (linear_index_t i = 0; i != back_idx();)
         {
@@ -755,7 +757,8 @@ public:
                     s_fragmentation_patch_maps[patch_idx][linear_idx];
 
                 std::apply(
-                    [to, to_linear_idx, child_patch_index, linear_idx](auto&... b) {
+                    [to, to_linear_idx, child_patch_index, linear_idx](auto&... b)
+                    {
                         ((void)(b[to][to_linear_idx] += b[child_patch_index][linear_idx]),
                          ...);
                     },
@@ -797,7 +800,8 @@ public:
                 std::apply(
                     [child_patch_index, from, patch_idx, from_linear_idx, linear_idx](
                         auto&... b
-                    ) {
+                    )
+                    {
                         ((void)(b[child_patch_index][linear_idx] =
                                     b[from][from_linear_idx]),
                          ...);
@@ -871,8 +875,8 @@ public:
     }
 
     [[gnu::always_inline, gnu::flatten]]
-    auto
-        block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept -> void
+    auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
+        -> void
     {
         assert(i < m_size);
         assert(j < m_size);
