@@ -92,6 +92,18 @@ public:
         return std::end(data_);
     }
 
+    [[nodiscard]]
+    constexpr auto front(this auto&& self) noexcept -> decltype(auto)
+    {
+        return std::forward<decltype(self)>(self).data_.front();
+    }
+
+    [[nodiscard]]
+    constexpr auto back(this auto&& self) noexcept -> decltype(auto)
+    {
+        return std::forward<decltype(self)>(self).data_.back();
+    }
+
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
     constexpr auto assert_in_bounds(size_type const idx) const noexcept -> void
     {

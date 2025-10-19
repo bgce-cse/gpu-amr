@@ -39,12 +39,13 @@ template <
 class ndtree
 {
 public:
-    using map_type               = T;
-    using size_type              = std::size_t;
-    using patch_index_t          = Patch_Index;
-    using patch_index_directon_t = typename patch_index_t::direction_t;
-    using linear_index_t         = size_type;
-    using patch_layout_t         = Patch_Layout;
+    using map_type      = T;
+    using size_type     = std::size_t;
+    using patch_index_t = Patch_Index;
+    // TODO: This should be provided by the patch_index
+    // using patch_index_directon_t = typename patch_index_t::direction_t;
+    using linear_index_t = size_type;
+    using patch_layout_t = Patch_Layout;
 
 private:
     static constexpr size_type s_halo_width = patch_layout_t::halo_width();
@@ -101,7 +102,8 @@ public:
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
     using neighbor_utils_t   = neighbors::neighbor_utils<patch_index_t, patch_layout_t>;
-    using neighbor_variant_t = typename neighbor_utils_t::neighbor_variant_t;
+    using patch_direction_t  = typename neighbor_utils_t::direction_t;
+    using neighbor_variant_t = typename neighbor_utils_t::neighbor_category_t;
     using patch_neighbors_t  = typename neighbor_utils_t::patch_neighbors_t;
     using neighbor_buffer_t  = pointer_t<patch_neighbors_t>;
 
@@ -333,29 +335,31 @@ public:
     {
         auto parent_neighbor = m_neighbors[m_index_map.at(parent_id)];
 
-        for (size_t direction = 0; direction < 2 * s_dimension; direction++)
+        for (auto d = patch_direction_t::first(); d != patch_direction_t::last();
+             d.advance())
         {
-            auto& neighbor = parent_neighbor[direction];
+            auto& neighbor = parent_neighbor[d.index()];
 
             std::visit(
                 [&](auto&& neighbor_data)
                 {
-                    using Type = std::decay_t<decltype(neighbor_data)>;
+                    using neighbor_category_t = std::decay_t<decltype(neighbor_data)>;
 
-                    if constexpr (std::is_same_v<Type, typename neighbor_variant_t::none>)
+                    if constexpr (std::is_same_v<
+                                      neighbor_category_t,
+                                      typename neighbor_variant_t::none>)
                     {
                         return;
                     }
                     else if constexpr (std::is_same_v<
-                                           Type,
+                                           neighbor_category_t,
                                            typename neighbor_variant_t::same>)
                     {
-                        auto neighbor_id = neighbor_data.id;
-                        auto opposite_direction =
-                            (direction % 2 == 0) ? direction + 1 : direction - 1;
+                        const auto neighbor_id = neighbor_data.id;
+                        const auto opposite_d  = patch_direction_t::opposite(d);
 
-                        auto offsets =
-                            neighbor_utils_t::compute_boundary_children(direction);
+                        const auto offsets =
+                            neighbor_utils_t::compute_boundary_children(d);
                         typename neighbor_variant_t::finer::container_t fine_neighbor_ids;
 
                         for (size_t i = 0; i < offsets.size(); i++)
@@ -370,19 +374,17 @@ public:
                         new_neighbor.data =
                             typename neighbor_variant_t::finer{ fine_neighbor_ids };
 
-                        m_neighbors[m_index_map.at(neighbor_id)][opposite_direction] =
+                        m_neighbors[m_index_map.at(neighbor_id)][opposite_d.index()] =
                             new_neighbor;
                     }
                     else if constexpr (std::is_same_v<
-                                           Type,
+                                           neighbor_category_t,
                                            typename neighbor_variant_t::finer>)
                     {
-                        auto neighbor_ids = neighbor_data.ids;
-                        auto opposite_direction =
-                            (direction % 2 == 0) ? direction + 1 : direction - 1;
+                        auto       neighbor_ids = neighbor_data.ids;
+                        const auto opposite_d   = patch_direction_t::opposite(d);
 
-                        auto offsets =
-                            neighbor_utils_t::compute_boundary_children(direction);
+                        auto offsets = neighbor_utils_t::compute_boundary_children(d);
 
                         for (size_t i = 0; i < neighbor_ids.size() && i < offsets.size();
                              i++)
@@ -396,11 +398,11 @@ public:
                                 typename neighbor_variant_t::same{ same_neighbor_id };
 
                             m_neighbors[m_index_map.at(neighbor_ids[i])]
-                                       [opposite_direction] = new_neighbor;
+                                       [opposite_d.index()] = new_neighbor;
                         }
                     }
                     else if constexpr (std::is_same_v<
-                                           Type,
+                                           neighbor_category_t,
                                            typename neighbor_variant_t::coarser>)
                     {
                         assert(
@@ -418,11 +420,11 @@ public:
         patch_neighbors_t parent_neighbor
     ) -> void
     {
-        for (size_t direction = 0; direction < 2 * s_dimension; direction++)
+        for (auto d = patch_direction_t::first(); d != patch_direction_t::last();
+             d.advance())
         {
-            auto opposite_direction =
-                (direction % 2 == 0) ? direction + 1 : direction - 1;
-            auto& neighbor = parent_neighbor[direction];
+            const auto  opposite_d = patch_direction_t::opposite(d);
+            const auto& neighbor   = parent_neighbor[d.index()];
 
             std::visit(
                 [&](auto&& neighbor_data)
@@ -441,8 +443,8 @@ public:
                         neighbor_variant_t new_neighbor;
                         new_neighbor.data =
                             typename neighbor_variant_t::same{ parent_node_id };
-                        m_neighbors[m_index_map.at(neighbor_data.id)]
-                                   [opposite_direction] = new_neighbor;
+                        m_neighbors[m_index_map.at(neighbor_data.id)][opposite_d] =
+                            new_neighbor;
                     }
                     else if constexpr (std::is_same_v<
                                            Type,
@@ -455,7 +457,7 @@ public:
                             new_neighbor.data =
                                 typename neighbor_variant_t::coarser{ parent_node_id };
                             m_neighbors[m_index_map.at(neighbor_data.ids[i])]
-                                       [opposite_direction] = new_neighbor;
+                                       [opposite_d] = new_neighbor;
                         }
                     }
                     else if constexpr (std::is_same_v<
@@ -480,10 +482,11 @@ public:
         {
             auto node_id = m_to_refine[i];
 
-            for (size_type dir = 0; dir < 2 * s_dimension; dir++)
+            for (auto d = patch_direction_t::first(); d != patch_direction_t::last();
+                 d.advance())
             {
                 auto  neighbor_array = m_neighbors[m_index_map.at(node_id)];
-                auto& neighbor       = neighbor_array[dir];
+                auto& neighbor       = neighbor_array[d.index()];
 
                 std::visit(
                     [&](auto&& neighbor_data)
@@ -513,14 +516,15 @@ public:
         }
 
         std::vector<patch_index_t> blocks_to_remove;
-        for (size_t i = 0; i < m_to_coarsen.size(); i++)
+        for (std::size_t i = 0; i < m_to_coarsen.size(); i++)
         {
             auto parent_id     = m_to_coarsen[i];
             bool should_remove = false;
 
-            for (size_type dir = 0; dir < 2 * s_dimension; dir++)
+            for (auto d = patch_direction_t::first(); d != patch_direction_t::last();
+                 d.advance())
             {
-                auto boundary_children = neighbor_utils_t::compute_boundary_children(dir);
+                auto boundary_children = neighbor_utils_t::compute_boundary_children(d);
 
                 // Check all boundary children for this direction
                 for (size_t j = 0; j < boundary_children.size(); j++)
@@ -531,7 +535,7 @@ public:
                             boundary_children[j]
                         )
                     ); // Fix: variable name
-                    auto& neighbor = m_neighbors[m_index_map.at(child_id)][dir];
+                    auto& neighbor = m_neighbors[m_index_map.at(child_id)][d.index()];
 
                     std::visit(
                         [&](auto&& neighbor_data)
