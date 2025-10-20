@@ -429,25 +429,27 @@ public:
             std::visit(
                 [&](auto&& neighbor_data)
                 {
-                    using Type = std::decay_t<decltype(neighbor_data)>;
+                    using neighbor_category_t = std::decay_t<decltype(neighbor_data)>;
 
-                    if constexpr (std::is_same_v<Type, typename neighbor_variant_t::none>)
+                    if constexpr (std::is_same_v<
+                                      neighbor_category_t,
+                                      typename neighbor_variant_t::none>)
                     {
                         return; // No neighbor to update
                     }
                     else if constexpr (std::is_same_v<
-                                           Type,
+                                           neighbor_category_t,
                                            typename neighbor_variant_t::same>)
                     {
                         // Same-level neighbor now sees the parent instead of children
                         neighbor_variant_t new_neighbor;
                         new_neighbor.data =
                             typename neighbor_variant_t::same{ parent_node_id };
-                        m_neighbors[m_index_map.at(neighbor_data.id)][opposite_d] =
+                        m_neighbors[m_index_map.at(neighbor_data.id)][opposite_d.index()] =
                             new_neighbor;
                     }
                     else if constexpr (std::is_same_v<
-                                           Type,
+                                           neighbor_category_t,
                                            typename neighbor_variant_t::finer>)
                     {
                         // Finer neighbors now see the parent as a coarser neighbor
@@ -457,11 +459,11 @@ public:
                             new_neighbor.data =
                                 typename neighbor_variant_t::coarser{ parent_node_id };
                             m_neighbors[m_index_map.at(neighbor_data.ids[i])]
-                                       [opposite_d] = new_neighbor;
+                                       [opposite_d.index()] = new_neighbor;
                         }
                     }
                     else if constexpr (std::is_same_v<
-                                           Type,
+                                           neighbor_category_t,
                                            typename neighbor_variant_t::coarser>)
                     {
                         assert(
