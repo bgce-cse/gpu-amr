@@ -70,8 +70,8 @@ auto operator<<(std::ostream& os, cell const& c) -> std::ostream&
 
 int main()
 {
-    std::cout << "Hello balancing world\n";
-    constexpr std::size_t N    = 4;
+    std::cout << "Hello dynamic amr world\n";
+    constexpr std::size_t N    = 2;
     constexpr std::size_t M    = 6;
     constexpr std::size_t Halo = 1;
     // using linear_index_t    = std::uint32_t;
@@ -81,54 +81,47 @@ int main()
     using layout_t        = amr::containers::static_layout<shape_t>;
     using index_t         = typename layout_t::index_t;
 
-    using patch_index_t  = amr::ndt::morton::morton_id<9u, 2u>;
+    using patch_index_t  = amr::ndt::morton::morton_id<10u, 2u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
     using tree_t         = amr::ndt::tree::ndtree<cell, patch_index_t, patch_layout_t>;
 
-    tree_t tree(100000); // Provide initial capacity
+    tree_t tree(1000000); // Provide initial capacity
 
-    ndt::print::example_patch_print<Halo, M, N> printer("circle_tree");
+    ndt::print::example_patch_print<Halo, M, N> printer("dynamic_amr_tree");
 
-    auto refine_criterion = [](const patch_index_t& idx)
+    auto amr_condition =[](const patch_index_t& idx, int step, int max_step )
     {
         auto [coords, level] = patch_index_t::decode(idx.id());
         auto max_size        = 1u << idx.max_depth();
-        auto cell_size       = 1u << (idx.max_depth() - level);
+        auto patch_size       = 1u << (idx.max_depth() - level);
 
-        double mid_x  = coords[0] + 0.5 * cell_size;
-        double mid_y  = coords[1] + 0.5 * cell_size;
-        double center = 0.5 * max_size;
-        double dist2 =
-            (mid_x - center) * (mid_x - center) + (mid_y - center) * (mid_y - center);
+        double start_x = coords[0] ;  // Convert to absolute coords
+        double end_x   = start_x + patch_size;
 
-        // Only refine if not at max level!
-        if (idx.level() == 0 ||
-            (level < idx.max_depth() && dist2 < 0.3 / idx.level() * max_size * max_size))
+        double step_x = max_size * (static_cast<double>(step) / max_step);
+        
+        bool in_interval_1 = step_x < end_x + patch_size &&  step_x > start_x - patch_size;
+        bool in_interval_2 = step_x < end_x + 2 * patch_size &&  step_x > start_x - 2 * patch_size;
+
+        bool refine = in_interval_1 && level < idx.max_depth();
+        bool coarsen = !in_interval_2 && level > 0;
+
+
+        if (refine)
         {
+
             return tree_t::refine_status_t::Refine;
         }
-        return tree_t::refine_status_t::Stable;
-    };
 
-    auto coarsen_criterion = [](const patch_index_t& idx)
-    {
-        auto [coords, level] = patch_index_t::decode(idx.id());
-        auto max_size        = 1u << idx.max_depth();
-        auto cell_size       = 1u << (idx.max_depth() - level);
-
-        double mid_x  = coords[0] + 0.5 * cell_size;
-        double mid_y  = coords[1] + 0.5 * cell_size;
-        double center = 0.5 * max_size;
-        double dist2 =
-            (mid_x - center) * (mid_x - center) + (mid_y - center) * (mid_y - center);
-
-        // Only coarsen if not at min level!
-        if (level > 0 && dist2 < 0.3 / idx.level() * max_size * max_size)
+        if (coarsen)
         {
+
             return tree_t::refine_status_t::Coarsen;
         }
+
         return tree_t::refine_status_t::Stable;
     };
+
 
     int ii = 0;
     for (std::size_t idx = 0; idx < tree.size(); idx++)
@@ -149,21 +142,22 @@ int main()
     
     printer.print(tree, "_iteration_0.vtk");
 
+    int max_steps = 100;
+
+    
+
     int i = 1;
-    for (; i != 8; ++i)
+    for (; i != max_steps; ++i)
     {
-        tree.reconstruct_tree(refine_criterion);
+
+        auto amr_condition_with_time = [&amr_condition, &i, max_steps](const patch_index_t& idx) {
+        return amr_condition(idx, i, max_steps);
+    };
+        tree.reconstruct_tree(amr_condition_with_time);  
         std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
         printer.print(tree, file_extension);
     }
 
-    for (; i != 15; ++i)
-    {
-        tree.reconstruct_tree(coarsen_criterion);
-        std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
-        printer.print(tree, file_extension);
-    }
-
-    std::cout << "Adiós balancing world\n";
+    std::cout << "Adiós dynamic amr world\n";
     return EXIT_SUCCESS;
 }
