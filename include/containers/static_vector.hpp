@@ -92,17 +92,42 @@ public:
         return std::end(data_);
     }
 
+#if __GNUC__ >= 14
     [[nodiscard]]
     constexpr auto front(this auto&& self) noexcept -> decltype(auto)
     {
         return std::forward<decltype(self)>(self).data_.front();
     }
-
     [[nodiscard]]
     constexpr auto back(this auto&& self) noexcept -> decltype(auto)
     {
-        return std::forward<decltype(self)>(self).data_.back();
+        return std::forward<decltype(self)>(self).data_.front();
     }
+#else
+    [[nodiscard]]
+    constexpr auto front() const noexcept -> const_reference
+    {
+        return data_.front();
+    }
+
+    [[nodiscard]]
+    constexpr auto front() noexcept -> reference
+    {
+        return data_.front();
+    }
+
+    [[nodiscard]]
+    constexpr auto back() const noexcept -> const_reference
+    {
+        return data_.back();
+    }
+
+    [[nodiscard]]
+    constexpr auto back() noexcept -> reference
+    {
+        return data_.back();
+    }
+#endif
 
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
     constexpr auto assert_in_bounds(size_type const idx) const noexcept -> void
