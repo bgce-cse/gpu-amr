@@ -1,2 +1,0 @@
-Store the linear index of the neighbouring patch
-Another structure
