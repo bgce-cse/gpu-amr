@@ -245,7 +245,6 @@ public:
         direction_t                               d
     ) noexcept -> typename patch_index_t::offset_t
     {
-        // TODO: This is terrible
         const auto dim = d.dimension();
         coords[dim]    = (direction_t::is_positive(d) ? (coords[dim] + 1)
                                                       : coords[dim] + s_1d_fanout - 1) %
