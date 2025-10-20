@@ -335,7 +335,7 @@ public:
     {
         auto parent_neighbor = m_neighbors[m_index_map.at(parent_id)];
 
-        for (auto d = patch_direction_t::first(); d != patch_direction_t::last();
+        for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
              d.advance())
         {
             auto& neighbor = parent_neighbor[d.index()];
@@ -362,9 +362,9 @@ public:
                             neighbor_utils_t::compute_boundary_children(d);
                         typename neighbor_variant_t::finer::container_t fine_neighbor_ids;
 
-                        for (size_t i = 0; i < offsets.size(); i++)
+                        for (auto i = 0uz; i != offsets.size(); ++i)
                         {
-                            auto offset =
+                            const auto offset =
                                 static_cast<patch_index_t::offset_t>(offsets[i]);
                             fine_neighbor_ids[i] =
                                 patch_index_t::child_of(parent_id, offset);
@@ -420,7 +420,7 @@ public:
         patch_neighbors_t parent_neighbor
     ) -> void
     {
-        for (auto d = patch_direction_t::first(); d != patch_direction_t::last();
+        for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
              d.advance())
         {
             const auto  opposite_d = patch_direction_t::opposite(d);
@@ -482,7 +482,7 @@ public:
         {
             auto node_id = m_to_refine[i];
 
-            for (auto d = patch_direction_t::first(); d != patch_direction_t::last();
+            for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
                  d.advance())
             {
                 auto  neighbor_array = m_neighbors[m_index_map.at(node_id)];
@@ -491,10 +491,10 @@ public:
                 std::visit(
                     [&](auto&& neighbor_data)
                     {
-                        using Type = std::decay_t<decltype(neighbor_data)>;
+                        using neighbor_category_t = std::decay_t<decltype(neighbor_data)>;
 
                         if constexpr (std::is_same_v<
-                                          Type,
+                                          neighbor_category_t,
                                           typename neighbor_variant_t::coarser>)
                         {
                             auto coarser_neighbor_id = neighbor_data.id;
@@ -506,7 +506,7 @@ public:
                             );
                             if (it == m_to_refine.end())
                             {
-                                m_to_refine.push_back(coarser_neighbor_id);
+                                m_to_refine.push_back(std::move(coarser_neighbor_id));
                             }
                         }
                     },
@@ -521,7 +521,7 @@ public:
             auto parent_id     = m_to_coarsen[i];
             bool should_remove = false;
 
-            for (auto d = patch_direction_t::first(); d != patch_direction_t::last();
+            for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
                  d.advance())
             {
                 auto boundary_children = neighbor_utils_t::compute_boundary_children(d);

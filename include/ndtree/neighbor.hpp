@@ -60,7 +60,7 @@ struct neighbor_variant
 
 // TODO: This should be provided by the patch index
 template <std::signed_integral auto Dim>
-struct direction
+class direction
 {
 private:
 public:
@@ -79,17 +79,23 @@ private:
 public:
     using vector_t = containers::static_vector<index_t, s_dimension>;
 
+private:
+    explicit constexpr direction(index_t const linear_index) noexcept
+        : idx_{ linear_index }
+    {
+    }
+
 public:
     [[nodiscard]]
     static constexpr auto first() noexcept -> direction
     {
-        return { s_collection.front() };
+        return direction(s_collection.front());
     }
 
     [[nodiscard]]
-    static constexpr auto last() noexcept -> direction
+    static constexpr auto sentinel() noexcept -> direction
     {
-        return { s_collection.back() };
+        return direction(s_elements);
     }
 
     // TODO: This implicitly assumes 2 neighbors per dimension. Can we use the
@@ -109,7 +115,7 @@ public:
     [[nodiscard]]
     static constexpr auto opposite(direction const& d) noexcept -> direction
     {
-        return { d.idx_ + (is_positive(d) ? index_t{ -1 } : index_t{ +1 }) };
+        return direction(d.idx_ + (is_negative(d) ? index_t{ 1 } : index_t{ -1 }));
     }
 
     [[nodiscard]]
@@ -152,7 +158,7 @@ public:
     [[nodiscard]]
     constexpr auto operator<=>(direction const&) const noexcept = default;
 
-public:
+private:
     index_t idx_;
 };
 
@@ -195,13 +201,13 @@ private:
             auto& relation_array = neighbor_relation_maps[flat];
             // compute multi-index from flat index
             auto const& coords = child_expansion_t::layout_t::multi_index(flat);
-            for (auto d = direction_t::first(); d != direction_t::last(); d.advance())
+            for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
             {
                 relation_array[d.index()] =
-                    direction_t::is_positive(d)
-                        ? ((coords[d] == 0) ? NeighborRelation::ParentNeighbor
-                                            : NeighborRelation::Sibling)
-                        : ((coords[d] == s_1d_fanout - 1)
+                    direction_t::is_negative(d)
+                        ? ((coords[d.dimension()] == 0) ? NeighborRelation::ParentNeighbor
+                                                        : NeighborRelation::Sibling)
+                        : ((coords[d.dimension()] == s_1d_fanout - 1)
                                ? NeighborRelation::ParentNeighbor
                                : NeighborRelation::Sibling);
             }
@@ -278,7 +284,7 @@ public:
         auto relations        = s_neighbor_relation_maps[local_child_id];
         patch_neighbors_t child_neighbor_array{};
 
-        for (auto d = direction_t::first(); d != direction_t::last(); d.advance())
+        for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
         {
             auto directional_relation = relations[d.index()];
             if (directional_relation == NeighborRelation::Sibling)
@@ -312,7 +318,7 @@ public:
                                            T,
                                            typename neighbor_category_t::finer>)
                     {
-                        auto fine_index = compute_fine_boundary_linear_index(
+                        const auto fine_index = compute_fine_boundary_linear_index(
                             child_multiindex, d.dimension()
                         );
                         auto fine_neighbor_id = neighbor.ids[fine_index];
@@ -341,7 +347,7 @@ public:
     ) -> patch_neighbors_t
     {
         patch_neighbors_t parent_neighbor_array{};
-        for (auto d = direction_t::first(); d != direction_t::last(); d.advance())
+        for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
         {
             auto boundary_children = compute_boundary_children(d);
 
