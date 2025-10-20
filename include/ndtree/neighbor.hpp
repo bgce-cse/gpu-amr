@@ -62,7 +62,6 @@ struct neighbor_variant
 template <std::signed_integral auto Dim>
 class direction
 {
-private:
 public:
     using index_t   = decltype(Dim);
     using size_type = index_t;
@@ -150,7 +149,7 @@ public:
     }
 
     [[nodiscard]]
-    constexpr operator bool() const noexcept
+    explicit constexpr operator bool() const noexcept
     {
         return idx_ >= index_t{} && idx_ < s_elements;
     }
@@ -353,7 +352,7 @@ public:
 
             // Use the first boundary child's neighbor to determine parent's neighbor type
             auto first_boundary_child_neighbor =
-                child_neighbor_arrays[boundary_children[0]][d];
+                child_neighbor_arrays[boundary_children[0]][d.index()];
 
             auto visitor = [&](auto&& neighbor) -> neighbor_category_t
             {
@@ -370,7 +369,7 @@ public:
                     for (size_type i = 0; i != boundary_children.size(); i++)
                     {
                         auto child_neighbor =
-                            child_neighbor_arrays[boundary_children[i]][d];
+                            child_neighbor_arrays[boundary_children[i]][d.index()];
                         // Extract the same-level neighbor ID from each boundary child
                         std::visit(
                             [&](auto&& child_nb)
