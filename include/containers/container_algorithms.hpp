@@ -16,10 +16,10 @@ namespace tensor
 template <std::size_t Rank, typename T, std::integral auto Size>
 [[nodiscard]]
 constexpr auto cartesian_expansion(static_vector<T, Size> const& v) noexcept
-    -> utils::types::tensor::hypercube_t<static_vector<T, Rank>,0, Size, Rank>
+    -> utils::types::tensor::hypercube_t<static_vector<T, Rank>, Size, Rank>
 {
     using hypercube_t =
-        utils::types::tensor::hypercube_t<static_vector<T, Rank>,0, Size, Rank>;
+        utils::types::tensor::hypercube_t<static_vector<T, Rank>, Size, Rank>;
     using multi_index_t = typename hypercube_t::multi_index_t;
     using index_t       = typename multi_index_t::index_t;
     auto ret            = hypercube_t{};

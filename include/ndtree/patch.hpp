@@ -24,17 +24,17 @@ public:
     using reference       = value_type&;
 
     using index_t              = typename patch_layout_t::index_t;
-    using rank_t               = typename patch_layout_t::rank_t;
+    using dimension_t          = typename patch_layout_t::dimension_t;
     using padded_multi_index_t = typename padded_layout_t::multi_index_t;
     using container_t          = containers::static_tensor<value_type, padded_layout_t>;
 
 private:
-    static constexpr auto      s_dim        = patch_layout_t::dimension();
-    static constexpr size_type s_halo_width = patch_layout_t::dimension();
+    static constexpr auto s_dim        = patch_layout_t::dimension();
+    static constexpr auto s_halo_width = patch_layout_t::halo_width();
 
 public:
     [[nodiscard]]
-    static constexpr auto dimension() noexcept -> rank_t
+    static constexpr auto dimension() noexcept -> dimension_t
     {
         return s_dim;
     }
