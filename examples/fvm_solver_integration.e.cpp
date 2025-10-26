@@ -76,36 +76,40 @@ int main() {
         return prim;
     };*/
 
-    /*auto acousticWaveCriterion = [&](const patch_index_t& idx) {
+    auto acousticWaveCriterion = [&](const patch_index_t& idx) {
         // Define Thresholds and Limits
-        constexpr double REFINE_RHO_THRESHOLD = 1.01; // Refine if Rho > 1.01 (1% above background)
-        constexpr double COARSEN_RHO_THRESHOLD = 1.005; // Coarsen if Rho < 1.005
+        constexpr double REFINE_RHO_THRESHOLD = 2.5; // Refine if Rho > 1.01 (1% above background)
+        constexpr double COARSEN_RHO_THRESHOLD = 2; // Coarsen if Rho < 1.005
         constexpr int MAX_LEVEL = 4;
         constexpr int MIN_LEVEL = 0;
         
         int level = idx.level();
-        //auto patch_idx_opt = solver.get_tree().find_index(idx);
 
         // Compute Jump (using the undivided second difference of density, Rho)
         // ----> first use only placeholder with abs value
-        //auto& rho_patch = solver.get_tree().template get_patch<amr::cell::Rho>(idx);
+        auto rho_patch = solver.get_tree().template get_patch<amr::cell::Rho>(idx);
+        double max_rho_value = 0;
         
-        // Apply Refinement and Coarsening Logic
+        for (std::size_t linear_idx = 0; linear_idx != patch_layout_t::flat_size(); ++linear_idx) {
+            if (rho_patch[linear_idx] > max_rho_value)
+            {
+                max_rho_value = rho_patch[linear_idx];
+            }
+        }
 
-        const double abs_rho_value = 1.1;
         
         // Hard check for refinement limit
-        if (level < MAX_LEVEL && abs_rho_value > REFINE_RHO_THRESHOLD) {
+        if (level < MAX_LEVEL && max_rho_value > REFINE_RHO_THRESHOLD) {
             return tree_t::refine_status_t::Refine;
         } 
         
         // Hard check for coarsening limit (only coarsen patches that are already refined)
-        if (level > MIN_LEVEL && abs_rho_value < COARSEN_RHO_THRESHOLD) {
+        if (level > MIN_LEVEL && max_rho_value < COARSEN_RHO_THRESHOLD) {
             return tree_t::refine_status_t::Coarsen;
         }
         
         return tree_t::refine_status_t::Stable;
-    };*/
+    };
 
     // Parameters for the Acoustic Pulse
     constexpr double RHO_BG = 1.0;
@@ -151,7 +155,7 @@ int main() {
 
         solver.time_step(dt);
         
-        //solver.get_tree().reconstruct_tree(acousticWaveCriterion);
+        solver.get_tree().reconstruct_tree(acousticWaveCriterion);
 
         std::string file_extension = "_iteration_" + std::to_string(step) + ".vtk";
         printer.print(solver.get_tree(), file_extension);
