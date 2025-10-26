@@ -168,26 +168,45 @@ public:
         return m_size;
     }
 
+    // template <concepts::TypeMap Map_Type>
+    // [[nodiscard, gnu::always_inline, gnu::flatten]]
+    // auto get(linear_index_t const idx) noexcept -> reference_t<typename Map_Type::type>
+    // {
+    //     assert(idx < m_size);
+    //     return std::get<Map_Type::index()>(m_data_buffers)[idx];
+    // }
+
+    // template <concepts::TypeMap Map_Type>
+    // [[nodiscard, gnu::always_inline, gnu::flatten]]
+    // auto get(linear_index_t const idx) const noexcept
+    //     -> const_reference_t<typename Map_Type::type>
+    // {
+    //     assert(idx < m_size);
+    //     return std::get<Map_Type::index()>(m_data_buffers)[idx];
+    // }
+
     template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
-    auto get(linear_index_t const idx) noexcept -> reference_t<typename Map_Type::type>
+    auto get_patch(linear_index_t const linear_index) noexcept -> patch_t<Map_Type>&
     {
-        assert(idx < m_size);
-        return std::get<Map_Type::index()>(m_data_buffers)[idx];
+        return const_cast<patch_t<Map_Type>&>(
+            std::as_const(*this).template get_patch<Map_Type>(linear_index)
+        );
     }
 
     template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
-    auto get(linear_index_t const idx) const noexcept
-        -> const_reference_t<typename Map_Type::type>
+    auto get_patch(linear_index_t const linear_index) const noexcept
+        -> patch_t<Map_Type> const&
     {
-        assert(idx < m_size);
-        return std::get<Map_Type::index()>(m_data_buffers)[idx];
+        assert(linear_index < m_size);
+        return std::get<Map_Type::index()>(m_data_buffers)[linear_index];
     }
+
 
     template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
-    auto get_patch(linear_index_t const patch_idx) noexcept -> patch_t<Map_Type>&
+    auto get_patch(patch_index_t const patch_idx) noexcept -> patch_t<Map_Type>&
     {
         return const_cast<patch_t<Map_Type>&>(
             std::as_const(*this).template get_patch<Map_Type>(patch_idx)
@@ -196,11 +215,12 @@ public:
 
     template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
-    auto get_patch(linear_index_t const patch_idx) const noexcept
+    auto get_patch(patch_index_t const patch_idx) const noexcept
         -> patch_t<Map_Type> const&
     {
-        assert(patch_idx < m_size);
-        return std::get<Map_Type::index()>(m_data_buffers)[patch_idx];
+        auto linear_index = m_index_map.at(patch_idx);
+        assert(linear_index < m_size);
+        return std::get<Map_Type::index()>(m_data_buffers)[linear_index];
     }
 
     auto fragment(patch_index_t const node_id) -> void
@@ -420,6 +440,9 @@ public:
         patch_neighbors_t parent_neighbor
     ) -> void
     {
+
+        
+
         for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
              d.advance())
         {
