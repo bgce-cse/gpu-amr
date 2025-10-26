@@ -2,6 +2,7 @@
 #define AMR_INCLUDED_NDT_STRUCTURED_PRINT
 
 #include "morton/morton_id.hpp"
+#include "solver/cell_types.hpp"
 #include "ndtree.hpp"
 #include <algorithm>
 #include <bitset>
@@ -28,8 +29,11 @@ public:
     example_patch_print(std::string base_filename)
         : m_base_filename(std::move(base_filename))
     {
-        // Ensure output directory exists
-        std::filesystem::create_directory("vtk_output");
+        std::filesystem::path dir = "vtk_output";
+        std::filesystem::create_directory(dir);
+
+        // Print the absolute path where it's created
+        std::cout << "Output directory: " << std::filesystem::absolute(dir) << '\n';
     }
 
     void print(auto const& tree, std::string filename_extension) const
@@ -60,7 +64,7 @@ private:
         using IndexType = typename TreeType::patch_index_t;
 
         std::vector<std::array<uint32_t, 3>> points;
-        std::vector<float> s1_values;
+        std::vector<double> s1_values;
 
         size_t total_cells = tree.size() * total_patch_elements;
         uint32_t max_coord = 1u << IndexType::max_depth();
@@ -81,7 +85,11 @@ private:
             uint32_t patch_y = patch_size_y * patch_coords[1];
 
             // Get the S1 data for this patch
-            auto s1_patch = tree.template get_patch<S1>(patch_idx);
+            //auto s1_patch = tree.template get_patch<S1>(patch_idx);
+
+            // Get the Rho data (Density) for this patch, which is the 
+            // first component of your EulerCell.
+            auto rho_patch = tree.template get_patch<amr::cell::Rho>(patch_idx);
 
             // For each cell in the patch_size_x * patch_size_y patch
             for(std::size_t i = 0; i < patch_size_x ; i++) {
@@ -101,7 +109,7 @@ private:
                     points.push_back({ cell_x, flipped_y, 0 });                            // bottom-left
 
                     // Store the S1 value for this cell
-                    s1_values.push_back(s1_patch[j + Halo , i + Halo]);
+                    s1_values.push_back(rho_patch[j + Halo , i + Halo]);
                 }
             }
         }
@@ -131,7 +139,7 @@ private:
 
         // Write S1 values as cell data
         file << "CELL_DATA " << total_cells << "\n";
-        file << "SCALARS S1_values float 1\n";
+        file << "SCALARS RHO_values double 1\n";
         file << "LOOKUP_TABLE default\n";
         for (size_t i = 0; i < s1_values.size(); ++i)
         {

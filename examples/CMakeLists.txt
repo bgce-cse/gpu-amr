@@ -45,7 +45,7 @@ set(CXX_WARNINGS
 
 set(CXX_DIAGNOSTICS
 	-fconcepts-diagnostics-depth=3
-	-fdiagnostics-color=always
+	-fdiagnostics-color=auto
 	-fdiagnostics-path-format=inline-events
 	-fdiagnostics-show-caret
 	-fdiagnostics-show-template-tree

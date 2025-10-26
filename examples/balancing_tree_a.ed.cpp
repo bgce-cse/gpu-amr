@@ -86,6 +86,7 @@ int main()
     using tree_t         = amr::ndt::tree::ndtree<cell, patch_index_t, patch_layout_t>;
 
     tree_t tree(100000); // Provide initial capacity
+    std::cout << "Dim: " << patch_layout_t::padded_layout_t::shape_t::sizes()[0] << '\n';
 
     ndt::print::example_patch_print<Halo, M, N> printer("circle_tree");
 

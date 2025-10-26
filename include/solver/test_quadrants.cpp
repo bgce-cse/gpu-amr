@@ -1,7 +1,7 @@
 // Test case: 2D Riemann problem (quadrants)
 // https://www.clawpack.org/gallery/pyclaw/gallery/quadrants.html
 
-#include "EulerSolver2D.h"
+#include "EulerSolver2D.hpp"
 #include <iostream>
 
 int main() {
