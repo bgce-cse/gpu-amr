@@ -30,7 +30,7 @@ int main()
     tensor_t t{};
     F        check{};
     std::iota(std::begin(t), std::end(t), check);
-    amr::containers::manipulators::for_each(
+    amr::containers::manipulators::apply(
         t,
         [&check](auto const& a, auto... idxs)
         {

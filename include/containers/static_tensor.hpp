@@ -57,6 +57,12 @@ public:
     }
 
     [[nodiscard]]
+    constexpr static auto sizes() noexcept -> auto const&
+    {
+        return layout_t::sizes();
+    }
+
+    [[nodiscard]]
     constexpr static auto size(index_t const i) noexcept -> size_type
     {
         assert(i < rank());
@@ -66,7 +72,7 @@ public:
     [[nodiscard]]
     constexpr static auto strides() noexcept -> auto const&
     {
-        return layout_t::strides;
+        return layout_t::strides();
     }
 
     [[nodiscard]]

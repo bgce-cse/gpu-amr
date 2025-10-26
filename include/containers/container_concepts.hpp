@@ -58,6 +58,13 @@ concept StaticMDArray = requires(A a, typename A::size_type s, typename A::index
     { A::rank() } -> std::same_as<typename A::rank_t>;
 };
 
+template <typename C>
+concept LoopControl = requires(typename C::index_t const idx) {
+    { C::start(idx) } -> std::same_as<typename C::index_t>;
+    { C::end(idx) } -> std::same_as<typename C::index_t>;
+    { C::stride(idx) } -> std::same_as<typename C::index_t>;
+};
+
 } // namespace amr::containers::concepts
 
 #endif // AMR_INCLUDED_CONTAINER_CONCEPTS
