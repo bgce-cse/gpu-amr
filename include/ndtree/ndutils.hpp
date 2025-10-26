@@ -23,6 +23,13 @@ consteval auto
     return utility::cx_functions::pow(return_t{ dim }, return_t{ fanout });
 }
 
+
+template <class... Ts>
+struct overloads : Ts...
+{
+    using Ts::operator()...;
+};
+
 namespace patches
 {
 
