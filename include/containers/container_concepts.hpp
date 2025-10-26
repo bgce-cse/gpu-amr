@@ -3,6 +3,7 @@
 
 #include <ranges>
 #include <type_traits>
+#include <concepts>
 
 namespace amr::containers::concepts
 {
@@ -56,6 +57,7 @@ concept StaticShape = requires() {
 template <typename A>
 concept StaticMDArray = requires(A a, typename A::size_type s, typename A::index_t i) {
     { A::rank() } -> std::same_as<typename A::rank_t>;
+    A::sizes();
 };
 
 template <typename C>

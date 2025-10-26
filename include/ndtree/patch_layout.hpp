@@ -15,7 +15,7 @@ public:
     using size_type     = typename data_layout_t::size_type;
 
     using padded_layout_t = typename containers::utils::types::layout::padded_layout<
-        data_layout_t>::type<size_type{ Halo_Width * 2 }>;
+        data_layout_t>::template type<size_type{ Halo_Width * 2 }>;
 
     using index_t = typename data_layout_t::index_t;
     using rank_t  = typename data_layout_t::rank_t;

@@ -255,7 +255,7 @@ auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
     if constexpr (std::is_arithmetic_v<T>)
     {
         // TODO: Improve. Max is not necessarily the most restrictive value
-        width = std::clamp((int)std::ceil(std::log10(std::ranges::max(t))), 1, 7);
+        width = std::clamp((int)std::ceil(std::log10(std::ranges::max(t))), 1, 7) + 1;
     }
 
     os << prefixes[rank - 1];
