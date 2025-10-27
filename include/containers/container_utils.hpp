@@ -35,6 +35,7 @@ namespace tensor
 
 namespace detail
 {
+
 template <typename T, std::integral auto Size, std::size_t Rank, std::size_t... Is>
 constexpr auto make_hypercube_type_impl(std::index_sequence<Is...>)
     -> static_tensor<T, static_layout<static_shape<((void)Is, Size)...>>>

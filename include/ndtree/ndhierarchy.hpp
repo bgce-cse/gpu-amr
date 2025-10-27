@@ -151,11 +151,10 @@ public:
 
     [[nodiscard]]
     static constexpr auto
-        neighbour_at(hierarchical_prefix_id const& id, direction_t d) noexcept
+        neighbor_at(hierarchical_prefix_id const& id, direction_t d) noexcept
         -> hierarchical_prefix_id
     {
-        std::cout << "Not implemented yet, i dont know how to find neighbour" << d
-                  << '\n';
+        std::cout << "Not implemented yet, i dont know how to find neighbor" << d << '\n';
         return id;
     }
 

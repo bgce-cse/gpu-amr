@@ -25,7 +25,7 @@
 #ifndef NDEBUG
 #    define AMR_NDTREE_CHECKBOUNDS
 #    define AMR_NDTREE_ENABLE_CHECKS
-// #    define AMR_NDTREE_DEBUG_PRINT_NEIGHBOURS
+// #    define AMR_NDTREE_DEBUG_PRINT_NEIGHBORS
 // #    define AMR_NDTREE_DEBUG_PRINT_BALANCING
 #endif
 
@@ -44,8 +44,12 @@ public:
     using patch_index_t = Patch_Index;
     // TODO: This should be provided by the patch_index
     // using patch_index_directon_t = typename patch_index_t::direction_t;
-    using linear_index_t = size_type;
-    using patch_layout_t = Patch_Layout;
+    using linear_index_t     = size_type;
+    using patch_layout_t     = Patch_Layout;
+    using neighbor_utils_t   = neighbors::neighbor_utils<patch_index_t, patch_layout_t>;
+    using patch_direction_t  = typename neighbor_utils_t::direction_t;
+    using neighbor_variant_t = typename neighbor_utils_t::neighbor_category_t;
+    using patch_neighbors_t  = typename neighbor_utils_t::patch_neighbors_t;
 
 private:
     static constexpr size_type s_halo_width = patch_layout_t::halo_width();
@@ -99,13 +103,10 @@ public:
     using linear_index_array_t       = pointer_t<linear_index_t>;
     using flat_refine_status_array_t = pointer_t<refine_status_t>;
     using index_map_t                = std::unordered_map<patch_index_t, linear_index_t>;
+    using neighbor_buffer_t          = pointer_t<patch_neighbors_t>;
+
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
-    using neighbor_utils_t   = neighbors::neighbor_utils<patch_index_t, patch_layout_t>;
-    using patch_direction_t  = typename neighbor_utils_t::direction_t;
-    using neighbor_variant_t = typename neighbor_utils_t::neighbor_category_t;
-    using patch_neighbors_t  = typename neighbor_utils_t::patch_neighbors_t;
-    using neighbor_buffer_t  = pointer_t<patch_neighbors_t>;
 
 private:
     static constexpr auto s_fragmentation_patch_maps =
@@ -144,12 +145,11 @@ public:
             (pointer_t<linear_index_t>)std::malloc(size * sizeof(linear_index_t));
         m_refine_status_buffer =
             (pointer_t<refine_status_t>)std::malloc(size * sizeof(refine_status_t));
+        m_neighbors =
+            (pointer_t<patch_neighbors_t>)std::malloc(size * sizeof(patch_neighbors_t));
+
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
-
-        m_neighbors = (neighbor_buffer_t)std::malloc(size * sizeof(patch_neighbors_t));
-
-        patch_neighbors_t root_neighbor_array{};
-        append(patch_index_t::root(), root_neighbor_array);
+        append(patch_index_t::root(), patch_neighbors_t{});
     }
 
     ~ndtree() noexcept
@@ -203,7 +203,6 @@ public:
         return std::get<Map_Type::index()>(m_data_buffers)[linear_index];
     }
 
-
     template <concepts::TypeMap Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
     auto get_patch(patch_index_t const patch_idx) noexcept -> patch_t<Map_Type>&
@@ -252,17 +251,18 @@ public:
 
     auto recombine(patch_index_t const parent_node_id) -> void
     {
+        using offset_t = typename patch_index_t::offset_t;
         assert(!find_index(parent_node_id).has_value());
 
         const auto child_0    = patch_index_t::child_of(parent_node_id, 0);
         const auto child_0_it = find_index(child_0);
         assert(child_0_it.has_value());
 
-        std::array<patch_neighbors_t, s_nd_fanout> child_neighbor_arrays;
-        for (typename patch_index_t::offset_t i = 0; i != s_nd_fanout; ++i)
+        std::array<patch_neighbors_t, s_nd_fanout> child_neighbor_arrays{};
+        for (auto i = offset_t{}; i != offset_t{ s_nd_fanout }; ++i)
         {
             const auto child_i    = patch_index_t::child_of(parent_node_id, i);
-            auto       child_i_it = find_index(child_i);
+            const auto child_i_it = find_index(child_i);
             assert(child_i_it.has_value());
             // assert(child_i_it.value()->second == start + i);
             child_neighbor_arrays[i] = m_neighbors[m_index_map.at(child_i)];
@@ -272,7 +272,7 @@ public:
         patch_neighbors_t neighbor_array =
             neighbor_utils_t::compute_parent_neighbors(child_neighbor_arrays);
         const auto start = child_0_it.value()->second;
-        auto const to    = m_size;
+        const auto to    = m_size;
         append(parent_node_id, neighbor_array);
         assert(m_linear_index_map[back_idx()] == parent_node_id);
         restrict_patches(start, to);
@@ -313,7 +313,7 @@ public:
         }
     }
 
-    auto apply_refine_coarsen() -> void
+    auto apply_refine_coarsen() noexcept -> void
     {
         m_to_refine.clear();
         m_to_coarsen.clear();
@@ -351,7 +351,7 @@ public:
         }
     }
 
-    auto enforce_symmetry_after_refinement(patch_index_t parent_id) -> void
+    auto enforce_symmetry_after_refinement(patch_index_t parent_id) noexcept -> void
     {
         auto parent_neighbor = m_neighbors[m_index_map.at(parent_id)];
 
@@ -438,11 +438,8 @@ public:
     auto enforce_symmetry_after_recombining(
         patch_index_t     parent_node_id,
         patch_neighbors_t parent_neighbor
-    ) -> void
+    ) noexcept -> void
     {
-
-        
-
         for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
              d.advance())
         {
@@ -468,8 +465,8 @@ public:
                         neighbor_variant_t new_neighbor;
                         new_neighbor.data =
                             typename neighbor_variant_t::same{ parent_node_id };
-                        m_neighbors[m_index_map.at(neighbor_data.id)][opposite_d.index()] =
-                            new_neighbor;
+                        m_neighbors[m_index_map.at(neighbor_data.id)]
+                                   [opposite_d.index()] = new_neighbor;
                     }
                     else if constexpr (std::is_same_v<
                                            neighbor_category_t,
@@ -500,24 +497,22 @@ public:
         }
     }
 
-    auto balancing()
+    auto balancing() noexcept -> void
     {
         // Refinement balancing
-        for (size_t i = 0; i < m_to_refine.size(); i++)
+        for (std::size_t i = 0; i != m_to_refine.size(); ++i)
         {
-            auto node_id = m_to_refine[i];
+            const auto node_id = m_to_refine[i];
 
             for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
                  d.advance())
             {
-                auto  neighbor_array = m_neighbors[m_index_map.at(node_id)];
-                auto& neighbor       = neighbor_array[d.index()];
-
+                const auto  neighbor_array = m_neighbors[m_index_map.at(node_id)];
+                auto const& neighbor       = neighbor_array[d.index()];
                 std::visit(
                     [&](auto&& neighbor_data)
                     {
                         using neighbor_category_t = std::decay_t<decltype(neighbor_data)>;
-
                         if constexpr (std::is_same_v<
                                           neighbor_category_t,
                                           typename neighbor_variant_t::coarser>)
@@ -540,11 +535,11 @@ public:
             }
         }
 
-        std::vector<patch_index_t> blocks_to_remove;
-        for (std::size_t i = 0; i < m_to_coarsen.size(); i++)
+        std::vector<patch_index_t> blocks_to_remove{};
+        for (auto i = 0uz; i != m_to_coarsen.size(); ++i)
         {
-            auto parent_id     = m_to_coarsen[i];
-            bool should_remove = false;
+            const auto parent_id     = m_to_coarsen[i];
+            bool       should_remove = false;
 
             for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
                  d.advance())
@@ -552,38 +547,33 @@ public:
                 auto boundary_children = neighbor_utils_t::compute_boundary_children(d);
 
                 // Check all boundary children for this direction
-                for (size_t j = 0; j < boundary_children.size(); j++)
+                for (auto j = 0uz; j != boundary_children.size(); ++j)
                 {
-                    auto child_id = patch_index_t::child_of(
+                    const auto child_id = patch_index_t::child_of(
                         parent_id,
                         static_cast<typename patch_index_t::offset_t>(
                             boundary_children[j]
                         )
                     ); // Fix: variable name
-                    auto& neighbor = m_neighbors[m_index_map.at(child_id)][d.index()];
+                    auto const& neighbor =
+                        m_neighbors[m_index_map.at(child_id)][d.index()];
 
                     std::visit(
                         [&](auto&& neighbor_data)
                         {
-                            using Type = std::decay_t<decltype(neighbor_data)>;
-
+                            using neighbor_category_t =
+                                std::decay_t<decltype(neighbor_data)>;
                             if constexpr (std::is_same_v<
-                                              Type,
+                                              neighbor_category_t,
                                               typename neighbor_variant_t::finer>)
                             {
                                 should_remove = true;
                             }
                             else if constexpr (std::is_same_v<
-                                                   Type,
+                                                   neighbor_category_t,
                                                    typename neighbor_variant_t::same>)
                             {
-                                auto same_neighbor_id = neighbor_data.id;
-                                auto it               = std::find(
-                                    m_to_refine.begin(),
-                                    m_to_refine.end(),
-                                    same_neighbor_id
-                                );
-                                if (it != m_to_refine.end())
+                                if (std::ranges::contains(m_to_refine, neighbor_data.id))
                                 {
                                     should_remove = true;
                                 }
@@ -591,7 +581,6 @@ public:
                         },
                         neighbor.data
                     );
-
                     if (should_remove) break;
                 }
                 if (should_remove) break;
@@ -614,6 +603,7 @@ public:
 public:
     template <typename Fn>
     auto reconstruct_tree(Fn&& fn) noexcept(noexcept(fn(std::declval<linear_index_t&>())))
+        -> void
     {
         update_refine_flags(fn);
         apply_refine_coarsen();
@@ -825,7 +815,6 @@ public:
                 }
                 const auto from_linear_idx =
                     s_fragmentation_patch_maps[patch_idx][linear_idx];
-
                 std::apply(
                     [child_patch_index, from, patch_idx, from_linear_idx, linear_idx](
                         auto&... b
@@ -840,6 +829,8 @@ public:
             }
         }
     }
+
+    auto halo_exchange_update() noexcept -> void {}
 
     [[nodiscard]]
     auto get_refine_status(const linear_index_t i) const noexcept -> refine_status_t

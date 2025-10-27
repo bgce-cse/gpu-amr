@@ -226,9 +226,9 @@ public:
         index_t multiplier = 1;
 
         // Iterate through all dimensions except the specified one
-        for (dimension_t d = 0; d < s_dimension; ++d)
+        for (dimension_t d = 0; d != s_dimension; ++d)
         {
-            if (d == dimension) // Skip the dimension we want to remove
+            if (d == dimension)
             {
                 continue;
             }

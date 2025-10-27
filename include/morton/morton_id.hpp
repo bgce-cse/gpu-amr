@@ -147,7 +147,7 @@ public:
     }
 
     static constexpr std::optional<morton_id>
-        neighbour_at(morton_id morton, direction dir)
+        neighbor_at(morton_id morton, direction dir)
     {
         auto [coords, level] = decode(morton.id());
         uint32_t x_coord     = coords[0];
