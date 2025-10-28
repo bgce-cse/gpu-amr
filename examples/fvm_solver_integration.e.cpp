@@ -141,7 +141,8 @@ int main() {
     while (t < tmax) {
         std::cout << "\n=== Step " << step << ", t=" << t << " ===" << std::endl;
         
-        double dt = 0.000001;
+        double dt = 300; // Using a fixed dt for now
+        // double dt = solver.compute_time_step(); // Test adaptive time step
         
         solver.time_step(dt);
         
@@ -167,7 +168,7 @@ int main() {
         
         std::cout << "Step " << step << " completed, no NaN in solver" << std::endl;
         
-        solver.get_tree().reconstruct_tree(acousticWaveCriterion);
+        // solver.get_tree().reconstruct_tree(acousticWaveCriterion);
 
         std::string file_extension = "_iteration_" + std::to_string(step) + ".vtk";
         printer.print(solver.get_tree(), file_extension);
