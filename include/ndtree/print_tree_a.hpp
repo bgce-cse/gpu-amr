@@ -293,7 +293,7 @@ private:
         file << "SCALARS energy float 1\n";
         file << "LOOKUP_TABLE default\n";
         for (size_t i = 0; i < num_cells; ++i) {
-            file << tree.template get<amr::cell::E>(i) << "\n";
+            file << tree.template get<amr::cell::E2D>(i) << "\n";
         }
     }
 
