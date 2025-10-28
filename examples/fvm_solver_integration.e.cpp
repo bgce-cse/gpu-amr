@@ -44,38 +44,6 @@ int main() {
     // Instantiate the AMR solver.
     amr_solver<tree_t, 2> solver(100000); // Provide initial capacity for tree
 
-    // Define the initial condition function -> 2D Riemann problem, will produce complex interacting waves and shocks
-    /*auto quadrantsIC = [](double x, double y) -> std::vector<double> {
-        std::vector<double> prim(4);
-        // Define regions based on ClawPack
-        bool right = (x >= 0.8);
-        bool top = (y >= 0.8);
-        
-        // Set primitive variables based on quadrant
-        if (right && top) {         // top-right
-            prim[0] = 1.5;                // density
-            prim[1] = 0.0;                // u velocity
-            prim[2] = 0.0;                // v velocity
-            prim[3] = 1.5;                // pressure
-        } else if (!right && top) { // top-left
-            prim[0] = 0.532258064516129;
-            prim[1] = 1.206045378311055;
-            prim[2] = 0.0;
-            prim[3] = 0.3;
-        } else if (!right && !top) { // bottom-left
-            prim[0] = 0.137992831541219;
-            prim[1] = 1.206045378311055;
-            prim[2] = 1.206045378311055;
-            prim[3] = 0.029032258064516;
-        } else {                    // bottom-right
-            prim[0] = 0.532258064516129;
-            prim[1] = 0.0;
-            prim[2] = 1.206045378311055;
-            prim[3] = 0.3;
-        }
-        return prim;
-    };*/
-
     auto acousticWaveCriterion = [&](const patch_index_t& idx) {
         // Define Thresholds and Limits
         constexpr double REFINE_RHO_THRESHOLD = 2.5; // Refine if Rho > 1.01 (1% above background)
@@ -140,21 +108,64 @@ int main() {
         return prim;
     };
 
+    std::cout << "Initializing solver..." << std::endl;
     solver.initialize(acousticPulseIC);
 
-    // --- Main Simulation Loop ---
+    // CHECK INITIAL CONDITIONS
+    std::cout << "\n=== Checking Initial Conditions ===" << std::endl;
+    for (size_t patch_idx = 0; patch_idx < std::min(size_t(3), solver.get_tree().size()); ++patch_idx) {
+        auto& rho_patch = solver.get_tree().template get_patch<amr::cell::Rho>(patch_idx);
+        auto& rhou_patch = solver.get_tree().template get_patch<amr::cell::Rhou>(patch_idx);
+        auto& rhov_patch = solver.get_tree().template get_patch<amr::cell::Rhov>(patch_idx);
+        auto& e_patch = solver.get_tree().template get_patch<amr::cell::E2D>(patch_idx);
+        
+        std::cout << "Patch " << patch_idx << " first 3 cells:" << std::endl;
+        for (size_t i = 0; i < 3; ++i) {
+            std::cout << "  Cell " << i << ": "
+                      << "rho=" << rho_patch[i] 
+                      << ", rhou=" << rhou_patch[i]
+                      << ", rhov=" << rhov_patch[i]
+                      << ", E=" << e_patch[i] << std::endl;
+        }
+    }
+
+    std::cout << "\nWriting initial VTK..." << std::endl;
+    printer.print(solver.get_tree(), "_iteration_0.vtk");
+
+    // Main Simulation Loop
     double t = 0.0;
     int step = 1;
 
-    std::cout << "Starting AMR simulation..." << std::endl;
-
-    printer.print(solver.get_tree(), "_iteration_0.vtk");
+    std::cout << "\nStarting AMR simulation..." << std::endl;
 
     while (t < tmax) {
-        double dt = 300; // Using a fixed dt for now
-        // double dt = solver.compute_time_step(); // Test adaptive time step
-
+        std::cout << "\n=== Step " << step << ", t=" << t << " ===" << std::endl;
+        
+        double dt = 0.000001;
+        
         solver.time_step(dt);
+        
+        // Check for NaN after timestep
+        bool has_nan = false;
+        for (size_t patch_idx = 0; patch_idx < solver.get_tree().size(); ++patch_idx) {
+            auto& rho_patch = solver.get_tree().template get_patch<amr::cell::Rho>(patch_idx);
+            for (size_t i = 0; i < 10; ++i) {
+                if (!std::isfinite(rho_patch[i])) {
+                    std::cout << "NaN detected in SOLVER at patch " << patch_idx << " cell " << i << std::endl;
+                    std::cout << "  Value: " << rho_patch[i] << std::endl;
+                    has_nan = true;
+                    break;
+                }
+            }
+            if (has_nan) break;
+        }
+        
+        if (has_nan) {
+            std::cout << "STOPPING DUE TO NaN IN SOLVER" << std::endl;
+            return 1;
+        }
+        
+        std::cout << "Step " << step << " completed, no NaN in solver" << std::endl;
         
         solver.get_tree().reconstruct_tree(acousticWaveCriterion);
 
@@ -164,13 +175,13 @@ int main() {
         t += dt;
         step++;
 
-        if (step > 100) {
-            std::cout << "Breaking after 100 steps for safety..." << std::endl;
+        if (step > 10) {
+            std::cout << "Breaking after 10 steps for testing..." << std::endl;
             break;
         }
     }
 
-    std::cout << "Simulation completed. Files in output/ directory." << std::endl;
+    std::cout << "\nSimulation completed. Files in vtk_output/ directory." << std::endl;
     
     return 0;
 }
