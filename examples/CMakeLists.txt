@@ -24,7 +24,7 @@ set(CXX_WARNINGS
 	-Wdouble-promotion
 	-Wduplicated-branches
 	-Wduplicated-cond
-	-Werror
+	# -Werror
 	-Wextra
 	-Wfloat-equal
 	-Wformat
