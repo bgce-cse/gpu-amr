@@ -1,7 +1,7 @@
 #ifndef EULER_PHYSICS_H
 #define EULER_PHYSICS_H
 
-#include <vector>
+#include "containers/static_vector.hpp"
 #include <cmath>
 #include <algorithm>
 
@@ -16,8 +16,8 @@ public:
      * @param prim Output primitive variables [rho, u, v, (w), p]
      * @param gamma Specific heat ratio
      */
-    static void conservativeToPrimitive(const std::vector<double>& cons, 
-                                       std::vector<double>& prim, 
+    static void conservativeToPrimitive(const amr::containers::static_vector<double, NVAR>& cons, 
+                                       amr::containers::static_vector<double, NVAR>& prim, 
                                        double gamma) {
         double rho = cons[0];
         
@@ -42,7 +42,7 @@ public:
      * @param cons Output conservative variables [rho, rho*u, rho*v, (rho*w), E]
      * @param gamma Specific heat ratio
      */
-    static void primitiveToConservative(const std::vector<double>& prim, std::vector<double>& cons, double gamma) {
+    static void primitiveToConservative(const amr::containers::static_vector<double, NVAR>& prim, amr::containers::static_vector<double, NVAR>& cons, double gamma) {
         double rho = prim[0];
         double p = prim[DIM + 1];
         
@@ -71,8 +71,8 @@ public:
      * @param direction Direction index (0=x, 1=y, 2=z)
      * @param gamma Specific heat ratio
      */
-    static void computeFlux(const std::vector<double>& cons, std::vector<double>& flux, int direction, double gamma) {
-        std::vector<double> prim(NVAR);
+    static void computeFlux(const amr::containers::static_vector<double, NVAR>& cons, amr::containers::static_vector<double, NVAR>& flux, int direction, double gamma) {
+        amr::containers::static_vector<double, NVAR> prim;
         conservativeToPrimitive(cons, prim, gamma);
         
         double rho = prim[0];
@@ -100,8 +100,8 @@ public:
      * @param gamma Specific heat ratio
      * @return Sound speed a = sqrt(gamma * p / rho)
      */
-    static double computeSoundSpeed(const std::vector<double>& cons, double gamma) {
-        std::vector<double> prim(NVAR);
+    static double computeSoundSpeed(const amr::containers::static_vector<double, NVAR>& cons, double gamma) {
+        amr::containers::static_vector<double, NVAR> prim;
         conservativeToPrimitive(cons, prim, gamma);
         double rho = prim[0];
         double p = prim[DIM + 1];
@@ -116,14 +116,14 @@ public:
      * @param direction Direction index (0=x, 1=y, 2=z)
      * @param gamma Specific heat ratio
      */
-    static void rusanovFlux(const std::vector<double>& UL, const std::vector<double>& UR, std::vector<double>& flux, int direction, double gamma) {
+    static void rusanovFlux(const amr::containers::static_vector<double, NVAR>& UL, const amr::containers::static_vector<double, NVAR>& UR, amr::containers::static_vector<double, NVAR>& flux, int direction, double gamma) {
         // Compute physical fluxes for left and right states
-        std::vector<double> fluxL(NVAR), fluxR(NVAR);
+        amr::containers::static_vector<double, NVAR> fluxL, fluxR;
         computeFlux(UL, fluxL, direction, gamma);
         computeFlux(UR, fluxR, direction, gamma);
         
         // Convert to primitive for wave speed calculation
-        std::vector<double> primL(NVAR), primR(NVAR);
+        amr::containers::static_vector<double, NVAR> primL, primR;
         conservativeToPrimitive(UL, primL, gamma);
         conservativeToPrimitive(UR, primR, gamma);
         

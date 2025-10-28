@@ -126,10 +126,10 @@ public:
 
 
                 // Evaluate the Initial Condition
-                std::vector<double> prim = init_func(x_world, y_world);
+                amr::containers::static_vector<double, NVAR> prim = init_func(x_world, y_world);
 
                 // Convert to conservative and write to patch
-                std::vector<double> cons(NVAR);
+                amr::containers::static_vector<double, NVAR> cons;
                 EulerPhysicsSolver::primitiveToConservative(prim, cons, gamma);
                 
                 rho_patch[linear_idx]  = cons[0];
@@ -212,10 +212,10 @@ public:
 
 
                 // Evaluate the Initial Condition
-                std::vector<double> prim = init_func(x_world, y_world, z_world);
+                amr::containers::static_vector<double, NVAR> prim = init_func(x_world, y_world, z_world);
 
                 // Convert to conservative and write to patch
-                std::vector<double> cons(NVAR);
+                amr::containers::static_vector<double, NVAR> cons;
                 EulerPhysicsSolver::primitiveToConservative(prim, cons, gamma);
                 
                 rho_patch[linear_idx]  = cons[0];
@@ -259,7 +259,7 @@ public:
                 }
 
                 // Extract the current conservative state U_cell
-                std::vector<double> U_cell = {
+                amr::containers::static_vector<double, NVAR> U_cell = {
                     rho_patch[linear_idx],
                     rhou_patch[linear_idx],
                     rhov_patch[linear_idx],
@@ -267,13 +267,13 @@ public:
                 };
 
                 // Placeholder for fluxes on each face
-                std::vector<double> flux_left(NVAR, 0.0);
-                std::vector<double> flux_right(NVAR, 0.0);
-                std::vector<double> flux_bottom(NVAR, 0.0);
-                std::vector<double> flux_top(NVAR, 0.0);
+                amr::containers::static_vector<double, NVAR> flux_left;
+                amr::containers::static_vector<double, NVAR> flux_right;
+                amr::containers::static_vector<double, NVAR> flux_bottom;
+                amr::containers::static_vector<double, NVAR> flux_top;
 
                 // --- Calculate fluxes for the right face (X-direction) ---
-                std::vector<double> U_right_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_right_neighbor = {
                     rho_patch[linear_idx + 1],
                     rhou_patch[linear_idx + 1],
                     rhov_patch[linear_idx + 1],
@@ -282,7 +282,7 @@ public:
                 EulerPhysicsSolver::rusanovFlux(U_cell, U_right_neighbor, flux_right, Direction::X, gamma);
                 
                 // --- Calculate fluxes for the left face (X-direction) ---
-                std::vector<double> U_left_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_left_neighbor = {
                     rho_patch[linear_idx - 1],
                     rhou_patch[linear_idx - 1],
                     rhov_patch[linear_idx - 1],
@@ -291,7 +291,7 @@ public:
                 EulerPhysicsSolver::rusanovFlux(U_left_neighbor, U_cell, flux_left, Direction::X, gamma);
 
                 // --- Calculate fluxes for the top face (Y-direction) ---
-                std::vector<double> U_top_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_top_neighbor = {
                     rho_patch[linear_idx - patch_size_padded_x],
                     rhou_patch[linear_idx - patch_size_padded_x],
                     rhov_patch[linear_idx - patch_size_padded_x],
@@ -300,7 +300,7 @@ public:
                 EulerPhysicsSolver::rusanovFlux(U_cell, U_top_neighbor, flux_top, Direction::Y, gamma);
 
                 // --- Calculate fluxes for the bottom face (Y-direction) --- 
-                std::vector<double> U_bottom_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_bottom_neighbor = {
                     rho_patch[linear_idx + patch_size_padded_x],
                     rhou_patch[linear_idx + patch_size_padded_x],
                     rhov_patch[linear_idx + patch_size_padded_x],
@@ -317,7 +317,7 @@ public:
                 double dx = cell_size;
                 double dy = cell_size;
                 
-                for (size_t k = 0; k < NVAR; ++k) {
+                for (int k = 0; k < NVAR; ++k) {
                     U_new_patch_buffer[linear_idx][k] = U_cell[k] - (dt / dx) * (flux_right[k] - flux_left[k])
                                             - (dt / dy) * (flux_top[k] - flux_bottom[k]);
                 }
@@ -370,7 +370,7 @@ public:
                 }
 
                 // Extract the current conservative state U_cell
-                std::vector<double> U_cell = {
+                amr::containers::static_vector<double, NVAR> U_cell = {
                     rho_patch[linear_idx],
                     rhou_patch[linear_idx],
                     rhov_patch[linear_idx],
@@ -379,15 +379,15 @@ public:
                 };
 
                 // Placeholder for fluxes on each face
-                std::vector<double> flux_left(NVAR, 0.0);
-                std::vector<double> flux_right(NVAR, 0.0);
-                std::vector<double> flux_bottom(NVAR, 0.0);
-                std::vector<double> flux_top(NVAR, 0.0);
-                std::vector<double> flux_back(NVAR, 0.0);
-                std::vector<double> flux_front(NVAR, 0.0);
+                amr::containers::static_vector<double, NVAR> flux_left;
+                amr::containers::static_vector<double, NVAR> flux_right;
+                amr::containers::static_vector<double, NVAR> flux_bottom;
+                amr::containers::static_vector<double, NVAR> flux_top;
+                amr::containers::static_vector<double, NVAR> flux_back;
+                amr::containers::static_vector<double, NVAR> flux_front;
 
                 // --- Calculate fluxes for the right face (X-direction) ---
-                std::vector<double> U_right_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_right_neighbor = {
                     rho_patch[linear_idx + 1],
                     rhou_patch[linear_idx + 1],
                     rhov_patch[linear_idx + 1],
@@ -397,7 +397,7 @@ public:
                 EulerPhysicsSolver::rusanovFlux(U_cell, U_right_neighbor, flux_right, Direction::X, gamma);
                 
                 // --- Calculate fluxes for the left face (X-direction) ---
-                std::vector<double> U_left_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_left_neighbor = {
                     rho_patch[linear_idx - 1],
                     rhou_patch[linear_idx - 1],
                     rhov_patch[linear_idx - 1],
@@ -407,7 +407,7 @@ public:
                 EulerPhysicsSolver::rusanovFlux(U_left_neighbor, U_cell, flux_left, Direction::X, gamma);
 
                 // --- Calculate fluxes for the top face (Y-direction) ---
-                std::vector<double> U_top_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_top_neighbor = {
                     rho_patch[linear_idx - patch_size_padded_x],
                     rhou_patch[linear_idx - patch_size_padded_x],
                     rhov_patch[linear_idx - patch_size_padded_x],
@@ -417,7 +417,7 @@ public:
                 EulerPhysicsSolver::rusanovFlux(U_cell, U_top_neighbor, flux_top, Direction::Y, gamma);
 
                 // --- Calculate fluxes for the bottom face (Y-direction) --- 
-                std::vector<double> U_bottom_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_bottom_neighbor = {
                     rho_patch[linear_idx + patch_size_padded_x],
                     rhou_patch[linear_idx + patch_size_padded_x],
                     rhov_patch[linear_idx + patch_size_padded_x],
@@ -427,7 +427,7 @@ public:
                 EulerPhysicsSolver::rusanovFlux(U_bottom_neighbor, U_cell, flux_bottom, Direction::Y, gamma);
 
                 // --- Calculate fluxes for the front face (Z-direction) ---
-                std::vector<double> U_front_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_front_neighbor = {
                     rho_patch[linear_idx + patch_size_padded_x * patch_size_padded_y],
                     rhou_patch[linear_idx + patch_size_padded_x * patch_size_padded_y],
                     rhov_patch[linear_idx + patch_size_padded_x * patch_size_padded_y],
@@ -437,7 +437,7 @@ public:
                 EulerPhysicsSolver::rusanovFlux(U_front_neighbor, U_cell, flux_front, Direction::Z, gamma);
 
                 // --- Calculate fluxes for the back face (Z-direction) --- 
-                std::vector<double> U_back_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_back_neighbor = {
                     rho_patch[linear_idx - patch_size_padded_x * patch_size_padded_y],
                     rhou_patch[linear_idx - patch_size_padded_x * patch_size_padded_y],
                     rhov_patch[linear_idx - patch_size_padded_x * patch_size_padded_y],
@@ -457,7 +457,7 @@ public:
                 double dy = cell_size;
                 double dz = cell_size;
                 
-                for (size_t k = 0; k < NVAR; ++k) {
+                for (int k = 0; k < NVAR; ++k) {
                     U_new_patch_buffer[linear_idx][k] = U_cell[k] - (dt / dx) * (flux_right[k] - flux_left[k])
                                             - (dt / dy) * (flux_top[k] - flux_bottom[k])
                                             - (dt / dz) * (flux_front[k] - flux_back[k]);
@@ -509,13 +509,13 @@ public:
                 }
 
                 // Convert to primitive
-                std::vector<double> U_cell = {
+                amr::containers::static_vector<double, NVAR> U_cell = {
                     rho_patch[linear_idx],
                     rhou_patch[linear_idx],
                     rhov_patch[linear_idx],
                     e_patch[linear_idx]
                 };
-                std::vector<double> prim(NVAR);
+                amr::containers::static_vector<double, NVAR> prim;
                 EulerPhysicsSolver::conservativeToPrimitive(U_cell, prim, gamma);
 
                 // Get sound speed
@@ -563,14 +563,14 @@ public:
                 }
 
                 // Convert to primitive
-                std::vector<double> U_cell = {
+                amr::containers::static_vector<double, NVAR> U_cell = {
                     rho_patch[linear_idx],
                     rhou_patch[linear_idx],
                     rhov_patch[linear_idx],
                     rhow_patch[linear_idx],
                     e_patch[linear_idx]
                 };
-                std::vector<double> prim(NVAR);
+                amr::containers::static_vector<double, NVAR> prim;
                 EulerPhysicsSolver::conservativeToPrimitive(U_cell, prim, gamma);
 
                 // Get sound speed
