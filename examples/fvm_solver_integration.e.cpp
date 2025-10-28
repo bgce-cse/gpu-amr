@@ -88,8 +88,8 @@ int main() {
     constexpr double CENTER_Y = 0.5;
 
     // The initial condition function (auto IC = [](){})
-    auto acousticPulseIC = [](double x, double y) -> std::vector<double> {
-        std::vector<double> prim(4);
+    auto acousticPulseIC = [](double x, double y) -> amr::containers::static_vector<double, 4> {
+        amr::containers::static_vector<double, 4> prim;
         
         // Calculate distance squared from the center
         double dx = x - CENTER_X;
@@ -112,24 +112,24 @@ int main() {
     solver.initialize(acousticPulseIC);
 
     // CHECK INITIAL CONDITIONS
-    std::cout << "\n=== Checking Initial Conditions ===" << std::endl;
-    for (size_t patch_idx = 0; patch_idx < std::min(size_t(3), solver.get_tree().size()); ++patch_idx) {
-        auto& rho_patch = solver.get_tree().template get_patch<amr::cell::Rho>(patch_idx);
-        auto& rhou_patch = solver.get_tree().template get_patch<amr::cell::Rhou>(patch_idx);
-        auto& rhov_patch = solver.get_tree().template get_patch<amr::cell::Rhov>(patch_idx);
-        auto& e_patch = solver.get_tree().template get_patch<amr::cell::E2D>(patch_idx);
+    // std::cout << "\n=== Checking Initial Conditions ===" << std::endl;
+    // for (size_t patch_idx = 0; patch_idx < std::min(size_t(3), solver.get_tree().size()); ++patch_idx) {
+    //     auto& rho_patch = solver.get_tree().template get_patch<amr::cell::Rho>(patch_idx);
+    //     auto& rhou_patch = solver.get_tree().template get_patch<amr::cell::Rhou>(patch_idx);
+    //     auto& rhov_patch = solver.get_tree().template get_patch<amr::cell::Rhov>(patch_idx);
+    //     auto& e_patch = solver.get_tree().template get_patch<amr::cell::E2D>(patch_idx);
         
-        std::cout << "Patch " << patch_idx << " first 3 cells:" << std::endl;
-        for (size_t i = 0; i < 3; ++i) {
-            std::cout << "  Cell " << i << ": "
-                      << "rho=" << rho_patch[i] 
-                      << ", rhou=" << rhou_patch[i]
-                      << ", rhov=" << rhov_patch[i]
-                      << ", E=" << e_patch[i] << std::endl;
-        }
-    }
+    //     std::cout << "Patch " << patch_idx << " first 3 cells:" << std::endl;
+    //     for (size_t i = 0; i < 3; ++i) {
+    //         std::cout << "  Cell " << i << ": "
+    //                   << "rho=" << rho_patch[i] 
+    //                   << ", rhou=" << rhou_patch[i]
+    //                   << ", rhov=" << rhov_patch[i]
+    //                   << ", E=" << e_patch[i] << std::endl;
+    //     }
+    // }
 
-    std::cout << "\nWriting initial VTK..." << std::endl;
+    // std::cout << "\nWriting initial VTK..." << std::endl;
     printer.print(solver.get_tree(), "_iteration_0.vtk");
 
     // Main Simulation Loop
