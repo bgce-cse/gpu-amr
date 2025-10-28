@@ -141,8 +141,8 @@ int main() {
     while (t < tmax) {
         std::cout << "\n=== Step " << step << ", t=" << t << " ===" << std::endl;
         
-        double dt = 300; // Using a fixed dt for now
-        // double dt = solver.compute_time_step(); // Test adaptive time step
+        // double dt = 300; // Using a fixed dt for now
+        double dt = solver.compute_time_step(); // Test adaptive time step
         
         solver.time_step(dt);
         
@@ -176,8 +176,8 @@ int main() {
         t += dt;
         step++;
 
-        if (step > 10) {
-            std::cout << "Breaking after 10 steps for testing..." << std::endl;
+        if (step > 100) {
+            std::cout << "Breaking after 100 steps for testing..." << std::endl;
             break;
         }
     }
