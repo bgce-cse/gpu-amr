@@ -35,7 +35,7 @@ int main() {
     using tree_t         = amr::ndt::tree::ndtree<amr::cell::EulerCell3D, patch_index_t, patch_layout_t>;
 
     
-    ndt::print::example_patch_print<Halo, N, M, O> printer("euler_tree"); // NOTE: NEED TO IMPLEMENT PRINT 3D FUNCTIONALITY
+    ndt::print::example_patch_print<Halo, N, M, O> printer("euler_tree"); // NOTE: NEED TO IMPLEMENT PRINT 3D FUNCTIONALITY (?)
 
 
     double tmax = 90000000; // Example tmax, adjust as needed
@@ -127,7 +127,7 @@ int main() {
 
         solver.time_step(dt);
         
-        solver.get_tree().reconstruct_tree(acousticWaveCriterion3D);
+        // solver.get_tree().reconstruct_tree(acousticWaveCriterion3D);
 
         std::string file_extension = "_iteration_" + std::to_string(step) + ".vtk";
         printer.print(solver.get_tree(), file_extension);

@@ -139,34 +139,34 @@ int main() {
     std::cout << "\nStarting AMR simulation..." << std::endl;
 
     while (t < tmax) {
-        std::cout << "\n=== Step " << step << ", t=" << t << " ===" << std::endl;
+        // std::cout << "\n=== Step " << step << ", t=" << t << " ===" << std::endl;
         
         // double dt = 300; // Using a fixed dt for now
         double dt = solver.compute_time_step(); // Test adaptive time step
         
         solver.time_step(dt);
         
-        // Check for NaN after timestep
-        bool has_nan = false;
-        for (size_t patch_idx = 0; patch_idx < solver.get_tree().size(); ++patch_idx) {
-            auto& rho_patch = solver.get_tree().template get_patch<amr::cell::Rho>(patch_idx);
-            for (size_t i = 0; i < 10; ++i) {
-                if (!std::isfinite(rho_patch[i])) {
-                    std::cout << "NaN detected in SOLVER at patch " << patch_idx << " cell " << i << std::endl;
-                    std::cout << "  Value: " << rho_patch[i] << std::endl;
-                    has_nan = true;
-                    break;
-                }
-            }
-            if (has_nan) break;
-        }
+        // // Check for NaN after timestep
+        // bool has_nan = false;
+        // for (size_t patch_idx = 0; patch_idx < solver.get_tree().size(); ++patch_idx) {
+        //     auto& rho_patch = solver.get_tree().template get_patch<amr::cell::Rho>(patch_idx);
+        //     for (size_t i = 0; i < 10; ++i) {
+        //         if (!std::isfinite(rho_patch[i])) {
+        //             std::cout << "NaN detected in SOLVER at patch " << patch_idx << " cell " << i << std::endl;
+        //             std::cout << "  Value: " << rho_patch[i] << std::endl;
+        //             has_nan = true;
+        //             break;
+        //         }
+        //     }
+        //     if (has_nan) break;
+        // }
         
-        if (has_nan) {
-            std::cout << "STOPPING DUE TO NaN IN SOLVER" << std::endl;
-            return 1;
-        }
+        // if (has_nan) {
+        //     std::cout << "STOPPING DUE TO NaN IN SOLVER" << std::endl;
+        //     return 1;
+        // }
         
-        std::cout << "Step " << step << " completed, no NaN in solver" << std::endl;
+        // std::cout << "Step " << step << " completed, no NaN in solver" << std::endl;
         
         // solver.get_tree().reconstruct_tree(acousticWaveCriterion);
 
