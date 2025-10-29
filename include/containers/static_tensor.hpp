@@ -39,64 +39,64 @@ private:
 
 public:
     [[nodiscard]]
-    constexpr static auto flat_size() noexcept -> size_type
+    static constexpr auto flat_size() noexcept -> size_type
     {
         return layout_t::flat_size();
     }
 
     [[nodiscard]]
-    constexpr static auto elements() noexcept -> size_type
+    static constexpr auto elements() noexcept -> size_type
     {
         return layout_t::elements();
     }
 
     [[nodiscard]]
-    constexpr static auto rank() noexcept -> rank_t
+    static constexpr auto rank() noexcept -> rank_t
     {
         return layout_t::rank();
     }
 
     [[nodiscard]]
-    constexpr static auto sizes() noexcept -> auto const&
+    static constexpr auto sizes() noexcept -> auto const&
     {
         return layout_t::sizes();
     }
 
     [[nodiscard]]
-    constexpr static auto size(index_t const i) noexcept -> size_type
+    static constexpr auto size(index_t const i) noexcept -> size_type
     {
         assert(i < rank());
         return layout_t::size(i);
     }
 
     [[nodiscard]]
-    constexpr static auto strides() noexcept -> auto const&
+    static constexpr auto strides() noexcept -> auto const&
     {
         return layout_t::strides();
     }
 
     [[nodiscard]]
-    constexpr static auto stride(index_t const i) noexcept -> size_type
+    static constexpr auto stride(index_t const i) noexcept -> size_type
     {
         assert(i < rank());
         return layout_t::stride(i);
     }
 
     [[nodiscard]]
-    constexpr static auto linear_index(index_t const (&idxs)[rank()]) noexcept -> index_t
+    static constexpr auto linear_index(index_t const (&idxs)[rank()]) noexcept -> index_t
     {
         return layout_t::linear_index(idxs);
     }
 
     [[nodiscard]]
-    constexpr static auto linear_index(multi_index_t const& multi_idx) noexcept -> index_t
+    static constexpr auto linear_index(multi_index_t const& multi_idx) noexcept -> index_t
     {
         return layout_t::linear_index(multi_idx);
     }
 
 public:
     [[nodiscard]]
-    constexpr static auto zero() noexcept -> static_tensor
+    static constexpr auto zero() noexcept -> static_tensor
     {
         return static_tensor{};
     }

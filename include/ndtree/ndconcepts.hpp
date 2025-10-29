@@ -40,7 +40,7 @@ concept PatchIndex =
         const typename I::direction_t d,
         const typename I::offset_t    offset
     ) {
-        { I::dimension() } -> std::same_as<typename I::size_type>;
+        { I::rank() } -> std::same_as<typename I::size_type>;
         { I::fanout() } -> std::same_as<typename I::size_type>;
         { I::nd_fanout() } -> std::same_as<typename I::size_type>;
         { I::max_depth() } -> std::integral;
@@ -81,14 +81,27 @@ concept PatchType = requires(
 
 template <typename L>
 concept PatchLayout = requires() {
-    typename L::dimension_t;
+    typename L::rank_t;
     typename L::index_t;
     typename L::size_type;
     typename L::data_layout_t;
     typename L::padded_layout_t;
-    { L::dimension() } -> std::same_as<typename L::dimension_t>;
+    { L::rank() } -> std::same_as<typename L::rank_t>;
     { L::flat_size() } -> std::same_as<typename L::size_type>;
     { L::halo_width() } -> std::same_as<typename L::size_type>;
+};
+
+template <typename D>
+concept Direction = requires(D const cd) {
+    typename D::index_t;
+    typename D::size_type;
+    { D::rank() } -> std::same_as<typename D::size_type>;
+    { D::elements() } -> std::same_as<typename D::size_type>;
+    { D::unit_vector(cd) } -> std::same_as<typename D::vector_t>;
+    { cd.dimension() } -> std::same_as<typename D::index_t>;
+    // TODO: This is horrible
+    { D::is_negative(cd) } -> std::same_as<bool>;
+    { D::is_positive(cd) } -> std::same_as<bool>;
 };
 
 } // namespace amr::ndt::concepts

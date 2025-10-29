@@ -3,6 +3,7 @@
 
 #include "containers/container_concepts.hpp"
 #include "containers/container_utils.hpp"
+#include "ndconcepts.hpp"
 
 namespace amr::ndt::patches
 {
@@ -18,7 +19,7 @@ public:
         data_layout_t>::template type<size_type{ Halo_Width * 2 }>;
 
     using index_t     = typename data_layout_t::index_t;
-    using dimension_t = typename data_layout_t::rank_t;
+    using rank_t = typename data_layout_t::rank_t;
 
 private:
     static constexpr auto      s_dim        = data_layout_t::rank();
@@ -27,7 +28,7 @@ private:
 
 public:
     [[nodiscard]]
-    static constexpr auto dimension() noexcept -> dimension_t
+    static constexpr auto rank() noexcept -> rank_t
     {
         return s_dim;
     }

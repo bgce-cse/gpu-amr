@@ -2,6 +2,7 @@
 #include "containers/static_layout.hpp"
 #include "containers/static_tensor.hpp"
 #include "ndtree/ndutils.hpp"
+#include "ndtree/neighbor.hpp"
 #include "ndtree/patch.hpp"
 #include "ndtree/patch_layout.hpp"
 #include "utility/constexpr_functions.hpp"
@@ -38,5 +39,14 @@ int main()
     for (int i = 0; auto const& p : patch_maps)
     {
         std::cout << "Patch " << i++ << '\n' << p << '\n';
+    }
+
+    using d_t                = amr::ndt::neighbors::direction<int{ patch_t::rank() }>;
+    constexpr auto        d  = d_t::first();
+    static constexpr auto lc = patch_t::template halo_iteration_control<d>();
+    for (index_t i = 0; i != patch_t::rank(); ++i)
+    {
+        std::cout << "[ " << lc.start(i) << " , " << lc.end(i) << " ), " << lc.stride(i)
+                  << '\n';
     }
 }

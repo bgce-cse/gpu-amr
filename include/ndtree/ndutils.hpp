@@ -84,7 +84,7 @@ consteval auto fragmentation_patch_maps() noexcept
             typename Patch_Layout::index_t,
             typename Patch_Layout::padded_layout_t>,
         Fanout,
-        Patch_Layout::dimension()>
+        Patch_Layout::rank()>
 {
     using patch_layout_t         = Patch_Layout;
     static constexpr auto fanout = static_cast<typename patch_layout_t::index_t>(Fanout);

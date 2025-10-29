@@ -24,7 +24,7 @@ struct neighbor_variant
     using patch_index_t               = Patch_Index;
     static constexpr auto s_1d_fanout = patch_index_t::fanout();
     static constexpr auto s_nd_fanout = patch_index_t::nd_fanout();
-    static constexpr auto s_dimension = patch_index_t::dimension();
+    static constexpr auto s_rank      = patch_index_t::rank();
 
     struct none
     {
@@ -37,8 +37,8 @@ struct neighbor_variant
 
     struct coarser
     {
-        patch_index_t id;
         // TODO: Maybe store information about relative position?
+        patch_index_t id;
     };
 
     struct finer
@@ -60,23 +60,23 @@ struct neighbor_variant
 
 // TODO: This should be provided by the patch index
 template <std::signed_integral auto Dim>
-class direction
+struct direction
 {
 public:
     using index_t   = decltype(Dim);
     using size_type = index_t;
 
 private:
-    static constexpr auto s_dimension         = Dim;
-    static constexpr auto s_neighbors_per_dim = size_type{ 2 };
-    static constexpr auto s_elements          = s_neighbors_per_dim * s_dimension;
+    static constexpr size_type s_rank              = Dim;
+    static constexpr auto      s_neighbors_per_dim = size_type{ 2 };
+    static constexpr size_type s_elements          = s_neighbors_per_dim * s_rank;
     static constexpr auto s_collection = []<auto const... Is>(std::index_sequence<Is...>)
     {
         return std::array<index_t, s_elements>{ index_t{ Is }... };
     }(std::make_index_sequence<std::size_t{ s_elements }>{});
 
 public:
-    using vector_t = containers::static_vector<index_t, s_dimension>;
+    using vector_t = containers::static_vector<index_t, s_rank>;
 
 private:
     explicit constexpr direction(index_t const linear_index) noexcept
@@ -85,6 +85,18 @@ private:
     }
 
 public:
+    [[nodiscard]]
+    static constexpr auto rank() noexcept -> decltype(s_rank)
+    {
+        return s_rank;
+    }
+
+    [[nodiscard]]
+    static constexpr auto elements() noexcept -> decltype(s_elements)
+    {
+        return s_elements;
+    }
+
     [[nodiscard]]
     static constexpr auto first() noexcept -> direction
     {
@@ -124,7 +136,7 @@ public:
     }
 
     [[nodiscard]]
-    static constexpr auto unit_vector(direction const& d) noexcept -> index_t
+    static constexpr auto unit_vector(direction const& d) noexcept -> vector_t
     {
         vector_t ret{};
         ret[d.dimension()] = is_negative(d) ? index_t{ -1 } : index_t{ 1 };
@@ -157,7 +169,7 @@ public:
     [[nodiscard]]
     constexpr auto operator<=>(direction const&) const noexcept = default;
 
-private:
+public:
     index_t idx_;
 };
 
@@ -170,24 +182,24 @@ public:
     using neighbor_category_t = neighbor_variant<patch_index_t>;
     using size_type           = patch_layout_t::size_type;
     using index_t             = patch_layout_t::index_t;
-    using dimension_t         = patch_layout_t::dimension_t;
+    using rank_t              = patch_layout_t::rank_t;
 
 private:
     static constexpr auto s_1d_fanout = patch_index_t::fanout();
     static constexpr auto s_nd_fanout = patch_index_t::nd_fanout();
-    static constexpr auto s_dimension = patch_index_t::dimension();
+    static constexpr auto s_rank      = patch_index_t::rank();
 
 public:
     // TODO: This should be provided by the patch index
     using direction_t = direction<std::make_signed_t<index_t>{
-        s_dimension }>; // typename patch_index_t::direction_t;
+        s_rank }>; // typename patch_index_t::direction_t;
 
 public:
     template <typename T>
-    using patch_neighboring_t = std::array<T, 2 * Patch_Index::dimension()>;
+    using patch_neighboring_t = std::array<T, direction_t::elements()>;
     using patch_neighbors_t   = patch_neighboring_t<neighbor_category_t>;
     using child_expansion_t   = containers::utils::types::tensor::
-        hypercube_t<patch_index_t, index_t{ s_1d_fanout }, index_t{ s_dimension }>;
+        hypercube_t<patch_index_t, index_t{ s_1d_fanout }, index_t{ s_rank }>;
 
 private:
     static constexpr auto s_neighbor_relation_maps = []
@@ -217,18 +229,18 @@ private:
 public:
     static constexpr auto compute_fine_boundary_linear_index(
         typename child_expansion_t::multi_index_t const& coords,
-        dimension_t                                      dimension
+        rank_t                                           rank
     ) -> index_t
     {
-        assert(dimension < coords.rank());
+        assert(rank < coords.rank());
 
         index_t linear_idx = 0;
         index_t multiplier = 1;
 
         // Iterate through all dimensions except the specified one
-        for (dimension_t d = 0; d != s_dimension; ++d)
+        for (rank_t d = 0; d != s_rank; ++d)
         {
-            if (d == dimension)
+            if (d == rank)
             {
                 continue;
             }

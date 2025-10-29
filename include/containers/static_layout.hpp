@@ -7,6 +7,7 @@
 #include "utility/utility_concepts.hpp"
 #include <array>
 #include <cassert>
+#include <numeric>
 
 #ifndef NDEBUG
 #    define AMR_CONTAINERS_CHECKBOUNDS
@@ -26,12 +27,11 @@ public:
     using multi_index_t = index::static_multi_index<index_t, shape_t>;
 
 private:
-    inline static constexpr rank_t                        s_rank = shape_t::rank();
-    inline static constexpr std::array<size_type, s_rank> s_sizes =
-        multi_index_t::sizes();
-    inline static constexpr auto s_strides = []
+    inline static constexpr rank_t s_rank    = shape_t::rank();
+    inline static constexpr auto&  s_sizes   = shape_t::sizes();
+    inline static constexpr auto   s_strides = []
     {
-        std::array<size_type, s_rank> strides{};
+        std::remove_cvref_t<decltype(s_sizes)> strides{};
         strides[s_rank - 1] = size_type{ 1 };
         for (rank_t d = s_rank - 1; d-- > 0;)
         {

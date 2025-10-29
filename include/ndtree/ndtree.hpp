@@ -21,6 +21,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 
 #ifndef NDEBUG
 #    define AMR_NDTREE_CHECKBOUNDS
@@ -217,7 +218,7 @@ public:
     auto get_patch(patch_index_t const patch_idx) const noexcept
         -> patch_t<Map_Type> const&
     {
-        auto linear_index = m_index_map.at(patch_idx);
+        const auto linear_index = m_index_map.at(patch_idx);
         assert(linear_index < m_size);
         return std::get<Map_Type::index()>(m_data_buffers)[linear_index];
     }
@@ -227,15 +228,15 @@ public:
         const auto it   = find_index(node_id);
         const auto from = it.value()->second;
         assert(it.has_value());
-        auto const start_to = m_size;
+        const auto start_to = m_size;
         for (size_type i = 0; i != s_nd_fanout; ++i)
         {
-            auto child_id = patch_index_t::child_of(
+            const auto child_id = patch_index_t::child_of(
                 node_id, static_cast<typename patch_index_t::offset_t>(i)
             );
             assert(!find_index(child_id).has_value());
 
-            patch_neighbors_t neighbor_array =
+            const auto neighbor_array =
                 neighbor_utils_t::compute_child_neighbors(node_id, m_neighbors[from], i);
             append(child_id, neighbor_array);
             assert(m_index_map[child_id] == back_idx());
@@ -307,7 +308,7 @@ public:
         noexcept(fn(std::declval<linear_index_t&>()))
     )
     {
-        for (linear_index_t i = 0; i < m_size; ++i)
+        for (linear_index_t i = 0; i != m_size; ++i)
         {
             m_refine_status_buffer[i] = fn(m_linear_index_map[i]);
         }
@@ -318,7 +319,7 @@ public:
         m_to_refine.clear();
         m_to_coarsen.clear();
         std::vector<patch_index_t> parent_patch_idx;
-        for (linear_index_t i = 0; i < m_size; ++i)
+        for (linear_index_t i = 0; i != m_size; ++i)
         {
             const auto node_id = m_linear_index_map[i];
             if (node_id.id() == 0)
@@ -334,7 +335,7 @@ public:
             parent_patch_idx.end()
         );
 
-        for (linear_index_t i = 0; i < m_size; ++i)
+        for (linear_index_t i = 0; i != m_size; ++i)
         {
             if (is_refine_elegible(i))
             {
@@ -626,8 +627,10 @@ private:
         return m_size - 1;
     }
 
-    auto append(patch_index_t const node_id, patch_neighbors_t neighbor_array) noexcept
-        -> void
+    auto append(
+        patch_index_t const      node_id,
+        patch_neighbors_t const& neighbor_array
+    ) noexcept -> void
     {
         m_linear_index_map[m_size] = node_id;
         m_index_map[node_id]       = m_size;
@@ -767,6 +770,7 @@ public:
             m_data_buffers
         );
 
+        // TODO: The solver needs to decide how to do the interpolation
         for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
         {
             const auto child_patch_index = start_from + patch_idx;
@@ -816,9 +820,7 @@ public:
                 const auto from_linear_idx =
                     s_fragmentation_patch_maps[patch_idx][linear_idx];
                 std::apply(
-                    [child_patch_index, from, patch_idx, from_linear_idx, linear_idx](
-                        auto&... b
-                    )
+                    [child_patch_index, from, from_linear_idx, linear_idx](auto&... b)
                     {
                         ((void)(b[child_patch_index][linear_idx] =
                                     b[from][from_linear_idx]),
@@ -830,7 +832,32 @@ public:
         }
     }
 
-    auto halo_exchange_update() noexcept -> void {}
+    auto halo_exchange_update() noexcept -> void
+    {
+        for (linear_index_t i = 0; i != m_size; ++i)
+        {
+            for (auto const& neighbor : m_neighbors[i])
+            {
+                std::visit(
+                    utils::overloads{
+                        [](typename neighbor_variant_t::none const&) {},
+                        [this](typename neighbor_variant_t::same const&)
+                        {
+                            [this]<std::size_t... I>(std::index_sequence<I...>)
+                            {
+                                ((void)(std::get<I>(m_data_buffers)[0] =
+                                            std::get<I>(m_data_buffers)[0]),
+                                 ...);
+                            }(std::make_index_sequence<
+                                std::tuple_size_v<deconstructed_buffers_t>>{});
+                        },
+                        [this](typename neighbor_variant_t::finer const&) {},
+                        [this](typename neighbor_variant_t::coarser const&) {} },
+                    neighbor
+                );
+            }
+        }
+    }
 
     [[nodiscard]]
     auto get_refine_status(const linear_index_t i) const noexcept -> refine_status_t
@@ -955,10 +982,10 @@ private:
     linear_index_map_t         m_linear_index_map;
     linear_index_array_t       m_reorder_buffer;
     flat_refine_status_array_t m_refine_status_buffer;
+    neighbor_buffer_t          m_neighbors;
     size_type                  m_size;
     std::vector<patch_index_t> m_to_refine;
     std::vector<patch_index_t> m_to_coarsen;
-    neighbor_buffer_t          m_neighbors;
 };
 
 } // namespace amr::ndt::tree

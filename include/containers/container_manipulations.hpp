@@ -102,6 +102,7 @@ private:
             [](auto const& param) constexpr noexcept -> bool
         {
             using param_t = std::remove_cvref_t<decltype(param)>;
+            static_assert(std::is_arithmetic_v<param_t> || std::ranges::range<param_t>);
             if constexpr (std::is_arithmetic_v<param_t>)
             {
                 return true;

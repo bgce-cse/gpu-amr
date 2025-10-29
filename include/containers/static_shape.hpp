@@ -1,11 +1,9 @@
 #ifndef AMR_INCLUDED_STATIC_SHAPE
 #define AMR_INCLUDED_STATIC_SHAPE
 
-#include "utility/compile_time_utility.hpp"
 #include "utility/utility_concepts.hpp"
 #include <array>
 #include <cassert>
-#include <numeric>
 
 #ifndef NDEBUG
 #    define AMR_CONTAINERS_CHECKBOUNDS

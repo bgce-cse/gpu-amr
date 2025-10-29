@@ -14,7 +14,7 @@ namespace amr::ndt::morton
 {
 
 // Base template - not implemented to force specialization
-template <std::unsigned_integral auto Depth, std::unsigned_integral auto Dimension>
+template <std::unsigned_integral auto Depth, std::unsigned_integral auto Rank>
 class morton_id;
 
 // 2D Specialization
@@ -39,9 +39,13 @@ public:
     using level_t     = uint8_t;
 
     static constexpr size_type s_depth = Depth;
-    static constexpr size_type s_dim   = 2u;
+    static constexpr size_type s_rank  = 2u;
 
-    constexpr morton_id() : m_id(0) {}
+    constexpr morton_id()
+        : m_id(0)
+    {
+    }
+
     constexpr morton_id(mask_t id)
         : m_id{ id }
     {
@@ -146,8 +150,7 @@ public:
         return level;
     }
 
-    static constexpr std::optional<morton_id>
-        neighbor_at(morton_id morton, direction dir)
+    static constexpr std::optional<morton_id> neighbor_at(morton_id morton, direction dir)
     {
         auto [coords, level] = decode(morton.id());
         uint32_t x_coord     = coords[0];
@@ -187,9 +190,9 @@ public:
         return level;
     }
 
-    static constexpr auto dimension()
+    static constexpr auto rank()
     {
-        return s_dim;
+        return s_rank;
     }
 
     static constexpr size_type nd_fanout()
@@ -245,7 +248,7 @@ public:
     using level_t     = uint8_t;
 
     static constexpr auto s_depth = Depth;
-    static constexpr auto s_dim   = 3u;
+    static constexpr auto s_rank  = 3u;
 
     static constexpr offset_t offset_of(mask_t id)
     {
@@ -385,12 +388,11 @@ public:
 namespace std
 {
 
-template <std::unsigned_integral auto Depth, std::unsigned_integral auto Dimension>
-struct hash<amr::ndt::morton::morton_id<Depth, Dimension>>
+template <std::unsigned_integral auto Depth, std::unsigned_integral auto Rank>
+struct hash<amr::ndt::morton::morton_id<Depth, Rank>>
 {
     [[nodiscard]]
-    auto
-        operator()(amr::ndt::morton::morton_id<Depth, Dimension> const& id) const noexcept
+    auto operator()(amr::ndt::morton::morton_id<Depth, Rank> const& id) const noexcept
         -> std::size_t
     {
         return id.id();

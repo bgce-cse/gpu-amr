@@ -33,48 +33,49 @@ struct static_vector
     using reference       = value_type&;
 
 private:
-    static_assert(std::is_trivially_copyable_v<T>);
-    static_assert(std::is_standard_layout_v<T>);
+    static_assert(std::is_trivially_copyable_v<value_type>);
+    static_assert(std::is_standard_layout_v<value_type>);
 
 public:
     [[nodiscard]]
-    constexpr static auto flat_size() noexcept -> size_type
+    static constexpr auto flat_size() noexcept -> size_type
     {
         return layout_t::flat_size();
     }
 
     [[nodiscard]]
-    constexpr static auto elements() noexcept -> size_type
+    static constexpr auto elements() noexcept -> size_type
     {
         return layout_t::elements();
     }
 
     [[nodiscard]]
-    constexpr static auto rank() noexcept -> rank_t
+    static constexpr auto rank() noexcept -> rank_t
     {
         return layout_t::rank();
     }
 
     [[nodiscard]]
-    constexpr static auto size(index_t const i) noexcept -> size_type
+    static constexpr auto size(index_t const i) noexcept -> size_type
     {
         assert(i < rank());
         return layout_t::size(i);
     }
 
     [[nodiscard]]
-    constexpr static auto strides() noexcept -> auto const&
+    static constexpr auto strides() noexcept -> auto const&
     {
         return layout_t::strides;
     }
 
     [[nodiscard]]
-    constexpr static auto stride(index_t const i) noexcept -> size_type
+    static constexpr auto stride(index_t const i) noexcept -> size_type
     {
         assert(i < rank());
         return layout_t::stride(i);
     }
 
+public:
     [[nodiscard]]
     constexpr auto operator[](size_type const idx) const noexcept -> const_reference
     {
@@ -132,6 +133,7 @@ public:
     {
         return std::forward<decltype(self)>(self).data_.front();
     }
+
     [[nodiscard]]
     constexpr auto back(this auto&& self) noexcept -> decltype(auto)
     {
