@@ -9,6 +9,9 @@
 #include <ranges>
 #include <type_traits>
 
+// TODO: Remove
+#include <iostream>
+
 namespace amr::containers::manipulators
 {
 
@@ -35,8 +38,12 @@ constexpr auto fill(C& c, Fn&& fn, Args&&... args) noexcept(
 namespace detail
 {
 
-template <concepts::LoopControl Loop_Control, std::integral auto I, typename... Indices>
-constexpr auto for_each_impl(auto&& a, auto&& fn, Indices&&... idxs) noexcept -> void
+template <
+    concepts::LoopControl Loop_Control,
+    std::integral auto    I,
+    std::integral... Indices>
+constexpr auto
+    for_each_impl(auto&& a, auto&& fn, Indices... idxs, auto&&... args) noexcept -> void
     requires concepts::StaticMDArray<std::remove_cvref_t<decltype(a)>>
 {
     using a_t    = std::remove_cvref_t<decltype(a)>;
@@ -44,21 +51,28 @@ constexpr auto for_each_impl(auto&& a, auto&& fn, Indices&&... idxs) noexcept ->
     using rank_t = typename a_t::rank_t;
     if constexpr (I == a_t::rank())
     {
+        static_assert(std::invocable<
+                      decltype(fn),
+                      decltype(a),
+                      decltype(args)...,
+                      decltype(idxs)...>);
         std::invoke(
             std::forward<decltype(fn)>(fn),
             std::forward<decltype(a)>(a),
-            std::forward<decltype(idxs)>(idxs)...
+            std::forward<decltype(args)>(args)...,
+            idxs...
         );
     }
     else
     {
         for (auto i = loop_t::start(I); i != loop_t::end(I); i += loop_t::stride(I))
         {
-            for_each_impl<loop_t, I + rank_t{ 1 }>(
+            for_each_impl<loop_t, I + rank_t{ 1 }, Indices..., decltype(i)>(
                 std::forward<decltype(a)>(a),
                 std::forward<decltype(fn)>(fn),
-                std::forward<decltype(idxs)>(idxs)...,
-                i
+                idxs...,
+                i,
+                std::forward<decltype(args)>(args)...
             );
         }
     }
@@ -156,14 +170,29 @@ public:
     }
 };
 
-constexpr auto apply(auto&& a, auto&& fn) noexcept -> void
+template <concepts::LoopControl Loop_Control>
+constexpr auto for_each(auto&& a, auto&& fn, auto&&... args) noexcept -> void
     requires concepts::StaticMDArray<std::remove_cvref_t<decltype(a)>>
 {
     using a_t    = std::remove_cvref_t<decltype(a)>;
     using rank_t = typename a_t::rank_t;
-    using lc_t   = loop_control<a_t, 0, a_t::sizes(), 1>;
+    using lc_t   = Loop_Control;
     detail::for_each_impl<lc_t, rank_t{}>(
-        std::forward<decltype(a)>(a), std::forward<decltype(fn)>(fn)
+        std::forward<decltype(a)>(a),
+        std::forward<decltype(fn)>(fn),
+        std::forward<decltype(args)>(args)...
+    );
+}
+
+constexpr auto apply(auto&& a, auto&& fn, auto&&... args) noexcept -> void
+    requires concepts::StaticMDArray<std::remove_cvref_t<decltype(a)>>
+{
+    using a_t  = std::remove_cvref_t<decltype(a)>;
+    using lc_t = loop_control<a_t, 0, a_t::sizes(), 1>;
+    for_each<lc_t>(
+        std::forward<decltype(a)>(a),
+        std::forward<decltype(fn)>(fn),
+        std::forward<decltype(args)>(args)...
     );
 }
 

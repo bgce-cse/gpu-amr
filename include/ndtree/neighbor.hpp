@@ -130,6 +130,13 @@ public:
     }
 
     [[nodiscard]]
+    static constexpr auto advance(direction d) noexcept -> direction
+    {
+        d.advance();
+        return d;
+    }
+
+    [[nodiscard]]
     static constexpr auto dimension_offset(direction const& d) noexcept -> index_t
     {
         return d.index() % s_neighbors_per_dim;

@@ -60,15 +60,16 @@ public:
         return m_data;
     }
 
+private:
     template <concepts::Direction auto Direction>
     [[nodiscard]]
-    static constexpr auto halo_iteration_control() -> auto
+    static constexpr auto halo_iteration_control_impl() -> auto
     {
-        using direction_t              = std::remove_cvref_t<decltype(Direction)>;
-        static constexpr auto h        = halo_width();
-        static constexpr auto rank     = direction_t::rank();
-        static constexpr auto sizes    = padded_layout_t::sizes();
-        using vec_t                    = containers::static_vector<index_t, rank>;
+        using direction_t           = std::remove_cvref_t<decltype(Direction)>;
+        static constexpr auto h     = halo_width();
+        static constexpr auto rank  = direction_t::rank();
+        static constexpr auto sizes = padded_layout_t::sizes();
+        using vec_t                 = containers::static_vector<index_t, rank>;
 
         constexpr auto low       = direction_t::is_negative(Direction);
         constexpr auto dimension = Direction.dimension();
@@ -98,6 +99,18 @@ public:
         }();
         return containers::manipulators::
             loop_control<container_t, start, end, index_t{ 1 }>{};
+    }
+
+public:
+    template <concepts::Direction auto Direction>
+    using halo_iteration_control_t = decltype(halo_iteration_control_impl<Direction>());
+
+    [[nodiscard]]
+    static constexpr auto from_container(container_t const& c) noexcept -> patch
+    {
+        patch p{};
+        p.m_data = c;
+        return p;
     }
 
 public:

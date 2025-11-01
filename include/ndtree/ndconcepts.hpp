@@ -59,7 +59,7 @@ concept PatchIndex =
     std::equality_comparable<I>;
 
 template <typename P>
-concept PatchType = requires(
+concept Patch = requires(
     P const                                cp,
     P                                      p,
     typename P::padded_multi_index_t const midx,

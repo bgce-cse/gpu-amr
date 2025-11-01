@@ -2,6 +2,7 @@
 #define AMR_INCLUDED_NDUTILS
 
 #include "containers/container_concepts.hpp"
+#include "containers/container_manipulations.hpp"
 #include "containers/container_utils.hpp"
 #include "containers/static_tensor.hpp"
 #include "ndconcepts.hpp"
@@ -22,7 +23,6 @@ consteval auto
     using return_t = std::common_type_t<decltype(dim), decltype(fanout)>;
     return utility::cx_functions::pow(return_t{ dim }, return_t{ fanout });
 }
-
 
 template <class... Ts>
 struct overloads : Ts...
@@ -148,6 +148,45 @@ consteval auto fragmentation_patch_maps() noexcept
         } while (out_patch_idx.increment());
     } while (idx.increment());
     return to;
+}
+
+namespace detail
+{
+
+template <concepts::Direction auto D, concepts::Patch Patch>
+constexpr auto halo_apply_unroll_impl(Patch&& p, auto&& fn, auto&&... args) noexcept
+    -> void
+{
+    if constexpr (D == decltype(D)::sentinel())
+    {
+    }
+    else
+    {
+        containers::manipulators::for_each<
+            typename Patch::template halo_iteration_control_t<D>>(
+            std::forward<decltype(p)>(p).data(),
+            std::forward<decltype(fn)>(fn),
+            std::forward<decltype(args)>(args)...
+        );
+        halo_apply_unroll_impl<decltype(D)::advance(D)>(
+            std::forward<decltype(p)>(p),
+            std::forward<decltype(fn)>(fn),
+            std::forward<decltype(args)>(args)...
+        );
+    }
+}
+
+} // namespace detail
+
+template <concepts::Direction D_Type, concepts::Patch Patch>
+[[nodiscard]]
+auto halo_apply(Patch&& p, auto&& fn, auto&&... args)
+{
+    detail::halo_apply_unroll_impl<D_Type::first()>(
+        std::forward<decltype(p)>(p),
+        std::forward<decltype(fn)>(fn),
+        std::forward<decltype(args)>(args)...
+    );
 }
 
 } // namespace patches
