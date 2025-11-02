@@ -79,10 +79,12 @@ public:
         return layout_t::stride(i);
     }
 
+    template <std::integral... I>
+        requires(sizeof...(I) == rank())
     [[nodiscard]]
-    static constexpr auto linear_index(index_t const (&idxs)[rank()]) noexcept -> index_t
+    static constexpr auto linear_index(I&&... idxs) noexcept -> index_t
     {
-        return layout_t::linear_index(idxs);
+        return layout_t::linear_index(std::forward<decltype(idxs)>(idxs)...);
     }
 
     [[nodiscard]]
@@ -99,16 +101,15 @@ public:
     }
 
 public:
-    template <class... I>
+    template <typename... I>
         requires(sizeof...(I) == rank()) && (std::integral<std::remove_cvref_t<I>> && ...)
     [[nodiscard]]
     constexpr auto operator[](I&&... idxs) const noexcept -> const_reference
     {
-        index_t indices[rank()] = { static_cast<index_t>(idxs)... };
-        return data_[linear_index(indices)];
+        return data_[linear_index(static_cast<index_t>(idxs)...)];
     }
 
-    template <class... I>
+    template <typename... I>
         requires(sizeof...(I) == rank()) && (std::integral<std::remove_cvref_t<I>> && ...)
     [[nodiscard]]
     constexpr auto operator[](I&&... idxs) noexcept -> reference

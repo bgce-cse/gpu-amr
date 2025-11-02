@@ -53,7 +53,8 @@ int main()
         [](auto const& p, auto&& s, auto&&... idxs)
         {
             std::cout << s << '[';
-            ((std::cout << idxs << ", "), ...) << "]: " << p[idxs...] << '\n';
+            ((std::cout << idxs << ", "), ...)
+                << "]: " << p[std::forward<decltype(idxs)>(idxs)...] << '\n';
         },
         "Element at: "
     );

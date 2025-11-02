@@ -22,26 +22,46 @@ public:
 
     auto print(auto const& tree) const -> void
     {
-        using tree_t = std::remove_cvref_t<decltype(tree)>;
+        using tree_t        = std::remove_cvref_t<decltype(tree)>;
+        using patch_shape_t = typename tree_t::patch_layout_t::shape_t;
+        using index_t       = typename patch_shape_t::index_t;
+        using lc_t          = amr::containers::control::
+            loop_control<patch_shape_t, index_t{}, patch_shape_t::sizes(), index_t{ 1 }>;
+        static constexpr auto rank = patch_shape_t::rank();
+
         for (std::size_t i = 0; i != tree.size(); ++i)
         {
-            using index_t = typename tree_t::patch_index_t;
-            using map_t   = typename tree_t::deconstructed_raw_map_types_t;
+            using tree_index_t = typename tree_t::patch_index_t;
+            using map_t        = typename tree_t::deconstructed_raw_map_types_t;
 
             auto const h = tree.get_node_index_at(i);
 
-            print_header(m_os, index_t::level(h))
-                << "h: " << std::bitset<index_t::bits()>(h.id()).to_string()
+            print_header(m_os, tree_index_t::level(h))
+                << "h: " << std::bitset<tree_index_t::bits()>(h.id()).to_string()
                 << ", offset: " << decltype(h)::offset_of(h) << '\n';
 
-            containers::manipulations::for_each(
-                [this, &tree, &h, i]<std::size_t... I>(std::index_sequence<I...>)
+            containers::manipulators::shaped_for<lc_t>(
+                [this, &tree, &h, i](auto... idxs)
                 {
-                    auto const p =
-                        tree.template get_patch<std::tuple_element_t<I, map_t>>(i).data()
-
-                            ((print_header(m_os, index_t::level(h)) < < < < '\n'), ...);
-                }(std::make_index_sequence<std::tuple_size_v<map_t>>{}),
+                    static constexpr auto spacer = [](auto&&... vidxs) constexpr noexcept
+                    {
+                            // TODO: fix
+                        const index_t iidxs[rank]{ static_cast<index_t>(vidxs)... };
+                        return iidxs[rank - 1] ? " " : "\n";
+                    };
+                    [this, &tree, &h, i, idxs...]<std::size_t... I>(
+                        std::index_sequence<I...>
+                    )
+                    {
+                        (
+                            (m_os
+                             << tree.template get_patch<std::tuple_element_t<I, map_t>>(i)
+                                    .data()[idxs...]
+                             << spacer(idxs...)),
+                            ...
+                        );
+                    }(std::make_index_sequence<std::tuple_size_v<map_t>>{});
+                }
             );
         }
     }

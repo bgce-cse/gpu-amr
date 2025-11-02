@@ -87,9 +87,13 @@ public:
         return s_strides[i];
     }
 
+    template <std::integral... I>
+        requires(sizeof...(I) == rank())
     [[nodiscard]]
-    constexpr static auto linear_index(index_t const (&idxs)[s_rank]) noexcept -> index_t
+    constexpr static auto linear_index(I&&... vidxs) noexcept -> index_t
     {
+        // TODO: avoid this conversion
+        const index_t idxs[rank()]{ static_cast<index_t>(vidxs)... };
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
         assert_in_bounds(idxs);
 #endif

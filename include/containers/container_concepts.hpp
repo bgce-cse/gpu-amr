@@ -44,9 +44,9 @@ concept StaticLayout = requires {
     {
         L::linear_index(std::declval<typename L::multi_index_t>())
     } -> std::same_as<typename L::index_t>;
-    {
-        L::linear_index(std::declval<typename L::index_t[L::rank()]>())
-    } -> std::same_as<typename L::index_t>;
+    // {
+    //     L::linear_index(std::declval<typename L::index_t[L::rank()]>())
+    // } -> std::same_as<typename L::index_t>;
 };
 
 template <typename S>
