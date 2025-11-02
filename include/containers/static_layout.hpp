@@ -6,6 +6,7 @@
 #include <array>
 #include <cassert>
 #include <numeric>
+#include <utility>
 
 #ifndef NDEBUG
 #    define AMR_CONTAINERS_CHECKBOUNDS
@@ -90,16 +91,19 @@ public:
     template <std::integral... I>
         requires(sizeof...(I) == rank())
     [[nodiscard]]
-    constexpr static auto linear_index(I&&... vidxs) noexcept -> index_t
+    constexpr static auto linear_index(I&&... idxs) noexcept -> index_t
     {
         // TODO: avoid this conversion
-        const index_t idxs[rank()]{ static_cast<index_t>(vidxs)... };
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
-        assert_in_bounds(idxs);
+        const index_t vidxs[rank()]{ static_cast<index_t>(idxs)... };
+        assert_in_bounds(vidxs);
 #endif
-        auto linear_idx = std::transform_reduce(
-            std::cbegin(idxs), std::cend(idxs), std::cbegin(s_strides), index_t{}
-        );
+        const auto linear_idx =
+            []<std::size_t... Indices>(std::index_sequence<Indices...>, auto&&... j)
+        {
+            return ((j * s_strides[Indices]) + ...);
+        }(std::make_index_sequence<sizeof...(I)>{}, std::forward<I>(idxs)...);
+
         assert(linear_idx < elements());
         if constexpr (std::is_signed_v<index_t>)
         {
