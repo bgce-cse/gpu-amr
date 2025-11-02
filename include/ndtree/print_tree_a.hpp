@@ -10,12 +10,14 @@ namespace ndt::print
 {
 
 // template of patch_x and patch_y
-template<size_t Halo, std::size_t... PatchDims>
+template <size_t Halo, std::size_t... PatchDims>
 struct example_patch_print
 {
     static_assert(sizeof...(PatchDims) >= 2, "Need at least 2 dimensions for patch");
-    static constexpr auto patch_size_x = std::get<0>(std::array<std::size_t, sizeof...(PatchDims)>{PatchDims...}) ;
-    static constexpr auto patch_size_y = std::get<1>(std::array<std::size_t, sizeof...(PatchDims)>{PatchDims...}) ;
+    static constexpr auto patch_size_x =
+        std::get<0>(std::array<std::size_t, sizeof...(PatchDims)>{ PatchDims... });
+    static constexpr auto patch_size_y =
+        std::get<1>(std::array<std::size_t, sizeof...(PatchDims)>{ PatchDims... });
     static constexpr auto total_patch_elements = (PatchDims * ...);
 
 public:
@@ -43,7 +45,8 @@ private:
     void write_header(std::ofstream& file) const
     {
         file << "# vtk DataFile Version 3.0\n";
-        file << "AMR Tree Structure with Patch Data (" << patch_size_x << "x" << patch_size_y << ")\n";
+        file << "AMR Tree Structure with Patch Data (" << patch_size_x << "x"
+             << patch_size_y << ")\n";
         file << "ASCII\n";
         file << "DATASET UNSTRUCTURED_GRID\n";
     }
@@ -54,48 +57,53 @@ private:
         using IndexType = typename TreeType::patch_index_t;
 
         std::vector<std::array<uint32_t, 3>> points;
-        std::vector<float> s1_values;
+        std::vector<float>                   s1_values;
 
-        size_t total_cells = tree.size() * total_patch_elements;
-        uint32_t max_coord = 1u << IndexType::max_depth();
+        size_t   total_cells = tree.size() * total_patch_elements;
+        uint32_t max_coord   = 1u << IndexType::max_depth();
 
         // uint32_t max_coord_x = max_coord * patch_size_x;
-        uint32_t max_coord_y = max_coord *patch_size_y;
-        
+        uint32_t max_coord_y = max_coord * patch_size_y;
 
         for (size_t patch_idx = 0; patch_idx < tree.size(); ++patch_idx)
         {
-            auto patch_id = tree.get_node_index_at(patch_idx);
-            auto level = patch_id.level();
-            auto max_depth = IndexType::max_depth();
+            auto     patch_id   = tree.get_node_index_at(patch_idx);
+            auto     level      = patch_id.level();
+            auto     max_depth  = IndexType::max_depth();
             uint32_t patch_size = 1u << (max_depth - level);
 
             auto [patch_coords, _] = IndexType::decode(patch_id.id());
-            uint32_t patch_x = patch_size_x *patch_coords[0];
-            uint32_t patch_y = patch_size_y * patch_coords[1];
+            uint32_t patch_x       = patch_size_x * patch_coords[0];
+            uint32_t patch_y       = patch_size_y * patch_coords[1];
 
             // Get the S1 data for this patch
             auto s1_patch = tree.template get_patch<S1>(patch_idx);
 
             // For each cell in the patch_size_x * patch_size_y patch
-            for(std::size_t i = 0; i < patch_size_x ; i++) {
-                for(std::size_t j = 0; j < patch_size_y; j++) {
+            for (std::size_t i = 0; i < patch_size_x; i++)
+            {
+                for (std::size_t j = 0; j < patch_size_y; j++)
+                {
                     // FIXED: Each cell gets a fraction of the patch space
                     uint32_t cell_x = patch_x + static_cast<uint32_t>(i) * patch_size;
                     uint32_t cell_y = patch_y + static_cast<uint32_t>(j) * patch_size;
-                    
+
                     // FLIP Y coordinates for top-left origin
-                    uint32_t flipped_y = max_coord_y - cell_y - patch_size;
+                    uint32_t flipped_y     = max_coord_y - cell_y - patch_size;
                     uint32_t flipped_y_top = max_coord_y - cell_y;
 
                     // Add the 4 corners of this cell (with Y flipped)
-                    points.push_back({ cell_x, flipped_y_top, 0 });                        // top-left
-                    points.push_back({ cell_x + patch_size, flipped_y_top, 0 });           // top-right
-                    points.push_back({ cell_x + patch_size, flipped_y, 0 });               // bottom-right
-                    points.push_back({ cell_x, flipped_y, 0 });                            // bottom-left
+                    points.push_back({ cell_x, flipped_y_top, 0 }); // top-left
+                    points.push_back(
+                        { cell_x + patch_size, flipped_y_top, 0 }
+                    ); // top-right
+                    points.push_back(
+                        { cell_x + patch_size, flipped_y, 0 }
+                    );                                          // bottom-right
+                    points.push_back({ cell_x, flipped_y, 0 }); // bottom-left
 
                     // Store the S1 value for this cell
-                    s1_values.push_back(s1_patch[j + Halo , i + Halo]);
+                    s1_values.push_back(s1_patch[j + Halo, i + Halo]);
                 }
             }
         }
@@ -112,8 +120,8 @@ private:
         for (size_t i = 0; i < total_cells; ++i)
         {
             size_t base_idx = i * 4;
-            file << "4 " << base_idx << " " << base_idx + 1 << " " 
-                 << base_idx + 2 << " " << base_idx + 3 << "\n";
+            file << "4 " << base_idx << " " << base_idx + 1 << " " << base_idx + 2 << " "
+                 << base_idx + 3 << "\n";
         }
 
         // Write cell types (VTK_QUAD = 9)
@@ -135,11 +143,6 @@ private:
 
     std::string m_base_filename;
 };
-
-
-
-
-
 
 struct vtk_print
 {
@@ -230,25 +233,25 @@ private:
         file << "LOOKUP_TABLE default\n";
         for (size_t i = 0; i < cell_indices.size(); ++i)
         {
-            file << i << "\n";  // Just output the cell index
+            file << i << "\n"; // Just output the cell index
         }
-        
+
         // Write cell data - S1 component (float)
         file << "SCALARS S1_value float 1\n";
         file << "LOOKUP_TABLE default\n";
         for (size_t i = 0; i < cell_indices.size(); ++i)
         {
             auto result = tree.gather_node(i);
-            file << std::get<0>(result.data_tuple()).value << "\n";  // First component
+            file << std::get<0>(result.data_tuple()).value << "\n"; // First component
         }
-        
+
         // Write S2 component (int)
         file << "SCALARS S2_value int 1\n";
         file << "LOOKUP_TABLE default\n";
         for (size_t i = 0; i < cell_indices.size(); ++i)
         {
             auto result = tree.gather_node(i);
-            file << std::get<1>(result.data_tuple()).value << "\n";  // Second component
+            file << std::get<1>(result.data_tuple()).value << "\n"; // Second component
         }
     }
 

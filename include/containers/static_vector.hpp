@@ -22,7 +22,8 @@ template <typename T, std::integral auto N>
 struct static_vector
 {
     using value_type      = std::remove_cv_t<T>;
-    using layout_t        = static_layout<static_shape<N>>;
+    using shape_t         = static_shape<N>;
+    using layout_t        = static_layout<shape_t>;
     using size_type       = typename layout_t::size_type;
     using index_t         = typename layout_t::index_t;
     using rank_t          = typename layout_t::rank_t;

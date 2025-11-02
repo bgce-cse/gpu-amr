@@ -9,7 +9,7 @@ namespace amr::containers::concepts
 {
 
 template <typename C>
-concept Container = requires(C c) {
+concept Container = requires {
     typename C::size_type;
     typename C::value_type;
 } && std::ranges::sized_range<C>;
@@ -52,17 +52,15 @@ concept StaticLayout = requires {
 template <typename S>
 concept StaticShape = requires {
     typename S::size_type;
+    typename S::index_t;
     typename S::rank_t;
     { S::rank() } -> std::same_as<typename S::rank_t>;
-    S::sizes();
-    S::elements();
+    { S::elements() } -> std::same_as<typename S::size_type>;
+    { S::sizes() };
 };
 
 template <typename A>
-concept StaticMDArray = requires(A a, typename A::size_type s, typename A::index_t i) {
-    { A::rank() } -> std::same_as<typename A::rank_t>;
-    A::sizes();
-};
+concept StaticContainer = Container<A> && StaticShape<A>;
 
 template <typename C>
 concept LoopControl = requires {

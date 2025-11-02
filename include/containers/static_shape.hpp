@@ -22,6 +22,7 @@ public:
     // need
     using size_type = std::common_type_t<decltype(N), decltype(Ns)...>;
     using rank_t    = size_type;
+    using index_t   = size_type;
 
 private:
     inline static constexpr size_type                     s_elements = (N * ... * Ns);
@@ -47,6 +48,15 @@ public:
     static constexpr auto sizes() noexcept -> auto const&
     {
         return s_sizes;
+    }
+
+    [[nodiscard]]
+    constexpr static auto size(index_t const i) noexcept -> size_type
+    {
+        assert(i < s_rank);
+        using container_index_t =
+            typename std::remove_cvref_t<decltype(s_sizes)>::size_type;
+        return s_sizes[static_cast<container_index_t>(i)];
     }
 };
 

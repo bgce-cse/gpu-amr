@@ -133,8 +133,9 @@ consteval auto fragmentation_patch_maps() noexcept
 namespace detail
 {
 
-template <concepts::Direction auto D, concepts::Patch Patch>
-constexpr auto halo_apply_unroll_impl(Patch&& p, auto&& fn, auto&&... args) noexcept
+template <concepts::Direction auto D>
+constexpr auto
+    halo_apply_unroll_impl(concepts::Patch auto&& p, auto&& fn, auto&&... args) noexcept
     -> void
 {
     if constexpr (D == decltype(D)::sentinel())
@@ -142,8 +143,8 @@ constexpr auto halo_apply_unroll_impl(Patch&& p, auto&& fn, auto&&... args) noex
     }
     else
     {
-        containers::manipulators::for_each<
-            typename Patch::template halo_iteration_control_t<D>>(
+        containers::manipulators::for_each<typename std::remove_cvref_t<
+            decltype(p)>::template halo_iteration_control_t<D>>(
             std::forward<decltype(p)>(p).data(),
             std::forward<decltype(fn)>(fn),
             std::forward<decltype(args)>(args)...
@@ -171,6 +172,6 @@ auto halo_apply(Patch&& p, auto&& fn, auto&&... args)
 
 } // namespace patches
 
-}
+} // namespace amr::ndt::utils
 
 #endif // AMR_INCLUDED_PATCH_UTILS

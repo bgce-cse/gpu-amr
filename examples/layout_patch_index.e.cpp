@@ -1,6 +1,6 @@
+#include "containers/container_utils.hpp"
 #include "containers/static_layout.hpp"
 #include "containers/static_tensor.hpp"
-#include "containers/container_utils.hpp"
 #include "ndtree/neighbor.hpp"
 #include "ndtree/patch.hpp"
 #include "ndtree/patch_layout.hpp"
@@ -39,7 +39,7 @@ int main()
         std::cout << "Patch " << i++ << '\n' << p << '\n';
     }
 
-    using d_t               = amr::ndt::neighbors::direction<int{ patch_t::rank() }>;
+    using d_t               = amr::ndt::neighbors::direction<patch_t::rank()>;
     static constexpr auto d = d_t::first();
     using lc_t              = typename patch_t::template halo_iteration_control_t<d>;
     for (index_t i = 0; i != patch_t::rank(); ++i)

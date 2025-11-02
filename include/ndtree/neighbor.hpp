@@ -1,6 +1,7 @@
 #ifndef AMR_INCLUDED_NEIGHBORS
 #define AMR_INCLUDED_NEIGHBORS
 
+#include "containers/container_utils.hpp"
 #include "containers/static_vector.hpp"
 #include "ndconcepts.hpp"
 #include <cstddef>

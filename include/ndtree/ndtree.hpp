@@ -73,13 +73,14 @@ private:
     template <typename Type>
     using const_reference_t = Type const&;
 
+public:
     template <typename Map_Type>
     using patch_t = patches::patch<typename Map_Type::type, patch_layout_t>;
 
-    using deconstructed_raw_types_map_t = typename T::deconstructed_types_map_t;
-    static_assert(concepts::detail::type_map_tuple_impl<deconstructed_raw_types_map_t>);
+    using deconstructed_raw_map_types_t = typename T::deconstructed_types_map_t;
+    static_assert(concepts::detail::type_map_tuple_impl<deconstructed_raw_map_types_t>);
     using deconstructed_patch_types_map_t =
-        type_traits::tuple_type_apply_t<patch_t, deconstructed_raw_types_map_t>;
+        type_traits::tuple_type_apply_t<patch_t, deconstructed_raw_map_types_t>;
 
     using deconstructed_buffers_t =
         type_traits::tuple_type_apply_t<pointer_t, deconstructed_patch_types_map_t>;

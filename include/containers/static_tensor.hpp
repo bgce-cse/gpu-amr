@@ -20,6 +20,7 @@ class static_tensor
 public:
     using value_type      = std::remove_cv_t<T>;
     using layout_t        = Layout;
+    using shape_t         = typename layout_t::shape_t;
     using size_type       = typename layout_t::size_type;
     using index_t         = typename layout_t::index_t;
     using rank_t          = typename layout_t::rank_t;

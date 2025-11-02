@@ -1,13 +1,15 @@
 #ifndef AMR_INCLUDED_NDT_STRUCTURED_PRINT
 #define AMR_INCLUDED_NDT_STRUCTURED_PRINT
 
+#include "containers/container_manipulations.hpp"
 #include <algorithm>
 #include <bitset>
 #include <filesystem>
 #include <fstream>
 #include <ostream>
+#include <vector>
 
-namespace ndt::print
+namespace amr::ndt::print
 {
 
 struct structured_print
@@ -20,23 +22,27 @@ public:
 
     auto print(auto const& tree) const -> void
     {
-        using tree_t    = std::remove_cvref_t<decltype(tree)>;
-        std::vector cpy = auto(tree.blocks());
-        std::ranges::sort(
-            cpy, [](auto const& a, auto const& b) { return a.operator<(b); }
-        );
-        for ([[maybe_unused]] auto const& [h, p, md] : cpy)
+        using tree_t = std::remove_cvref_t<decltype(tree)>;
+        for (std::size_t i = 0; i != tree.size(); ++i)
         {
-            using index_t = decltype(h);
+            using index_t = typename tree_t::patch_index_t;
+            using map_t   = typename tree_t::deconstructed_raw_map_types_t;
+
+            auto const h = tree.get_node_index_at(i);
+
             print_header(m_os, index_t::level(h))
                 << "h: " << std::bitset<index_t::bits()>(h.id()).to_string()
-                << ", offset: " << decltype(h)::offset_of(h) << ", ptr: " << p << '\n';
-            for (auto i = decltype(tree_t::nd_fanout()){}; i != tree_t::nd_fanout(); ++i)
-            {
-                print_header(m_os, index_t::level(h))
-                    << "@" << i << ": " << p[i] << " ("
-                    << (md[i].alive ? "alive" : "dead") << ")" << '\n';
-            }
+                << ", offset: " << decltype(h)::offset_of(h) << '\n';
+
+            containers::manipulations::for_each(
+                [this, &tree, &h, i]<std::size_t... I>(std::index_sequence<I...>)
+                {
+                    auto const p =
+                        tree.template get_patch<std::tuple_element_t<I, map_t>>(i).data()
+
+                            ((print_header(m_os, index_t::level(h)) < < < < '\n'), ...);
+                }(std::make_index_sequence<std::tuple_size_v<map_t>>{}),
+            );
         }
     }
 
@@ -155,6 +161,6 @@ private:
     std::string m_base_filename;
 };
 
-} // namespace ndt::print
+} // namespace amr::ndt::print
 
 #endif // AMR_INCLUDED_NDT_STRUCTURED_PRINT

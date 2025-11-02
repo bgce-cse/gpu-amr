@@ -39,32 +39,24 @@ template <
     concepts::LoopControl Loop_Control,
     std::integral auto    I,
     std::integral... Indices>
-constexpr auto
-    for_each_impl(auto&& a, auto&& fn, Indices... idxs, auto&&... args) noexcept -> void
-    requires concepts::StaticMDArray<std::remove_cvref_t<decltype(a)>>
+constexpr auto shaped_for_impl(auto&& fn, Indices... idxs, auto&&... args) noexcept
+    -> void
 {
-    using a_t    = std::remove_cvref_t<decltype(a)>;
     using loop_t = Loop_Control;
-    using rank_t = typename a_t::rank_t;
-    if constexpr (I == a_t::rank())
+    using rank_t = typename loop_t::rank_t;
+
+    if constexpr (I == loop_t::rank())
     {
-        static_assert(
-            std::
-                invocable<decltype(fn), decltype(a), decltype(args)..., decltype(idxs)...>
-        );
+        static_assert(std::invocable<decltype(fn), decltype(args)..., decltype(idxs)...>);
         std::invoke(
-            std::forward<decltype(fn)>(fn),
-            std::forward<decltype(a)>(a),
-            std::forward<decltype(args)>(args)...,
-            idxs...
+            std::forward<decltype(fn)>(fn), std::forward<decltype(args)>(args)..., idxs...
         );
     }
     else
     {
         for (auto i = loop_t::start(I); i != loop_t::end(I); i += loop_t::stride(I))
         {
-            for_each_impl<loop_t, I + rank_t{ 1 }, Indices..., decltype(i)>(
-                std::forward<decltype(a)>(a),
+            shaped_for_impl<loop_t, I + rank_t{ 1 }, Indices..., decltype(i)>(
                 std::forward<decltype(fn)>(fn),
                 idxs...,
                 i,
@@ -76,16 +68,25 @@ constexpr auto
 
 } // namespace detail
 
-template <concepts::StaticMDArray A, auto Start, auto End, auto Stride>
+template <concepts::StaticShape S, auto Start, auto End, auto Stride>
 class loop_control
 {
 public:
-    using index_t = typename A::index_t;
-    using rank_t  = typename A::rank_t;
+    using shape_t = S;
+    using index_t = typename S::index_t;
+    using rank_t  = typename S::rank_t;
 
 private:
-    static constexpr auto s_rank = A::rank();
+    static constexpr auto s_rank = shape_t::rank();
 
+public:
+    [[nodiscard]]
+    static constexpr auto rank() noexcept -> rank_t
+    {
+        return shape_t::rank();
+    }
+
+private:
     [[nodiscard]]
     static constexpr auto at_idx(auto const& v, const rank_t idx) noexcept
         -> decltype(auto)
@@ -134,7 +135,7 @@ private:
         for (auto i = decltype(s_rank){}; i != s_rank; ++i)
         {
             if ((at_idx(Start, i) >= index_t{}) && (at_idx(Start, i) <= at_idx(End, i)) &&
-                (at_idx(End, i) <= A::size(i)) &&
+                (at_idx(End, i) <= shape_t::size(i)) &&
                 ((at_idx(End, i) - at_idx(Start, i)) % at_idx(Stride, i) == index_t{}))
             {
             }
@@ -170,23 +171,25 @@ public:
 
 template <concepts::LoopControl Loop_Control>
 constexpr auto for_each(auto&& a, auto&& fn, auto&&... args) noexcept -> void
-    requires concepts::StaticMDArray<std::remove_cvref_t<decltype(a)>>
+    requires concepts::StaticContainer<std::remove_cvref_t<decltype(a)>>
 {
-    using a_t    = std::remove_cvref_t<decltype(a)>;
-    using rank_t = typename a_t::rank_t;
-    using lc_t   = Loop_Control;
-    detail::for_each_impl<lc_t, rank_t{}>(
-        std::forward<decltype(a)>(a),
+    static_assert(std::is_same_v<
+                  typename std::remove_cvref_t<decltype(a)>::shape_t,
+                  typename Loop_Control::shape_t>);
+    using s_t  = typename std::remove_cvref_t<decltype(a)>::shape_t;
+    using rank_t = typename s_t::rank_t;
+    detail::shaped_for_impl<Loop_Control, rank_t{}>(
         std::forward<decltype(fn)>(fn),
+        std::forward<decltype(a)>(a),
         std::forward<decltype(args)>(args)...
     );
 }
 
 constexpr auto apply(auto&& a, auto&& fn, auto&&... args) noexcept -> void
-    requires concepts::StaticMDArray<std::remove_cvref_t<decltype(a)>>
+    requires concepts::StaticContainer<std::remove_cvref_t<decltype(a)>>
 {
-    using a_t  = std::remove_cvref_t<decltype(a)>;
-    using lc_t = loop_control<a_t, 0, a_t::sizes(), 1>;
+    using s_t  = typename std::remove_cvref_t<decltype(a)>::shape_t;
+    using lc_t = loop_control<s_t, 0, s_t::sizes(), 1>;
     for_each<lc_t>(
         std::forward<decltype(a)>(a),
         std::forward<decltype(fn)>(fn),

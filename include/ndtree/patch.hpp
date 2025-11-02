@@ -97,7 +97,7 @@ private:
             return e;
         }();
         return containers::manipulators::
-            loop_control<container_t, start, end, index_t{ 1 }>{};
+            loop_control<typename padded_layout_t::shape_t, start, end, index_t{ 1 }>{};
     }
 
 public:

@@ -20,8 +20,8 @@ class static_layout
 public:
     using shape_t       = Shape;
     using size_type     = typename shape_t::size_type;
-    using rank_t        = typename shape_t::size_type;
-    using index_t       = size_type;
+    using rank_t        = typename shape_t::rank_t;
+    using index_t       = typename shape_t::index_t;
     using multi_index_t = index::static_multi_index<index_t, shape_t>;
 
 private:
@@ -40,11 +40,6 @@ private:
     inline static constexpr size_type s_flat_size = shape_t::elements();
     static_assert(s_rank > 0);
     static_assert(s_flat_size >= shape_t::elements());
-
-public:
-    // This class is just an interface
-    static_layout() noexcept  = delete;
-    ~static_layout() noexcept = delete;
 
 public:
     [[nodiscard]]
@@ -68,16 +63,13 @@ public:
     [[nodiscard]]
     constexpr static auto sizes() noexcept -> auto const&
     {
-        return s_sizes;
+        return shape_t::sizes();
     }
 
     [[nodiscard]]
     constexpr static auto size(index_t const i) noexcept -> size_type
     {
-        assert(i < s_rank);
-        using container_index_t =
-            typename std::remove_cvref_t<decltype(s_sizes)>::size_type;
-        return s_sizes[static_cast<container_index_t>(i)];
+        return shape_t::size(i);
     }
 
     [[nodiscard]]
