@@ -3,8 +3,6 @@
 
 #include "container_concepts.hpp"
 #include "multi_index.hpp"
-#include "static_shape.hpp"
-#include "utility/utility_concepts.hpp"
 #include <array>
 #include <cassert>
 #include <numeric>
@@ -77,7 +75,9 @@ public:
     constexpr static auto size(index_t const i) noexcept -> size_type
     {
         assert(i < s_rank);
-        return s_sizes[i];
+        using container_index_t =
+            typename std::remove_cvref_t<decltype(s_sizes)>::size_type;
+        return s_sizes[static_cast<container_index_t>(i)];
     }
 
     [[nodiscard]]

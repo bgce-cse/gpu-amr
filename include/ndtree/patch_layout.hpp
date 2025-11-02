@@ -3,7 +3,6 @@
 
 #include "containers/container_concepts.hpp"
 #include "containers/container_utils.hpp"
-#include "ndconcepts.hpp"
 
 namespace amr::ndt::patches
 {

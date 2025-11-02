@@ -3,9 +3,7 @@
 
 #include "containers/static_vector.hpp"
 #include "ndconcepts.hpp"
-#include "ndutils.hpp"
 #include <cstddef>
-#include <ranges>
 #include <type_traits>
 #include <variant>
 
@@ -59,7 +57,7 @@ struct neighbor_variant
 };
 
 // TODO: This should be provided by the patch index
-template <std::signed_integral auto Dim>
+template <std::integral auto Dim>
 struct direction
 {
 public:
@@ -76,7 +74,8 @@ private:
     }(std::make_index_sequence<std::size_t{ s_elements }>{});
 
 public:
-    using vector_t = containers::static_vector<index_t, s_rank>;
+    using signed_index_t = std::make_signed_t<index_t>;
+    using vector_t       = containers::static_vector<signed_index_t, s_rank>;
 
 private:
     explicit constexpr direction(index_t const linear_index) noexcept
@@ -126,7 +125,8 @@ public:
     [[nodiscard]]
     static constexpr auto opposite(direction const& d) noexcept -> direction
     {
-        return direction(d.idx_ + (is_negative(d) ? index_t{ 1 } : index_t{ -1 }));
+        if (!is_negative(d)) [[assume(d.idx_ > index_t{})]];
+        return direction(is_negative(d) ? d.idx_ + index_t{ 1 } : d.idx_ - index_t{ 1 });
     }
 
     [[nodiscard]]
@@ -146,7 +146,7 @@ public:
     static constexpr auto unit_vector(direction const& d) noexcept -> vector_t
     {
         vector_t ret{};
-        ret[d.dimension()] = is_negative(d) ? index_t{ -1 } : index_t{ 1 };
+        ret[d.dimension()] = is_negative(d) ? signed_index_t{ -1 } : signed_index_t{ 1 };
         return ret;
     }
 
@@ -198,8 +198,8 @@ private:
 
 public:
     // TODO: This should be provided by the patch index
-    using direction_t = direction<std::make_signed_t<index_t>{
-        s_rank }>; // typename patch_index_t::direction_t;
+    using direction_t =
+        direction<index_t{ s_rank }>; // typename patch_index_t::direction_t;
 
 public:
     template <typename T>

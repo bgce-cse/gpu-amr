@@ -2,10 +2,6 @@
 #define AMR_INCLUDED_STATIC_TENSOR
 
 #include "container_concepts.hpp"
-#include "multi_index.hpp"
-#include "static_layout.hpp"
-#include "utility/compile_time_utility.hpp"
-#include "utility/utility_concepts.hpp"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -195,7 +191,7 @@ auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
     static constexpr auto rank     = tensor_t::rank();
     static constexpr auto newlines = []
     {
-        static constexpr auto pool = []
+        static constexpr auto pool = [] constexpr -> auto
         {
             std::array<char, rank> arr{};
             for (auto& e : arr)
@@ -213,7 +209,7 @@ auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
     }();
     static constexpr auto prefixes = []
     {
-        static constexpr auto pool = []
+        static constexpr auto pool = [] constexpr -> auto
         {
             std::array<char, rank * 2> arr{};
             for (std::size_t d = 0; d != rank; ++d)
@@ -232,7 +228,7 @@ auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
     }();
     static constexpr auto postfix = []
     {
-        static constexpr auto pool = []
+        static constexpr auto pool = [] constexpr -> auto
         {
             std::array<char, rank> arr{};
             for (auto& e : arr)

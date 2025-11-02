@@ -1,7 +1,6 @@
 #ifndef AMR_INCLUDED_TYPE_TRAITS
 #define AMR_INCLUDED_TYPE_TRAITS
 
-#include "ndconcepts.hpp"
 #include <tuple>
 
 namespace amr::ndt::type_traits

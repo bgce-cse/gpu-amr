@@ -1,13 +1,10 @@
-#include "containers/container_manipulations.hpp"
-#include "containers/container_utils.hpp"
 #include "containers/static_layout.hpp"
 #include "containers/static_tensor.hpp"
-#include "ndtree/ndutils.hpp"
+#include "containers/container_utils.hpp"
 #include "ndtree/neighbor.hpp"
 #include "ndtree/patch.hpp"
 #include "ndtree/patch_layout.hpp"
-#include "utility/constexpr_functions.hpp"
-#include <functional>
+#include "ndtree/patch_utils.hpp"
 #include <iostream>
 
 int main()

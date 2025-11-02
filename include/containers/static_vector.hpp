@@ -3,7 +3,6 @@
 
 #include "static_layout.hpp"
 #include "static_shape.hpp"
-#include "utility/casts.hpp"
 #include <array>
 #include <concepts>
 #include <iomanip>

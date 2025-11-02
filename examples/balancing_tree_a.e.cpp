@@ -1,4 +1,5 @@
 #include "containers/static_layout.hpp"
+#include "containers/container_utils.hpp"
 #include "containers/static_shape.hpp"
 #include "containers/static_vector.hpp"
 #include "morton/morton_id.hpp"

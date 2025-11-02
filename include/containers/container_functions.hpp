@@ -2,12 +2,11 @@
 #define AMR_INCLUDED_CONTAINER_FUNCTIONS
 
 #include "container_concepts.hpp"
-#include "utility/error_handling.hpp"
-#include <algorithm>
 #include <concepts>
 #include <functional>
 #include <ranges>
 #include <type_traits>
+#include <cassert>
 
 namespace amr::containers
 {

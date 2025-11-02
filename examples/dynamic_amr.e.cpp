@@ -1,3 +1,4 @@
+#include "containers/container_utils.hpp"
 #include "containers/static_layout.hpp"
 #include "containers/static_shape.hpp"
 #include "containers/static_vector.hpp"
@@ -89,39 +90,36 @@ int main()
 
     ndt::print::example_patch_print<Halo, M, N> printer("dynamic_amr_tree");
 
-    auto amr_condition =[](const patch_index_t& idx, int step, int max_step )
+    auto amr_condition = [](const patch_index_t& idx, int step, int max_step)
     {
         auto [coords, level] = patch_index_t::decode(idx.id());
         auto max_size        = 1u << idx.max_depth();
-        auto patch_size       = 1u << (idx.max_depth() - level);
+        auto patch_size      = 1u << (idx.max_depth() - level);
 
-        double start_x = coords[0] ;  // Convert to absolute coords
+        double start_x = coords[0]; // Convert to absolute coords
         double end_x   = start_x + patch_size;
 
         double step_x = max_size * (static_cast<double>(step) / max_step);
-        
-        bool in_interval_1 = step_x < end_x + patch_size &&  step_x > start_x - patch_size;
-        bool in_interval_2 = step_x < end_x + 2 * patch_size &&  step_x > start_x - 2 * patch_size;
 
-        bool refine = in_interval_1 && level < idx.max_depth();
+        bool in_interval_1 = step_x < end_x + patch_size && step_x > start_x - patch_size;
+        bool in_interval_2 =
+            step_x < end_x + 2 * patch_size && step_x > start_x - 2 * patch_size;
+
+        bool refine  = in_interval_1 && level < idx.max_depth();
         bool coarsen = !in_interval_2 && level > 0;
-
 
         if (refine)
         {
-
             return tree_t::refine_status_t::Refine;
         }
 
         if (coarsen)
         {
-
             return tree_t::refine_status_t::Coarsen;
         }
 
         return tree_t::refine_status_t::Stable;
     };
-
 
     int ii = 0;
     for (std::size_t idx = 0; idx < tree.size(); idx++)
@@ -139,21 +137,19 @@ int main()
             s1_patch[linear_idx] = static_cast<float>(ii++);
         }
     }
-    
     printer.print(tree, "_iteration_0.vtk");
 
     int max_steps = 100;
 
-    
-
     int i = 1;
     for (; i != max_steps; ++i)
     {
-
-        auto amr_condition_with_time = [&amr_condition, &i, max_steps](const patch_index_t& idx) {
-        return amr_condition(idx, i, max_steps);
-    };
-        tree.reconstruct_tree(amr_condition_with_time);  
+        auto amr_condition_with_time =
+            [&amr_condition, &i, max_steps](const patch_index_t& idx)
+        {
+            return amr_condition(idx, i, max_steps);
+        };
+        tree.reconstruct_tree(amr_condition_with_time);
         std::string file_extension = "_iteration_" + std::to_string(i) + ".vtk";
         printer.print(tree, file_extension);
     }

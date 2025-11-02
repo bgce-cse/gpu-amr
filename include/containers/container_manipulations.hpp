@@ -48,11 +48,10 @@ constexpr auto
     using rank_t = typename a_t::rank_t;
     if constexpr (I == a_t::rank())
     {
-        static_assert(std::invocable<
-                      decltype(fn),
-                      decltype(a),
-                      decltype(args)...,
-                      decltype(idxs)...>);
+        static_assert(
+            std::
+                invocable<decltype(fn), decltype(a), decltype(args)..., decltype(idxs)...>
+        );
         std::invoke(
             std::forward<decltype(fn)>(fn),
             std::forward<decltype(a)>(a),
@@ -98,7 +97,8 @@ private:
         }
         else if constexpr (std::ranges::range<v_t>)
         {
-            return v[idx];
+            using size_type = typename v_t::size_type;
+            return v[static_cast<size_type>(idx)];
         }
         else
         {
@@ -107,26 +107,27 @@ private:
     };
 
     [[nodiscard]]
+    static consteval auto check_param(auto const& param) noexcept -> bool
+    {
+        using param_t = std::remove_cvref_t<decltype(param)>;
+        static_assert(std::is_arithmetic_v<param_t> || std::ranges::range<param_t>);
+        if constexpr (std::is_arithmetic_v<param_t>)
+        {
+            return true;
+        }
+        else if constexpr (std::ranges::range<param_t>)
+        {
+            return std::ranges::size(param) == s_rank;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    [[nodiscard]]
     static consteval auto is_valid() noexcept -> bool
     {
-        static constexpr auto check_param =
-            [](auto const& param) constexpr noexcept -> bool
-        {
-            using param_t = std::remove_cvref_t<decltype(param)>;
-            static_assert(std::is_arithmetic_v<param_t> || std::ranges::range<param_t>);
-            if constexpr (std::is_arithmetic_v<param_t>)
-            {
-                return true;
-            }
-            else if constexpr (std::ranges::range<param_t>)
-            {
-                return std::ranges::size(param) == s_rank;
-            }
-            else
-            {
-                return false;
-            }
-        };
         static_assert(check_param(Start));
         static_assert(check_param(Stride));
         static_assert(check_param(End));

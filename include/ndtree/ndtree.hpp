@@ -2,21 +2,16 @@
 #define AMR_INCLUDED_NDTREE
 
 #include "ndconcepts.hpp"
-#include "ndhierarchy.hpp"
 #include "ndtype_traits.hpp"
 #include "ndutils.hpp"
 #include "neighbor.hpp"
 #include "patch.hpp"
-#include "patch_layout.hpp"
-#include "utility/compile_time_utility.hpp"
-#include "utility/constexpr_functions.hpp"
+#include "patch_utils.hpp"
 #include <algorithm>
 #include <cassert>
-#include <concepts>
 #include <cstdint>
 #include <cstdlib>
 #include <numeric>
-#include <system_error>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -838,7 +833,7 @@ public:
         {
             for (auto const& neighbor : m_neighbors[i])
             {
-                //TODO: TODO
+                // TODO: TODO
                 std::visit(
                     utils::overloads{
                         [](typename neighbor_variant_t::none const&) {},

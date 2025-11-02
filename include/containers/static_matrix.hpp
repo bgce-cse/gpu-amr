@@ -3,16 +3,11 @@
 
 #include "static_layout.hpp"
 #include "static_shape.hpp"
-#include <algorithm>
 #include <array>
 #include <cassert>
-#include <cmath>
 #include <concepts>
-#include <cstring>
-#include <functional>
 #include <iomanip>
 #include <iostream>
-#include <numeric>
 #include <type_traits>
 #include <utility>
 

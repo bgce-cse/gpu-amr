@@ -1,14 +1,8 @@
 #ifndef AMR_INCLUDED_NDT_STRUCTURED_PRINT
 #define AMR_INCLUDED_NDT_STRUCTURED_PRINT
 
-#include "morton/morton_id.hpp"
-#include "ndtree.hpp"
-#include <algorithm>
-#include <bitset>
 #include <filesystem>
 #include <fstream>
-#include <ostream>
-#include <ranges>
 
 struct S1;
 

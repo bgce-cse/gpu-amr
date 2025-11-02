@@ -1,9 +1,10 @@
 #ifndef AMR_INCLUDED_CONTAINER_UTILS
 #define AMR_INCLUDED_CONTAINER_UTILS
 
+#include "static_layout.hpp"
+#include "static_shape.hpp"
 #include "static_tensor.hpp"
 #include <concepts>
-#include <type_traits>
 #include <utility>
 
 namespace amr::containers::utils

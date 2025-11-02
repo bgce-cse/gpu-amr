@@ -31,7 +31,7 @@ private:
     using float_value_type = std::common_type_t<float, value_type>;
 
 public:
-    random(unsigned int seed = std::random_device{}()) noexcept
+    explicit random(unsigned int seed = std::random_device{}()) noexcept
     {
         seed_engine(seed);
     }
@@ -71,7 +71,7 @@ private:
     using float_value_type = std::common_type_t<float, value_type>;
 
 public:
-    random(unsigned int seed = std::random_device{}()) noexcept
+explicit random(unsigned int seed = std::random_device{}()) noexcept
     {
         seed_engine(seed);
     }

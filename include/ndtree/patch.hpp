@@ -2,7 +2,6 @@
 #define AMR_INCLUDED_PATCH
 
 #include "containers/container_manipulations.hpp"
-#include "containers/container_operations.hpp"
 #include "containers/static_tensor.hpp"
 #include "containers/static_vector.hpp"
 #include "ndconcepts.hpp"
