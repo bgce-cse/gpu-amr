@@ -93,15 +93,14 @@ public:
     [[nodiscard]]
     constexpr static auto linear_index(I&&... idxs) noexcept -> index_t
     {
-        // TODO: avoid this conversion
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
         const index_t vidxs[rank()]{ static_cast<index_t>(idxs)... };
         assert_in_bounds(vidxs);
 #endif
         const auto linear_idx =
-            []<std::size_t... Indices>(std::index_sequence<Indices...>, auto&&... j)
+            []<std::size_t... Indices>(std::index_sequence<Indices...>, auto&&... index_pack)
         {
-            return ((j * s_strides[Indices]) + ...);
+            return ((index_pack * s_strides[Indices]) + ...);
         }(std::make_index_sequence<sizeof...(I)>{}, std::forward<I>(idxs)...);
 
         assert(linear_idx < elements());

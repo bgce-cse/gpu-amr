@@ -124,6 +124,8 @@ int main()
         }
     }
 
+    p.print(tree);
+
     for (int i = 0; i != 8; ++i)
     {
         tree.reconstruct_tree(refine_criterion);

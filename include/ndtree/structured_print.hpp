@@ -6,6 +6,7 @@
 #include <bitset>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <ostream>
 #include <vector>
 
@@ -29,7 +30,7 @@ public:
             loop_control<patch_shape_t, index_t{}, patch_shape_t::sizes(), index_t{ 1 }>;
         static constexpr auto rank = patch_shape_t::rank();
 
-        for (std::size_t i = 0; i != tree.size(); ++i)
+        for (auto i = 0uz; i != tree.size(); ++i)
         {
             using tree_index_t = typename tree_t::patch_index_t;
             using map_t        = typename tree_t::deconstructed_raw_map_types_t;
@@ -43,11 +44,46 @@ public:
             containers::manipulators::shaped_for<lc_t>(
                 [this, &tree, &h, i](auto... idxs)
                 {
-                    static constexpr auto spacer = [](auto&&... vidxs) constexpr noexcept
+                    static auto prefix = [&h](auto r, auto... vidxs) constexpr noexcept
                     {
-                            // TODO: fix
+                        // TODO: This was copied from tensor ostream
+                        // Write a function that prints a tuple of tensors,
+                        // which is what we need here
+                        static constexpr auto prefixes = []
+                        {
+                            static constexpr auto pool = [] constexpr -> auto
+                            {
+                                std::array<char, rank * 2> arr{};
+                                for (std::size_t d = 0; d != rank; ++d)
+                                {
+                                    arr[d]        = ' ';
+                                    arr[d + rank] = '{';
+                                }
+                                return arr;
+                            }();
+                            std::array<std::string_view, rank> arr{};
+                            for (std::size_t d = 0; d != rank; ++d)
+                            {
+                                arr[d] = std::string_view(pool.data() + d + 1, rank);
+                            }
+                            return arr;
+                        }();
                         const index_t iidxs[rank]{ static_cast<index_t>(vidxs)... };
-                        return iidxs[rank - 1] ? " " : "\n";
+                        return (r == 0) ? (iidxs[rank - 1] == 0)
+                                              ? prefixes[tree_index_t::level(h)]
+                                              : ", {"
+                                        : "";
+                    };
+
+                    static constexpr auto spacer =
+                        [](auto r, auto... vidxs) constexpr noexcept
+                    {
+                        const index_t iidxs[rank]{ static_cast<index_t>(vidxs)... };
+                        return (r + 1 == rank) ? (iidxs[rank - 1] + 1 ==
+                                                  patch_shape_t::size(rank - 1))
+                                                     ? "}\n"
+                                                     : "}"
+                                               : ", ";
                     };
                     [this, &tree, &h, i, idxs...]<std::size_t... I>(
                         std::index_sequence<I...>
@@ -55,9 +91,10 @@ public:
                     {
                         (
                             (m_os
+                             << prefix(I, idxs...)
                              << tree.template get_patch<std::tuple_element_t<I, map_t>>(i)
                                     .data()[idxs...]
-                             << spacer(idxs...)),
+                             << spacer(I, idxs...)),
                             ...
                         );
                     }(std::make_index_sequence<std::tuple_size_v<map_t>>{});
