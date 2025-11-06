@@ -147,6 +147,7 @@ constexpr auto
             decltype(p)>::template halo_iteration_control_t<D>>(
             std::forward<decltype(p)>(p).data(),
             std::forward<decltype(fn)>(fn),
+            D,
             std::forward<decltype(args)>(args)...
         );
         halo_apply_unroll_impl<decltype(D)::advance(D)>(

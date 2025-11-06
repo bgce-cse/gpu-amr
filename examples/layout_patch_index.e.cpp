@@ -50,7 +50,11 @@ int main()
 
     amr::ndt::utils::patches::template halo_apply<d_t>(
         patch_t::from_container(patch_maps[0]),
-        [](auto const& p, auto&& s, auto&&... idxs)
+        [](auto const& p,
+           [[maybe_unused]]
+           auto&& direction,
+           auto&& s,
+           auto&&... idxs)
         {
             std::cout << s << '[';
             ((std::cout << idxs << ", "), ...)
