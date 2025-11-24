@@ -84,7 +84,6 @@ int main()
     tree_t tree(100000);
 
     amr::ndt::print::structured_print p(std::cout);
-    p.print(tree);
 
     auto refine_criterion = [](const patch_index_t& idx)
     {
@@ -124,12 +123,16 @@ int main()
         }
     }
 
+    tree.halo_exchange_update();
+
     p.print(tree);
 
-    for (int i = 0; i != 8; ++i)
+    for (int i = 0; i != 5; ++i)
     {
         tree.reconstruct_tree(refine_criterion);
     }
+
+    p.print(tree);
 
     return EXIT_SUCCESS;
 }

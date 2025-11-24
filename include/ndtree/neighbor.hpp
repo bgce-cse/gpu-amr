@@ -17,13 +17,13 @@ enum class NeighborRelation : std::uint8_t
     ParentNeighbor,
 };
 
-template <concepts::PatchIndex Patch_Index>
+template <auto Fanout_1D, auto Fanout_ND, typename Identifier>
 struct neighbor_variant
 {
-    using patch_index_t               = Patch_Index;
-    static constexpr auto s_1d_fanout = patch_index_t::fanout();
-    static constexpr auto s_nd_fanout = patch_index_t::nd_fanout();
-    static constexpr auto s_rank      = patch_index_t::rank();
+    static_assert(std::is_same_v<decltype(Fanout_1D), decltype(Fanout_ND)>);
+    using identifier_t                = Identifier;
+    static constexpr auto s_1d_fanout = Fanout_1D;
+    static constexpr auto s_nd_fanout = Fanout_ND;
 
     struct none
     {
@@ -31,13 +31,13 @@ struct neighbor_variant
 
     struct same
     {
-        patch_index_t id;
+        identifier_t id;
     };
 
     struct coarser
     {
         // TODO: Maybe store information about relative position?
-        patch_index_t id;
+        identifier_t id;
     };
 
     struct finer
@@ -49,7 +49,7 @@ struct neighbor_variant
 
         static_assert(num_neighbors() > 0);
 
-        using container_t = std::array<patch_index_t, num_neighbors()>;
+        using container_t = std::array<identifier_t, num_neighbors()>;
         container_t ids;
     };
 
@@ -185,17 +185,21 @@ template <concepts::PatchIndex Patch_Index, concepts::PatchLayout Patch_Layout>
 class neighbor_utils
 {
 public:
-    using patch_index_t       = Patch_Index;
-    using patch_layout_t      = Patch_Layout;
-    using neighbor_category_t = neighbor_variant<patch_index_t>;
-    using size_type           = patch_layout_t::size_type;
-    using index_t             = patch_layout_t::index_t;
-    using rank_t              = patch_layout_t::rank_t;
+    using patch_index_t  = Patch_Index;
+    using patch_layout_t = Patch_Layout;
 
 private:
     static constexpr auto s_1d_fanout = patch_index_t::fanout();
     static constexpr auto s_nd_fanout = patch_index_t::nd_fanout();
     static constexpr auto s_rank      = patch_index_t::rank();
+
+public:
+    template <typename Id_Type>
+    using neighbor_variant_base_t = neighbor_variant<s_1d_fanout, s_nd_fanout, Id_Type>;
+    using neighbor_variant_t = neighbor_variant_base_t<patch_index_t>;
+    using size_type           = patch_layout_t::size_type;
+    using index_t             = patch_layout_t::index_t;
+    using rank_t              = patch_layout_t::rank_t;
 
 public:
     // TODO: This should be provided by the patch index
@@ -205,7 +209,7 @@ public:
 public:
     template <typename T>
     using patch_neighboring_t = std::array<T, direction_t::elements()>;
-    using patch_neighbors_t   = patch_neighboring_t<neighbor_category_t>;
+    using patch_neighbors_t   = patch_neighboring_t<neighbor_variant_t>;
     using child_expansion_t   = containers::utils::types::tensor::
         hypercube_t<patch_index_t, index_t{ s_1d_fanout }, index_t{ s_rank }>;
 
@@ -277,7 +281,7 @@ public:
     static constexpr auto compute_boundary_children(direction_t d)
     {
         static constexpr auto num_boundary_children =
-            neighbor_category_t::finer::num_neighbors();
+            neighbor_variant_t::finer::num_neighbors();
         std::array<size_type, num_boundary_children> boundary_children{};
 
         size_type boundary_idx = 0;
@@ -309,46 +313,46 @@ public:
             {
                 auto sibling_offset = get_sibling_offset(child_multiindex, d);
                 auto sibling_id     = patch_index_t::child_of(parent_id, sibling_offset);
-                neighbor_category_t nb;
-                nb.data = typename neighbor_category_t::same{ sibling_id };
+                neighbor_variant_t nb;
+                nb.data = typename neighbor_variant_t::same{ sibling_id };
                 child_neighbor_array[d.index()] = nb;
             }
             else
             {
-                auto visitor = [&](auto&& neighbor) -> neighbor_category_t
+                auto visitor = [&](auto&& neighbor) -> neighbor_variant_t
                 {
                     using T = std::decay_t<decltype(neighbor)>;
 
-                    if constexpr (std::is_same_v<T, typename neighbor_category_t::none>)
+                    if constexpr (std::is_same_v<T, typename neighbor_variant_t::none>)
                     {
-                        return neighbor_category_t{
-                            typename neighbor_category_t::none{}
+                        return neighbor_variant_t{
+                            typename neighbor_variant_t::none{}
                         };
                     }
                     else if constexpr (std::is_same_v<
                                            T,
-                                           typename neighbor_category_t::same>)
+                                           typename neighbor_variant_t::same>)
                     {
-                        return neighbor_category_t{ typename neighbor_category_t::coarser{
+                        return neighbor_variant_t{ typename neighbor_variant_t::coarser{
                             neighbor.id } };
                     }
                     else if constexpr (std::is_same_v<
                                            T,
-                                           typename neighbor_category_t::finer>)
+                                           typename neighbor_variant_t::finer>)
                     {
                         const auto fine_index = compute_fine_boundary_linear_index(
                             child_multiindex, d.dimension()
                         );
                         auto fine_neighbor_id = neighbor.ids[fine_index];
-                        return neighbor_category_t{ typename neighbor_category_t::same{
+                        return neighbor_variant_t{ typename neighbor_variant_t::same{
                             fine_neighbor_id } };
                     }
                     else if constexpr (std::is_same_v<
                                            T,
-                                           typename neighbor_category_t::coarser>)
+                                           typename neighbor_variant_t::coarser>)
                     {
-                        return neighbor_category_t{
-                            typename neighbor_category_t::none{}
+                        return neighbor_variant_t{
+                            typename neighbor_variant_t::none{}
                         };
                     }
                 };
@@ -373,18 +377,18 @@ public:
             auto first_boundary_child_neighbor =
                 child_neighbor_arrays[boundary_children[0]][d.index()];
 
-            auto visitor = [&](auto&& neighbor) -> neighbor_category_t
+            auto visitor = [&](auto&& neighbor) -> neighbor_variant_t
             {
                 using T = std::decay_t<decltype(neighbor)>;
 
-                if constexpr (std::is_same_v<T, typename neighbor_category_t::none>)
+                if constexpr (std::is_same_v<T, typename neighbor_variant_t::none>)
                 {
-                    return neighbor_category_t{ typename neighbor_category_t::none{} };
+                    return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                 }
-                else if constexpr (std::is_same_v<T, typename neighbor_category_t::same>)
+                else if constexpr (std::is_same_v<T, typename neighbor_variant_t::same>)
                 {
                     // Child has same-level neighbor -> parent has finer neighbors
-                    typename neighbor_category_t::finer::container_t fine_neighbor_ids{};
+                    typename neighbor_variant_t::finer::container_t fine_neighbor_ids{};
                     for (size_type i = 0; i != boundary_children.size(); i++)
                     {
                         auto child_neighbor =
@@ -396,7 +400,7 @@ public:
                                 using child_t = std::decay_t<decltype(child_nb)>;
                                 if constexpr (std::is_same_v<
                                                   child_t,
-                                                  typename neighbor_category_t::same>)
+                                                  typename neighbor_variant_t::same>)
                                 {
                                     fine_neighbor_ids[i] = child_nb.id;
                                 }
@@ -404,24 +408,24 @@ public:
                             child_neighbor.data
                         );
                     }
-                    return neighbor_category_t{ typename neighbor_category_t::finer{
+                    return neighbor_variant_t{ typename neighbor_variant_t::finer{
                         fine_neighbor_ids } };
                 }
                 else if constexpr (std::is_same_v<
                                        T,
-                                       typename neighbor_category_t::coarser>)
+                                       typename neighbor_variant_t::coarser>)
                 {
                     // Child has coarser neighbor -> parent has same-level neighbor
-                    return neighbor_category_t{ typename neighbor_category_t::same{
+                    return neighbor_variant_t{ typename neighbor_variant_t::same{
                         neighbor.id } };
                 }
-                else if constexpr (std::is_same_v<T, typename neighbor_category_t::finer>)
+                else if constexpr (std::is_same_v<T, typename neighbor_variant_t::finer>)
                 {
                     assert(
                         false &&
                         "Child has finer neighbor during coarsening - unexpected!"
                     );
-                    return neighbor_category_t{ typename neighbor_category_t::none{} };
+                    return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                 }
             };
 

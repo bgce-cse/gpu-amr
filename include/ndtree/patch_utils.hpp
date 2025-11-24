@@ -133,25 +133,91 @@ consteval auto fragmentation_patch_maps() noexcept
 namespace detail
 {
 
+template <concepts::Direction auto D, concepts::MapType T>
+constexpr auto halo_apply_section_impl(
+    auto&&                                                             tree,
+    typename std::remove_cvref_t<decltype(tree)>::linear_index_t const idx,
+    auto&&                                                             fn,
+    auto&&... args
+) noexcept -> void
+    requires concepts::TreeType<std::remove_cvref_t<decltype(tree)>>
+{
+    using tree_t         = std::remove_cvref_t<decltype(tree)>;
+    using patch_layout_t = typename tree_t::patch_layout_t;
+    containers::manipulators::for_each<
+        typename patch_layout_t::template halo_iteration_control_t<D>>(
+        std::forward<decltype(tree)>(tree).template get_patch<T>(idx).data(),
+        std::forward<decltype(fn)>(fn),
+        D,
+        std::forward<decltype(args)>(args)...
+    );
+
+    // std::visit(
+    //     utils::overloads{
+    //         [i](typename neighbor_patch_index_variant_t::none const&) {},
+    //         [this, i](typename neighbor_patch_index_variant_t::same const& ngbr)
+    //         {
+    //             [this, i]<std::size_t... I>(auto const& nb, std::index_sequence<I...>)
+    //             {
+    //                 ((void)utils::patches::halo_apply(
+    //                      std::get<I>(m_data_buffers)[i],
+    //                      [](auto const& p,
+    //                         auto const& d,
+    //                         auto const& n,
+    //                         auto... idxs)
+    //                      { const auto mapped_id = map[idxs...]; },
+    //                      nb
+    //                  ),
+    //                  ...);
+    //             }(ngbr, std::make_index_sequence<
+    //                 std::tuple_size_v<deconstructed_buffers_t>>{});
+    //         },
+    //         [this](typename neighbor_patch_index_variant_t::finer const&) {},
+    //         [this](
+    //             typename neighbor_patch_index_variant_t::coarser const&
+    //         ) {} },
+    //     neighbor
+    // );
+}
+
 template <concepts::Direction auto D>
-constexpr auto
-    halo_apply_unroll_impl(concepts::Patch auto&& p, auto&& fn, auto&&... args) noexcept
-    -> void
+constexpr auto halo_apply_unroll_impl(
+    auto&&                                                             tree,
+    typename std::remove_cvref_t<decltype(tree)>::linear_index_t const idx,
+    auto&&                                                             fn,
+    auto&&... args
+) noexcept -> void
+    requires concepts::TreeType<std::remove_cvref_t<decltype(tree)>>
 {
     if constexpr (D == decltype(D)::sentinel())
     {
     }
     else
     {
-        containers::manipulators::for_each<typename std::remove_cvref_t<
-            decltype(p)>::template halo_iteration_control_t<D>>(
-            std::forward<decltype(p)>(p).data(),
-            std::forward<decltype(fn)>(fn),
-            D,
-            std::forward<decltype(args)>(args)...
-        );
-        halo_apply_unroll_impl<decltype(D)::advance(D)>(
-            std::forward<decltype(p)>(p),
+        using tree_t      = std::remove_cvref_t<decltype(tree)>;
+        using map_types_t = typename tree_t::deconstructed_raw_map_types_t;
+        [[maybe_unused]]
+        auto const& n_idx = tree.neighbor_linear_index(tree.get_neighbor_at(idx, D));
+        []<std::size_t... I>(
+            std::index_sequence<I...>, auto&& t, auto i, auto&& f, auto&&... a
+        )
+        {
+            (halo_apply_section_impl<D, std::tuple_element_t<I, map_types_t>>(
+                 std::forward<decltype(t)>(t),
+                 i,
+                 std::forward<decltype(f)>(f),
+                 std::forward<decltype(a)>(a)...
+             ),
+             ...);
+        }(std::make_index_sequence<std::tuple_size_v<map_types_t>>{},
+          std::forward<decltype(tree)>(tree),
+          idx,
+          std::forward<decltype(fn)>(fn),
+          std::forward<decltype(args)>(args)...);
+
+        detail::halo_apply_unroll_impl<decltype(D)::advance(D)>(
+            std::forward<decltype(tree)>(tree),
+            idx,
             std::forward<decltype(fn)>(fn),
             std::forward<decltype(args)>(args)...
         );
@@ -160,16 +226,22 @@ constexpr auto
 
 } // namespace detail
 
-template <concepts::Direction D_Type, concepts::Patch Patch>
-[[nodiscard]]
-auto halo_apply(Patch&& p, auto&& fn, auto&&... args)
+template <concepts::Direction D_Type>
+constexpr auto halo_apply(
+    auto&&                                                             tree,
+    typename std::remove_cvref_t<decltype(tree)>::linear_index_t const idx,
+    auto&&                                                             fn,
+    auto&&... args
+) noexcept -> void
+    requires concepts::TreeType<std::remove_cvref_t<decltype(tree)>>
 {
     detail::halo_apply_unroll_impl<D_Type::first()>(
-        std::forward<decltype(p)>(p),
+        std::forward<decltype(tree)>(tree),
+        idx,
         std::forward<decltype(fn)>(fn),
         std::forward<decltype(args)>(args)...
     );
-}
+} // namespace patches
 
 } // namespace patches
 

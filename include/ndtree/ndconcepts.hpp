@@ -10,7 +10,7 @@ namespace amr::ndt::concepts
 {
 
 template <typename T>
-concept TypeMap = requires {
+concept MapType = requires {
     typename T::type;
     { T::index() } -> std::same_as<std::size_t>;
 };
@@ -19,17 +19,19 @@ namespace detail
 {
 
 template <typename>
-constexpr bool type_map_tuple_impl = false;
+constexpr bool map_type_tuple_impl = false;
 template <template <class...> class Tuple, class... Types>
-    requires(TypeMap<Types> && ...)
-constexpr bool type_map_tuple_impl<Tuple<Types...>> = true;
+    requires(MapType<Types> && ...)
+constexpr bool map_type_tuple_impl<Tuple<Types...>> = true;
 
 } // namespace detail
 
 template <typename T>
-concept DeconstructibleType = requires {
-    typename T::deconstructed_types_map_t;
-} && detail::type_map_tuple_impl<typename T::deconstructed_types_map_t>;
+concept MapTypeTuple = detail::map_type_tuple_impl<T>;
+
+template <typename T>
+concept DeconstructibleType = requires { typename T::deconstructed_types_map_t; } &&
+                              MapTypeTuple<typename T::deconstructed_types_map_t>;
 
 template <typename I>
 concept PatchIndex =
@@ -100,6 +102,16 @@ concept Direction = requires(D const cd) {
     { D::is_negative(cd) } -> std::same_as<bool>;
     { D::is_positive(cd) } -> std::same_as<bool>;
 };
+
+// TODO: Extend
+template <typename T>
+concept TreeType =
+    requires(T t) {
+        typename T::linear_index_t;
+        typename T::patch_layout_t;
+        typename T::deconstructed_raw_map_types_t;
+    } && PatchLayout<typename T::patch_layout_t> &&
+    MapTypeTuple<typename T::deconstructed_raw_map_types_t>;
 
 } // namespace amr::ndt::concepts
 

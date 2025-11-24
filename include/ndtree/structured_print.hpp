@@ -44,27 +44,30 @@ public:
             containers::manipulators::shaped_for<lc_t>(
                 [this, &tree, &h, i](auto... idxs)
                 {
-                    static auto prefix = [&h](auto r, auto... vidxs) constexpr noexcept
+                    static  auto prefix =
+                        [&h](auto r, auto... vidxs) constexpr noexcept
                     {
                         // TODO: This was copied from tensor ostream
                         // Write a function that prints a tuple of tensors,
                         // which is what we need here
                         static constexpr auto prefixes = []
                         {
-                            static constexpr auto pool = [] constexpr -> auto
+                            static constexpr auto size        = tree_index_t::max_depth();
+                            static constexpr decltype(size) k = 2;
+                            static constexpr auto           pool = [] constexpr -> auto
                             {
-                                std::array<char, rank * 2> arr{};
-                                for (std::size_t d = 0; d != rank; ++d)
-                                {
-                                    arr[d]        = ' ';
-                                    arr[d + rank] = '{';
-                                }
+                                std::array<char, size + k> arr{};
+                                std::ranges::fill(arr, '\t');
+                                arr[size]     = ' ';
+                                arr[size + 1] = '{';
                                 return arr;
                             }();
-                            std::array<std::string_view, rank> arr{};
-                            for (std::size_t d = 0; d != rank; ++d)
+                            std::array<std::string_view, size> arr{};
+                            for (std::size_t d = 0; d != size; ++d)
                             {
-                                arr[d] = std::string_view(pool.data() + d + 1, rank);
+                                arr[d] = std::string_view(
+                                    pool.data() + size - d, d + k
+                                );
                             }
                             return arr;
                         }();

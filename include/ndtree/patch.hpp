@@ -1,9 +1,7 @@
 #ifndef AMR_INCLUDED_PATCH
 #define AMR_INCLUDED_PATCH
 
-#include "containers/container_manipulations.hpp"
 #include "containers/static_tensor.hpp"
-#include "containers/static_vector.hpp"
 #include "ndconcepts.hpp"
 #include <concepts>
 
@@ -59,51 +57,7 @@ public:
         return m_data;
     }
 
-private:
-    template <concepts::Direction auto Direction>
-    [[nodiscard]]
-    static constexpr auto halo_iteration_control_impl() -> auto
-    {
-        using direction_t           = std::remove_cvref_t<decltype(Direction)>;
-        static constexpr auto h     = halo_width();
-        static constexpr auto rank  = direction_t::rank();
-        static constexpr auto sizes = padded_layout_t::sizes();
-        using vec_t                 = containers::static_vector<index_t, rank>;
-
-        constexpr auto low       = direction_t::is_negative(Direction);
-        constexpr auto dimension = Direction.dimension();
-        constexpr auto start     = []()
-        {
-            vec_t s{};
-            for (rank_t i = 0; i != rank; ++i)
-            {
-                if (i != dimension)
-                    s[i] = h;
-                else
-                    s[i] = low ? 0 : sizes[i] - h;
-            }
-            return s;
-        }();
-        constexpr auto end = []()
-        {
-            vec_t e{};
-            for (rank_t i = 0; i != rank; ++i)
-            {
-                if (i != dimension)
-                    e[i] = sizes[i] - h;
-                else
-                    e[i] = low ? h : sizes[i];
-            }
-            return e;
-        }();
-        return containers::control::
-            loop_control<typename padded_layout_t::shape_t, start, end, index_t{ 1 }>{};
-    }
-
-public:
-    template <concepts::Direction auto Direction>
-    using halo_iteration_control_t = decltype(halo_iteration_control_impl<Direction>());
-
+    // TODO: Remove
     [[nodiscard]]
     static constexpr auto from_container(container_t const& c) noexcept -> patch
     {

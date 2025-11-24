@@ -41,25 +41,22 @@ int main()
 
     using d_t               = amr::ndt::neighbors::direction<patch_t::rank()>;
     static constexpr auto d = d_t::first();
-    using lc_t              = typename patch_t::template halo_iteration_control_t<d>;
+    using lc_t              = typename patch_layout_t::template halo_iteration_control_t<d>;
     for (index_t i = 0; i != patch_t::rank(); ++i)
     {
         std::cout << "[ " << lc_t::start(i) << " , " << lc_t::end(i) << " ), "
                   << lc_t::stride(i) << '\n';
     }
 
-    amr::ndt::utils::patches::template halo_apply<d_t>(
-        patch_t::from_container(patch_maps[0]),
-        [](auto const& p,
-           [[maybe_unused]]
-           auto&& direction,
-           auto&& s,
-           auto&&... idxs)
-        {
-            std::cout << s << '[';
-            ((std::cout << idxs << ", "), ...)
-                << "]: " << p[std::forward<decltype(idxs)>(idxs)...] << '\n';
-        },
-        "Element at: "
-    );
+    // TODO: Remove
+    // amr::ndt::utils::patches::template halo_apply<d_t>(
+    //     patch_t::from_container(patch_maps[0]),
+    //     [](auto const& p, auto&& s, auto&&... idxs)
+    //     {
+    //         std::cout << s << '[';
+    //         ((std::cout << idxs << ", "), ...)
+    //             << "]: " << p[std::forward<decltype(idxs)>(idxs)...] << '\n';
+    //     },
+    //     "Element at: "
+    // );
 }

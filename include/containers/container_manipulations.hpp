@@ -34,10 +34,12 @@ constexpr auto fill(C& c, Fn&& fn, Args&&... args) noexcept(
 namespace detail
 {
 
+// TODO: Compare with and without [[gnu::always_inline, gnu::flatten]]
 template <
     concepts::LoopControl Loop_Control,
     std::integral auto    I,
     std::integral... Indices>
+[[gnu::always_inline, gnu::flatten]]
 constexpr auto shaped_for_impl(auto&& fn, Indices... idxs, auto&&... args) noexcept
     -> void
 {
@@ -68,6 +70,7 @@ constexpr auto shaped_for_impl(auto&& fn, Indices... idxs, auto&&... args) noexc
 } // namespace detail
 
 template <concepts::LoopControl Loop_Control>
+[[gnu::always_inline, gnu::flatten]]
 constexpr auto shaped_for(auto&& fn, auto&&... args) noexcept -> void
 {
     using loop_t = Loop_Control;
@@ -77,7 +80,9 @@ constexpr auto shaped_for(auto&& fn, auto&&... args) noexcept -> void
     );
 }
 
+
 template <concepts::LoopControl Loop_Control>
+[[gnu::always_inline, gnu::flatten]]
 constexpr auto for_each(auto&& a, auto&& fn, auto&&... args) noexcept -> void
     requires concepts::StaticContainer<std::remove_cvref_t<decltype(a)>>
 {
@@ -91,6 +96,7 @@ constexpr auto for_each(auto&& a, auto&& fn, auto&&... args) noexcept -> void
     );
 }
 
+[[gnu::always_inline, gnu::flatten]]
 constexpr auto apply(auto&& a, auto&& fn, auto&&... args) noexcept -> void
     requires concepts::StaticContainer<std::remove_cvref_t<decltype(a)>>
 {
