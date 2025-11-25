@@ -354,7 +354,7 @@ public:
             auto& rhou_patch = m_tree.template get_patch<amr::cell::Rhou>(patch_idx);
             auto& rhov_patch = m_tree.template get_patch<amr::cell::Rhov>(patch_idx);
             auto& rhow_patch = m_tree.template get_patch<amr::cell::Rhow>(patch_idx);
-            auto& e_patch = m_tree.template get_patch<amr::cell::E2D>(patch_idx);
+            auto& e_patch = m_tree.template get_patch<amr::cell::E3D>(patch_idx);
 
             // temporary buffer for the new state of this patch
             std::vector<std::array<double, NVAR>> U_new_patch_buffer(patch_flat_size);
