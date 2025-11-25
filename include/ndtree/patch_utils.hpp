@@ -5,6 +5,7 @@
 #include "containers/container_utils.hpp"
 #include "containers/static_tensor.hpp"
 #include "ndconcepts.hpp"
+#include "ndutils.hpp"
 #include <algorithm>
 
 namespace amr::ndt::utils
@@ -137,47 +138,37 @@ template <concepts::Direction auto D, concepts::MapType T>
 constexpr auto halo_apply_section_impl(
     auto&&                                                             tree,
     typename std::remove_cvref_t<decltype(tree)>::linear_index_t const idx,
-    auto&&                                                             fn,
+    typename std::remove_cvref_t<decltype(tree)>::neighbor_linear_index_variant_t const&
+           n_idx,
+    auto&& fn,
     auto&&... args
 ) noexcept -> void
     requires concepts::TreeType<std::remove_cvref_t<decltype(tree)>>
 {
-    using tree_t         = std::remove_cvref_t<decltype(tree)>;
-    using patch_layout_t = typename tree_t::patch_layout_t;
-    containers::manipulators::for_each<
-        typename patch_layout_t::template halo_iteration_control_t<D>>(
-        std::forward<decltype(tree)>(tree).template get_patch<T>(idx).data(),
-        std::forward<decltype(fn)>(fn),
-        D,
-        std::forward<decltype(args)>(args)...
-    );
+    using tree_t                = std::remove_cvref_t<decltype(tree)>;
+    using n_linear_idx_varant_t = typename tree_t::neighbor_linear_index_variant_t;
+    using patch_layout_t        = typename tree_t::patch_layout_t;
+    auto& p_i = std::forward<decltype(tree)>(tree).template get_patch<T>(idx);
 
-    // std::visit(
-    //     utils::overloads{
-    //         [i](typename neighbor_patch_index_variant_t::none const&) {},
-    //         [this, i](typename neighbor_patch_index_variant_t::same const& ngbr)
-    //         {
-    //             [this, i]<std::size_t... I>(auto const& nb, std::index_sequence<I...>)
-    //             {
-    //                 ((void)utils::patches::halo_apply(
-    //                      std::get<I>(m_data_buffers)[i],
-    //                      [](auto const& p,
-    //                         auto const& d,
-    //                         auto const& n,
-    //                         auto... idxs)
-    //                      { const auto mapped_id = map[idxs...]; },
-    //                      nb
-    //                  ),
-    //                  ...);
-    //             }(ngbr, std::make_index_sequence<
-    //                 std::tuple_size_v<deconstructed_buffers_t>>{});
-    //         },
-    //         [this](typename neighbor_patch_index_variant_t::finer const&) {},
-    //         [this](
-    //             typename neighbor_patch_index_variant_t::coarser const&
-    //         ) {} },
-    //     neighbor
-    // );
+    std::visit(
+        utils::overloads{
+            [](typename n_linear_idx_varant_t::none const&)
+            {
+            },
+            [&p_i, &fn, &args...](typename n_linear_idx_varant_t::same const& ngbr) {
+                containers::manipulators::for_each<
+                    typename patch_layout_t::template halo_iteration_control_t<D>>(
+                    p_i.data(),
+                    std::forward<decltype(fn)>(fn),
+                    D,
+                    ngbr,
+                    std::forward<decltype(args)>(args)...
+                );
+            },
+            [](typename n_linear_idx_varant_t::finer const&) {},
+            [](typename n_linear_idx_varant_t::coarser const&) {} },
+        n_idx.data
+    );
 }
 
 template <concepts::Direction auto D>
@@ -196,15 +187,15 @@ constexpr auto halo_apply_unroll_impl(
     {
         using tree_t      = std::remove_cvref_t<decltype(tree)>;
         using map_types_t = typename tree_t::deconstructed_raw_map_types_t;
-        [[maybe_unused]]
         auto const& n_idx = tree.neighbor_linear_index(tree.get_neighbor_at(idx, D));
-        []<std::size_t... I>(
+        [&n_idx]<std::size_t... I>(
             std::index_sequence<I...>, auto&& t, auto i, auto&& f, auto&&... a
         )
         {
             (halo_apply_section_impl<D, std::tuple_element_t<I, map_types_t>>(
                  std::forward<decltype(t)>(t),
                  i,
+                 n_idx,
                  std::forward<decltype(f)>(f),
                  std::forward<decltype(a)>(a)...
              ),

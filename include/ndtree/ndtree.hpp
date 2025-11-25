@@ -248,7 +248,8 @@ public:
             utils::overloads{
                 [](typename neighbor_patch_index_variant_t::none const&)
                 {
-                    utility::error_handling::assert_unreachable();
+                    // TODO: Handle boundaries
+                    // utility::error_handling::assert_unreachable();
                     return ret_t{};
                 },
                 [this](typename neighbor_patch_index_variant_t::same const& n)
