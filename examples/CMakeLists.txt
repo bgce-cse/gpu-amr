@@ -14,6 +14,9 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 
+# Constexpr exceeding limit
+add_compile_options(-fconstexpr-ops-limit=100000000)
+
 set(CXX_WARNINGS
 	-fbounds-check
 	-fvisibility=hidden
