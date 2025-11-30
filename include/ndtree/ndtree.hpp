@@ -53,6 +53,8 @@ public:
     using neighbor_patch_index_variant_t  = neighbor_variant_base_t<patch_index_t>;
     using neighbor_linear_index_variant_t = neighbor_variant_base_t<linear_index_t>;
     using patch_neighbors_t               = typename neighbor_utils_t::patch_neighbors_t;
+    using halo_exchange_operator_impl_t =
+        utils::patches::halo_exchange_impl_t<patch_layout_t>;
     static_assert(std::is_same_v<
                   typename neighbor_utils_t::neighbor_variant_t,
                   neighbor_patch_index_variant_t>);
@@ -904,80 +906,14 @@ public:
         }
     }
 
-    // TODO: Move
-    struct halo_exchange_impl
-    {
-        struct boundary_condition_t
-        {
-            auto operator()(
-                [[maybe_unused]] auto const& p_i,
-                [[maybe_unused]] auto const& direction,
-                [[maybe_unused]] auto&&... args
-            ) const noexcept -> void
-            {
-            }
-        };
-
-        struct same_t
-        {
-            void operator()(
-                auto&       self_patch,
-                auto const& other_patch,
-                auto const& direction,
-                auto const& idxs
-            ) const noexcept
-            {
-                std::cout << "in same fn\n";
-                using index_t                  = typename patch_layout_t::index_t;
-                using direction_t              = std::remove_cvref_t<decltype(direction)>;
-                static constexpr auto sizes    = patch_layout_t::data_layout_t::sizes();
-                const auto            dim      = direction.dimension();
-                const auto            positive = direction_t::is_positive(direction);
-                [[assume(idxs[dim] > 0)]];
-                auto from_idxs = idxs;
-                from_idxs[dim] +=
-                    positive ? -index_t{ sizes[dim] } : index_t{ sizes[dim] };
-                self_patch[idxs] = other_patch[from_idxs];
-            }
-        };
-
-        struct finer_t
-        {
-            auto operator()(
-                [[maybe_unused]] auto const& current_patch,
-                [[maybe_unused]] std::ranges::contiguous_range auto const&
-                                             neighbor_patches,
-                [[maybe_unused]] auto const& direction,
-                [[maybe_unused]] auto&&... args
-            ) const noexcept -> void
-            {
-            }
-        };
-
-        struct coarser_t
-        {
-            auto operator()(
-                [[maybe_unused]] auto&       self_patch,
-                [[maybe_unused]] auto const& other_patch,
-                [[maybe_unused]] auto const& direction,
-               [[maybe_unused]] auto const& idxs
-            ) const noexcept -> void
-            {
-            }
-        };
-
-        inline static constexpr boundary_condition_t boundary_condition{};
-        inline static constexpr same_t               same{};
-        inline static constexpr finer_t              finer{};
-        inline static constexpr coarser_t            coarser{};
-    };
-
     constexpr auto halo_exchange_update() noexcept -> void
     {
         for (linear_index_t i = 0; i != m_size; ++i)
         {
             // TODO: TODO
-            utils::patches::halo_apply<halo_exchange_impl, patch_direction_t>(*this, i);
+            utils::patches::halo_apply<halo_exchange_operator_impl_t, patch_direction_t>(
+                *this, i
+            );
         }
     }
 

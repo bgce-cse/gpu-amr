@@ -193,9 +193,9 @@ constexpr auto halo_apply_section_impl(
                     [&tree](auto const i, auto const& ids)
                     {
                         return std::ref(
-                            std::forward<decltype(tree)>(tree).template get_patch<T>(
-                                ids[i]
-                            ).data()
+                            std::forward<decltype(tree)>(tree)
+                                .template get_patch<T>(ids[i])
+                                .data()
                         );
                     },
                     neighbor.ids
@@ -283,7 +283,74 @@ constexpr auto halo_apply(
     detail::halo_apply_unroll_impl<Variadic_Operator, D_Type::first()>(
         std::forward<decltype(tree)>(tree), idx, std::forward<decltype(args)>(args)...
     );
-} // namespace patches
+}
+
+template <concepts::PatchLayout Patch_Layout>
+struct halo_exchange_impl_t
+{
+    using patch_layout_t = Patch_Layout;
+
+    struct boundary_condition_t
+    {
+        static constexpr auto operator()(
+            [[maybe_unused]] auto const& p_i,
+            [[maybe_unused]] auto const& direction,
+            [[maybe_unused]] auto&&... args
+        ) noexcept -> void
+        {
+        }
+    };
+
+    struct same_t
+    {
+        static constexpr void operator()(
+            auto&       self_patch,
+            auto const& other_patch,
+            auto const& direction,
+            auto const& idxs
+        ) noexcept
+        {
+            using index_t                  = typename patch_layout_t::index_t;
+            using direction_t              = std::remove_cvref_t<decltype(direction)>;
+            static constexpr auto sizes    = patch_layout_t::data_layout_t::sizes();
+            const auto            dim      = direction.dimension();
+            const auto            positive = direction_t::is_positive(direction);
+            [[assume(idxs[dim] > 0)]];
+            auto from_idxs = idxs;
+            from_idxs[dim] += positive ? -index_t{ sizes[dim] } : index_t{ sizes[dim] };
+            self_patch[idxs] = other_patch[from_idxs];
+        }
+    };
+
+    struct finer_t
+    {
+        static constexpr auto operator()(
+            [[maybe_unused]] auto const&                               current_patch,
+            [[maybe_unused]] std::ranges::contiguous_range auto const& neighbor_patches,
+            [[maybe_unused]] auto const&                               direction,
+            [[maybe_unused]] auto&&... args
+        ) noexcept -> void
+        {
+        }
+    };
+
+    struct coarser_t
+    {
+        static constexpr auto operator()(
+            [[maybe_unused]] auto&       self_patch,
+            [[maybe_unused]] auto const& other_patch,
+            [[maybe_unused]] auto const& direction,
+            [[maybe_unused]] auto const& idxs
+        ) noexcept -> void
+        {
+        }
+    };
+
+    inline static constexpr boundary_condition_t boundary_condition{};
+    inline static constexpr same_t               same{};
+    inline static constexpr finer_t              finer{};
+    inline static constexpr coarser_t            coarser{};
+};
 
 } // namespace patches
 
