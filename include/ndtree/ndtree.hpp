@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <numeric>
+#include <ranges>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -908,7 +909,13 @@ public:
     {
         struct boundary_condition_t
         {
-            void operator()(auto&&...) const noexcept {}
+            auto operator()(
+                [[maybe_unused]] auto const& p_i,
+                [[maybe_unused]] auto const& direction,
+                [[maybe_unused]] auto&&... args
+            ) const noexcept -> void
+            {
+            }
         };
 
         struct same_t
@@ -928,28 +935,35 @@ public:
                 const auto            positive = direction_t::is_positive(direction);
                 [[assume(idxs[dim] > 0)]];
                 auto from_idxs = idxs;
-                from_idxs[dim] = positive ? idxs[dim] - index_t{ sizes[dim] }
-                                          : idxs[dim] + index_t{ sizes[dim] };
-                std::cout << "To\n";
-                for (auto e : idxs)
-                    std::cout << e << ' ';
-                std::cout << '\n';
-                std::cout << "From\n";
-                for (auto e : from_idxs)
-                    std::cout << e << ' ';
-                std::cout << '\n';
+                from_idxs[dim] +=
+                    positive ? -index_t{ sizes[dim] } : index_t{ sizes[dim] };
                 self_patch[idxs] = other_patch[from_idxs];
             }
         };
 
         struct finer_t
         {
-            void operator()(auto&&...) const noexcept {}
+            auto operator()(
+                [[maybe_unused]] auto const& current_patch,
+                [[maybe_unused]] std::ranges::contiguous_range auto const&
+                                             neighbor_patches,
+                [[maybe_unused]] auto const& direction,
+                [[maybe_unused]] auto&&... args
+            ) const noexcept -> void
+            {
+            }
         };
 
         struct coarser_t
         {
-            void operator()(auto&&...) const noexcept {}
+            auto operator()(
+                [[maybe_unused]] auto&       self_patch,
+                [[maybe_unused]] auto const& other_patch,
+                [[maybe_unused]] auto const& direction,
+               [[maybe_unused]] auto const& idxs
+            ) const noexcept -> void
+            {
+            }
         };
 
         inline static constexpr boundary_condition_t boundary_condition{};
