@@ -903,12 +903,67 @@ public:
         }
     }
 
+    // TODO: Move
+    struct halo_exchange_impl
+    {
+        struct boundary_condition_t
+        {
+            void operator()(auto&&...) const noexcept {}
+        };
+
+        struct same_t
+        {
+            void operator()(
+                auto&       self_patch,
+                auto const& other_patch,
+                auto const& direction,
+                auto const& idxs
+            ) const noexcept
+            {
+                std::cout << "in same fn\n";
+                using index_t                  = typename patch_layout_t::index_t;
+                using direction_t              = std::remove_cvref_t<decltype(direction)>;
+                static constexpr auto sizes    = patch_layout_t::data_layout_t::sizes();
+                const auto            dim      = direction.dimension();
+                const auto            positive = direction_t::is_positive(direction);
+                [[assume(idxs[dim] > 0)]];
+                auto from_idxs = idxs;
+                from_idxs[dim] = positive ? idxs[dim] - index_t{ sizes[dim] }
+                                          : idxs[dim] + index_t{ sizes[dim] };
+                std::cout << "To\n";
+                for (auto e : idxs)
+                    std::cout << e << ' ';
+                std::cout << '\n';
+                std::cout << "From\n";
+                for (auto e : from_idxs)
+                    std::cout << e << ' ';
+                std::cout << '\n';
+                self_patch[idxs] = other_patch[from_idxs];
+            }
+        };
+
+        struct finer_t
+        {
+            void operator()(auto&&...) const noexcept {}
+        };
+
+        struct coarser_t
+        {
+            void operator()(auto&&...) const noexcept {}
+        };
+
+        inline static constexpr boundary_condition_t boundary_condition{};
+        inline static constexpr same_t               same{};
+        inline static constexpr finer_t              finer{};
+        inline static constexpr coarser_t            coarser{};
+    };
+
     constexpr auto halo_exchange_update() noexcept -> void
     {
         for (linear_index_t i = 0; i != m_size; ++i)
         {
             // TODO: TODO
-            utils::patches::halo_apply<patch_direction_t>(*this, i, [](auto...) {});
+            utils::patches::halo_apply<halo_exchange_impl, patch_direction_t>(*this, i);
         }
     }
 

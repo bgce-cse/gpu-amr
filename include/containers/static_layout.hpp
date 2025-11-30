@@ -97,8 +97,9 @@ public:
         const index_t vidxs[rank()]{ static_cast<index_t>(idxs)... };
         assert_in_bounds(vidxs);
 #endif
-        const auto linear_idx =
-            []<std::size_t... Indices>(std::index_sequence<Indices...>, auto&&... index_pack)
+        const auto linear_idx = []<std::size_t... Indices>(
+                                    std::index_sequence<Indices...>, auto&&... index_pack
+                                )
         {
             return ((index_pack * s_strides[Indices]) + ...);
         }(std::make_index_sequence<sizeof...(I)>{}, std::forward<I>(idxs)...);
@@ -112,11 +113,13 @@ public:
     }
 
     [[nodiscard]]
-    constexpr static auto linear_index(multi_index_t const& multi_idx) noexcept -> index_t
+    constexpr static auto
+        linear_index(std::ranges::contiguous_range auto const& idxs) noexcept
+        -> index_t
     {
         auto linear_idx = std::transform_reduce(
-            std::cbegin(multi_idx),
-            std::cend(multi_idx),
+            std::cbegin(idxs),
+            std::cend(idxs),
             std::cbegin(s_strides),
             index_t{}
         );

@@ -49,7 +49,9 @@ struct neighbor_variant
 
         static_assert(num_neighbors() > 0);
 
-        using container_t = std::array<identifier_t, num_neighbors()>;
+        template <typename T>
+        using container_type_t = std::array<T, num_neighbors()>;
+        using container_t      = container_type_t<identifier_t>;
         container_t ids;
     };
 
@@ -196,10 +198,10 @@ private:
 public:
     template <typename Id_Type>
     using neighbor_variant_base_t = neighbor_variant<s_1d_fanout, s_nd_fanout, Id_Type>;
-    using neighbor_variant_t = neighbor_variant_base_t<patch_index_t>;
-    using size_type           = patch_layout_t::size_type;
-    using index_t             = patch_layout_t::index_t;
-    using rank_t              = patch_layout_t::rank_t;
+    using neighbor_variant_t      = neighbor_variant_base_t<patch_index_t>;
+    using size_type               = patch_layout_t::size_type;
+    using index_t                 = patch_layout_t::index_t;
+    using rank_t                  = patch_layout_t::rank_t;
 
 public:
     // TODO: This should be provided by the patch index
@@ -325,9 +327,7 @@ public:
 
                     if constexpr (std::is_same_v<T, typename neighbor_variant_t::none>)
                     {
-                        return neighbor_variant_t{
-                            typename neighbor_variant_t::none{}
-                        };
+                        return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                     }
                     else if constexpr (std::is_same_v<
                                            T,
@@ -351,9 +351,7 @@ public:
                                            T,
                                            typename neighbor_variant_t::coarser>)
                     {
-                        return neighbor_variant_t{
-                            typename neighbor_variant_t::none{}
-                        };
+                        return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                     }
                 };
 
@@ -411,9 +409,8 @@ public:
                     return neighbor_variant_t{ typename neighbor_variant_t::finer{
                         fine_neighbor_ids } };
                 }
-                else if constexpr (std::is_same_v<
-                                       T,
-                                       typename neighbor_variant_t::coarser>)
+                else if constexpr (std::
+                                       is_same_v<T, typename neighbor_variant_t::coarser>)
                 {
                     // Child has coarser neighbor -> parent has same-level neighbor
                     return neighbor_variant_t{ typename neighbor_variant_t::same{

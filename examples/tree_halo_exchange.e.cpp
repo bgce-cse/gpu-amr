@@ -69,7 +69,7 @@ int main()
 {
     constexpr std::size_t N    = 4;
     constexpr std::size_t M    = 6;
-    constexpr std::size_t Halo = 1;
+    constexpr std::size_t Halo = 2;
     // using linear_index_t    = std::uint32_t;
     [[maybe_unused]]
     constexpr auto Fanout = 2;
@@ -84,6 +84,9 @@ int main()
     tree_t tree(100000);
 
     amr::ndt::print::structured_print p(std::cout);
+
+    std::cout << "Print 0\n";
+    p.print(tree);
 
     auto refine_criterion = [](const patch_index_t& idx)
     {
@@ -106,6 +109,8 @@ int main()
         return tree_t::refine_status_t::Stable;
     };
 
+    std::cout << "patch size: "<< patch_layout_t::flat_size() << '\n';
+
     int ii = 0;
     for (std::size_t idx = 0; idx < tree.size(); idx++)
     {
@@ -123,15 +128,21 @@ int main()
         }
     }
 
-    tree.halo_exchange_update();
-
+    std::cout << "Print 1\n";
     p.print(tree);
 
-    for (int i = 0; i != 5; ++i)
+    tree.halo_exchange_update();
+
+    std::cout << "Print 2\n";
+    p.print(tree);
+
+    for (int i = 0; i != 1; ++i)
     {
         tree.reconstruct_tree(refine_criterion);
+        tree.halo_exchange_update();
     }
 
+    std::cout << "Print 3\n";
     p.print(tree);
 
     return EXIT_SUCCESS;

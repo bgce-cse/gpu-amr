@@ -4,6 +4,7 @@
 #include "container_concepts.hpp"
 #include "loop_control.hpp"
 #include <algorithm>
+#include <array>
 #include <concepts>
 #include <functional>
 #include <type_traits>
@@ -67,6 +68,41 @@ constexpr auto shaped_for_impl(auto&& fn, Indices... idxs, auto&&... args) noexc
     }
 }
 
+template <
+    concepts::LoopControl Loop_Control,
+    std::integral auto    I,
+    std::integral         Index_Type>
+[[gnu::always_inline, gnu::flatten]]
+constexpr auto shaped_for_impl(
+    auto&&                                        fn,
+    std::array<Index_Type, Loop_Control::rank()>& idxs,
+    auto&&... args
+) noexcept -> void
+{
+    using loop_t = Loop_Control;
+    using rank_t = typename loop_t::rank_t;
+
+    if constexpr (I == loop_t::rank())
+    {
+        static_assert(std::invocable<decltype(fn), decltype(args)..., decltype(idxs)>);
+        std::invoke(
+            std::forward<decltype(fn)>(fn), std::forward<decltype(args)>(args)..., idxs
+        );
+    }
+    else
+    {
+        for (idxs[I] = loop_t::start(I); idxs[I] != loop_t::end(I);
+             idxs[I] += loop_t::stride(I))
+        {
+            shaped_for_impl<loop_t, I + rank_t{ 1 }, Index_Type>(
+                std::forward<decltype(fn)>(fn),
+                idxs,
+                std::forward<decltype(args)>(args)...
+            );
+        }
+    }
+}
+
 } // namespace detail
 
 template <concepts::LoopControl Loop_Control>
@@ -75,11 +111,11 @@ constexpr auto shaped_for(auto&& fn, auto&&... args) noexcept -> void
 {
     using loop_t = Loop_Control;
     using rank_t = typename loop_t::rank_t;
+    std::array<typename loop_t::index_t, loop_t::rank()> idxs{};
     detail::shaped_for_impl<Loop_Control, rank_t{}>(
-        std::forward<decltype(fn)>(fn), std::forward<decltype(args)>(args)...
+        std::forward<decltype(fn)>(fn), idxs, std::forward<decltype(args)>(args)...
     );
 }
-
 
 template <concepts::LoopControl Loop_Control>
 [[gnu::always_inline, gnu::flatten]]

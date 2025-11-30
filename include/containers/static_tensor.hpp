@@ -8,6 +8,7 @@
 #include <cmath>
 #include <iomanip>
 #include <optional>
+#include <ranges>
 #include <string_view>
 #include <type_traits>
 
@@ -88,9 +89,11 @@ public:
     }
 
     [[nodiscard]]
-    static constexpr auto linear_index(multi_index_t const& multi_idx) noexcept -> index_t
+    static constexpr auto
+        linear_index(std::ranges::contiguous_range auto const& idxs) noexcept -> index_t
+        requires(std::ranges::size(idxs) == rank())
     {
-        return layout_t::linear_index(multi_idx);
+        return layout_t::linear_index(idxs);
     }
 
 public:
@@ -101,10 +104,26 @@ public:
     }
 
 public:
+    [[nodiscard]]
+    constexpr auto
+        operator[](std::ranges::contiguous_range auto const& idxs) const noexcept
+        -> const_reference
+        requires(std::ranges::size(idxs) == rank() && std::is_same_v<std::ranges::range_value_t<decltype(idxs)>, index_t>)
+    {
+        return data_[linear_index(idxs)];
+    }
+
+    [[nodiscard]]
+    constexpr auto operator[](std::ranges::contiguous_range auto const& idxs) noexcept
+        -> reference
+    {
+        return const_cast<reference>(std::as_const(*this).operator[](idxs));
+    }
+
     template <typename... I>
         requires(sizeof...(I) == rank()) && (std::integral<std::remove_cvref_t<I>> && ...)
     [[nodiscard]]
-    constexpr auto operator[](I&&... idxs) const noexcept -> const_reference
+    constexpr auto operator[](I const&... idxs) const noexcept -> const_reference
     {
         return data_[linear_index(static_cast<index_t>(idxs)...)];
     }
@@ -112,24 +131,9 @@ public:
     template <typename... I>
         requires(sizeof...(I) == rank()) && (std::integral<std::remove_cvref_t<I>> && ...)
     [[nodiscard]]
-    constexpr auto operator[](I&&... idxs) noexcept -> reference
+    constexpr auto operator[](I const&... idxs) noexcept -> reference
     {
-        return const_cast<reference>(
-            std::as_const(*this).operator[](std::forward<decltype(idxs)>(idxs)...)
-        );
-    }
-
-    [[nodiscard]]
-    constexpr auto operator[](multi_index_t const& multi_idx) const noexcept
-        -> const_reference
-    {
-        return data_[linear_index(multi_idx)];
-    }
-
-    [[nodiscard]]
-    constexpr auto operator[](multi_index_t const& multi_idx) noexcept -> reference
-    {
-        return const_cast<reference>(std::as_const(*this).operator[](multi_idx));
+        return const_cast<reference>(std::as_const(*this).operator[](idxs...));
     }
 
     [[nodiscard]]
