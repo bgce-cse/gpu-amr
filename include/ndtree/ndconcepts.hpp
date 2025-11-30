@@ -113,6 +113,14 @@ concept TreeType =
     } && PatchLayout<typename T::patch_layout_t> &&
     MapTypeTuple<typename T::deconstructed_raw_map_types_t>;
 
+template<typename HEO>
+concept HaloExchangeOperator = requires{
+    HEO::none;
+    HEO::same;
+    HEO::finer;
+    HEO::coarser;
+};
+
 } // namespace amr::ndt::concepts
 
 #endif // AMR_INCLUDED_NDT_CONCEPTS

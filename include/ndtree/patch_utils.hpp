@@ -135,7 +135,10 @@ consteval auto fragmentation_patch_maps() noexcept
 namespace detail
 {
 
-template <typename Variadic_Operator, concepts::Direction auto D, concepts::MapType T>
+template <
+    concepts::HaloExchangeOperator Halo_Exchange_Operator,
+    concepts::Direction auto       D,
+    concepts::MapType              T>
 constexpr auto halo_apply_section_impl(
     auto&&                                                             tree,
     typename std::remove_cvref_t<decltype(tree)>::linear_index_t const idx,
@@ -158,7 +161,7 @@ constexpr auto halo_apply_section_impl(
                 containers::manipulators::for_each<
                     typename patch_layout_t::template halo_iteration_control_t<D>>(
                     p_i.data(),
-                    Variadic_Operator::boundary_condition,
+                    Halo_Exchange_Operator::boundary_condition,
                     D,
                     std::forward<decltype(args)>(args)...
                 );
@@ -172,7 +175,7 @@ constexpr auto halo_apply_section_impl(
                 containers::manipulators::for_each<
                     typename patch_layout_t::template halo_iteration_control_t<D>>(
                     p_i.data(),
-                    Variadic_Operator::same,
+                    Halo_Exchange_Operator::same,
                     p_n.data(),
                     D,
                     std::forward<decltype(args)>(args)...
@@ -204,7 +207,7 @@ constexpr auto halo_apply_section_impl(
                 containers::manipulators::for_each<
                     typename patch_layout_t::template halo_iteration_control_t<D>>(
                     p_i.data(),
-                    Variadic_Operator::finer,
+                    Halo_Exchange_Operator::finer,
                     p_neighbors,
                     D,
                     std::forward<decltype(args)>(args)...
@@ -221,7 +224,7 @@ constexpr auto halo_apply_section_impl(
                 containers::manipulators::for_each<
                     typename patch_layout_t::template halo_iteration_control_t<D>>(
                     p_i.data(),
-                    Variadic_Operator::coarser,
+                    Halo_Exchange_Operator::coarser,
                     p_n.data(),
                     D,
                     std::forward<decltype(args)>(args)...
@@ -231,7 +234,9 @@ constexpr auto halo_apply_section_impl(
     );
 }
 
-template <typename Variadic_Operator, concepts::Direction auto D>
+template <
+    concepts::HaloExchangeOperator Halo_Exchange_Operator,
+    concepts::Direction auto       D>
 constexpr auto halo_apply_unroll_impl(
     auto&&                                                             tree,
     typename std::remove_cvref_t<decltype(tree)>::linear_index_t const idx,
@@ -252,7 +257,7 @@ constexpr auto halo_apply_unroll_impl(
         )
         {
             (halo_apply_section_impl<
-                 Variadic_Operator,
+                 Halo_Exchange_Operator,
                  D,
                  std::tuple_element_t<I, map_types_t>>(
                  std::forward<decltype(t)>(t), i, n_idx, std::forward<decltype(a)>(a)...
@@ -264,7 +269,7 @@ constexpr auto halo_apply_unroll_impl(
           std::forward<decltype(args)>(args)...);
 
         // Recursive call
-        detail::halo_apply_unroll_impl<Variadic_Operator, decltype(D)::advance(D)>(
+        detail::halo_apply_unroll_impl<Halo_Exchange_Operator, decltype(D)::advance(D)>(
             std::forward<decltype(tree)>(tree), idx, std::forward<decltype(args)>(args)...
         );
     }
@@ -272,7 +277,9 @@ constexpr auto halo_apply_unroll_impl(
 
 } // namespace detail
 
-template <typename Variadic_Operator, concepts::Direction D_Type>
+template <
+    concepts::HaloExchangeOperator Halo_Exchange_Operator,
+    concepts::Direction            D_Type>
 constexpr auto halo_apply(
     auto&&                                                             tree,
     typename std::remove_cvref_t<decltype(tree)>::linear_index_t const idx,
@@ -280,7 +287,7 @@ constexpr auto halo_apply(
 ) noexcept -> void
     requires concepts::TreeType<std::remove_cvref_t<decltype(tree)>>
 {
-    detail::halo_apply_unroll_impl<Variadic_Operator, D_Type::first()>(
+    detail::halo_apply_unroll_impl<Halo_Exchange_Operator, D_Type::first()>(
         std::forward<decltype(tree)>(tree), idx, std::forward<decltype(args)>(args)...
     );
 }
