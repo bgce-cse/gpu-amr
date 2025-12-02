@@ -21,9 +21,12 @@ template <auto Fanout_1D, auto Fanout_ND, typename Identifier>
 struct neighbor_variant
 {
     static_assert(std::is_same_v<decltype(Fanout_1D), decltype(Fanout_ND)>);
-    using identifier_t                = Identifier;
-    static constexpr auto s_1d_fanout = Fanout_1D;
-    static constexpr auto s_nd_fanout = Fanout_ND;
+    using identifier_t = Identifier;
+    using fanout_t     = decltype(Fanout_1D);
+    static_assert(std::is_same_v<decltype(Fanout_1D), decltype(Fanout_ND)>);
+
+    static constexpr fanout_t s_1d_fanout = Fanout_1D;
+    static constexpr fanout_t s_nd_fanout = Fanout_ND;
 
     struct none
     {
@@ -36,8 +39,8 @@ struct neighbor_variant
 
     struct coarser
     {
-        // TODO: Maybe store information about relative position?
         identifier_t id;
+        fanout_t     dim_offset;
     };
 
     struct finer
@@ -324,7 +327,7 @@ public:
             }
             else
             {
-                static auto visitor = [&](auto&& neighbor) -> neighbor_variant_t
+                static auto visitor = [&](auto const& neighbor) -> neighbor_variant_t
                 {
                     using T = std::decay_t<decltype(neighbor)>;
 
@@ -336,8 +339,10 @@ public:
                                            T,
                                            typename neighbor_variant_t::same>)
                     {
-                        return neighbor_variant_t{ typename neighbor_variant_t::coarser{
-                            neighbor.id } };
+                        return neighbor_variant_t{
+                            typename neighbor_variant_t::coarser{
+                                                                 neighbor.id, child_multiindex[d.index()] }
+                        };
                     }
                     else if constexpr (std::is_same_v<
                                            T,

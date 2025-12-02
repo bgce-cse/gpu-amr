@@ -318,13 +318,13 @@ struct halo_exchange_impl_t
 
     struct same_t
     {
-        static constexpr void operator()(
+        static constexpr auto operator()(
             auto&       self_patch,
             auto const& other_patch,
             auto const& direction,
             auto const& idxs,
             [[maybe_unused]] auto&&... args
-        ) noexcept
+        ) noexcept -> void
         {
             using direction_t   = std::remove_cvref_t<decltype(direction)>;
             const auto dim      = direction.dimension();

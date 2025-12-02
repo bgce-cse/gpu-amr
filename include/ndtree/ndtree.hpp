@@ -267,7 +267,11 @@ public:
                         ) } };
                 },
                 [this](typename neighbor_patch_index_variant_t::coarser const& n)
-                { return ret_t{ typename ret_t::same{ get_linear_index_at(n.id) } }; } },
+                {
+                    return ret_t{
+                        typename ret_t::coarser{ get_linear_index_at(n.id), n.dim_offset }
+                    };
+                } },
             neighbor.data
         );
     }
@@ -532,13 +536,12 @@ public:
                                                finer>)
                     {
                         // Finer neighbors now see the parent as a coarser neighbor
-                        for (size_type i = 0; i < neighbor_data.ids.size(); i++)
+                        for (size_type i = 0; i != neighbor_data.num_neighbors(); i++)
                         {
-                            neighbor_patch_index_variant_t new_neighbor;
-                            new_neighbor.data =
+                            neighbor_patch_index_variant_t new_neighbor{
                                 typename neighbor_patch_index_variant_t::coarser{
-                                    parent_node_id
-                                };
+                                    parent_node_id }
+                            };
                             m_neighbors[m_index_map.at(neighbor_data.ids[i])]
                                        [opposite_d.index()] = new_neighbor;
                         }
