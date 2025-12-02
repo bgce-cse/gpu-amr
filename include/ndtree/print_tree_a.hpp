@@ -6,7 +6,7 @@
 
 struct S1;
 
-namespace ndt::print
+namespace amr::ndt::print
 {
 
 // template of patch_x and patch_y

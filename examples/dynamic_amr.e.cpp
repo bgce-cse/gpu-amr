@@ -88,7 +88,7 @@ int main()
 
     tree_t tree(1000000); // Provide initial capacity
 
-    ndt::print::example_patch_print<Halo, M, N> printer("dynamic_amr_tree");
+    amr::ndt::print::example_patch_print<Halo, M, N> printer("dynamic_amr_tree");
 
     auto amr_condition = [](const patch_index_t& idx, int step, int max_step)
     {

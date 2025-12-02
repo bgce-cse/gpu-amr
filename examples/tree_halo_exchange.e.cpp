@@ -1,10 +1,9 @@
-#include "ndtree/structured_print.hpp"
 #include "containers/static_layout.hpp"
 #include "containers/static_shape.hpp"
 #include "morton/morton_id.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
-#include "ndtree/print_tree_a.hpp"
+#include "ndtree/structured_print.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iostream>
@@ -90,26 +89,19 @@ int main()
 
     auto refine_criterion = [](const patch_index_t& idx)
     {
-        auto [coords, level] = patch_index_t::decode(idx.id());
-        auto max_size        = 1u << idx.max_depth();
-        auto cell_size       = 1u << (idx.max_depth() - level);
-
-        double mid_x  = coords[0] + 0.5 * cell_size;
-        double mid_y  = coords[1] + 0.5 * cell_size;
-        double center = 0.5 * max_size;
-        double dist2 =
-            (mid_x - center) * (mid_x - center) + (mid_y - center) * (mid_y - center);
-
-        // Only refine if not at max level!
-        if (idx.level() == 0 ||
-            (level < idx.max_depth() && dist2 < 0.3 / idx.level() * max_size * max_size))
+        const auto prob = 0.3f;
+        const auto r    = utility::random::srandom::randfloat<float>();
+        if (idx.level() == 0 || (r < prob))
         {
             return tree_t::refine_status_t::Refine;
         }
-        return tree_t::refine_status_t::Stable;
+        else
+        {
+            return tree_t::refine_status_t::Stable;
+        }
     };
 
-    std::cout << "patch size: "<< patch_layout_t::flat_size() << '\n';
+    std::cout << "patch size: " << patch_layout_t::flat_size() << '\n';
 
     int ii = 0;
     for (std::size_t idx = 0; idx < tree.size(); idx++)
@@ -136,7 +128,7 @@ int main()
     std::cout << "Print 2\n";
     p.print(tree);
 
-    for (int i = 0; i != 1; ++i)
+    for (int i = 0; i != 2; ++i)
     {
         tree.reconstruct_tree(refine_criterion);
         tree.halo_exchange_update();

@@ -298,30 +298,33 @@ public:
         return boundary_children;
     }
 
+    [[nodiscard]]
     static auto compute_child_neighbors(
-        patch_index_t     parent_id,
-        patch_neighbors_t parent_neighbor_array,
-        const index_t     local_child_id
+        patch_index_t const&     parent_id,
+        patch_neighbors_t const& parent_neighbor_array,
+        index_t const&           local_child_id
     ) -> patch_neighbors_t
     {
-        auto child_multiindex = child_expansion_t::layout_t::multi_index(local_child_id);
-        auto relations        = s_neighbor_relation_maps[local_child_id];
+        const auto child_multiindex =
+            child_expansion_t::layout_t::multi_index(local_child_id);
+        const auto        relations = s_neighbor_relation_maps[local_child_id];
         patch_neighbors_t child_neighbor_array{};
 
         for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
         {
-            auto directional_relation = relations[d.index()];
+            const auto directional_relation = relations[d.index()];
             if (directional_relation == NeighborRelation::Sibling)
             {
-                auto sibling_offset = get_sibling_offset(child_multiindex, d);
-                auto sibling_id     = patch_index_t::child_of(parent_id, sibling_offset);
+                const auto sibling_offset = get_sibling_offset(child_multiindex, d);
+                const auto sibling_id =
+                    patch_index_t::child_of(parent_id, sibling_offset);
                 neighbor_variant_t nb;
                 nb.data = typename neighbor_variant_t::same{ sibling_id };
                 child_neighbor_array[d.index()] = nb;
             }
             else
             {
-                auto visitor = [&](auto&& neighbor) -> neighbor_variant_t
+                static auto visitor = [&](auto&& neighbor) -> neighbor_variant_t
                 {
                     using T = std::decay_t<decltype(neighbor)>;
 

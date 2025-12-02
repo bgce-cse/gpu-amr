@@ -161,7 +161,7 @@ constexpr auto halo_apply_section_impl(
                 containers::manipulators::for_each<
                     typename patch_layout_t::template halo_iteration_control_t<D>>(
                     p_i.data(),
-                    Halo_Exchange_Operator::boundary_condition,
+                    Halo_Exchange_Operator::boundary,
                     D,
                     std::forward<decltype(args)>(args)...
                 );
@@ -292,12 +292,20 @@ constexpr auto halo_apply(
     );
 }
 
-template <concepts::PatchLayout Patch_Layout>
+template <concepts::PatchIndex Patch_Index, concepts::PatchLayout Patch_Layout>
 struct halo_exchange_impl_t
 {
     using patch_layout_t = Patch_Layout;
+    using patch_index_t  = Patch_Index;
+    using index_t        = typename patch_layout_t::index_t;
 
-    struct boundary_condition_t
+    static constexpr auto s_halo_width = patch_layout_t::halo_width();
+    static constexpr auto s_dimension  = patch_layout_t::dimension();
+    static constexpr auto s_1d_fanout  = patch_index_t::fanout();
+    static constexpr auto s_nd_fanout  = patch_index_t::nd_fanout();
+    static constexpr auto s_sizes      = patch_layout_t::data_layout_t::sizes();
+
+    struct boundary_t
     {
         static constexpr auto operator()(
             [[maybe_unused]] auto const& p_i,
@@ -314,17 +322,17 @@ struct halo_exchange_impl_t
             auto&       self_patch,
             auto const& other_patch,
             auto const& direction,
-            auto const& idxs
+            auto const& idxs,
+            [[maybe_unused]] auto&&... args
         ) noexcept
         {
-            using index_t                  = typename patch_layout_t::index_t;
-            using direction_t              = std::remove_cvref_t<decltype(direction)>;
-            static constexpr auto sizes    = patch_layout_t::data_layout_t::sizes();
-            const auto            dim      = direction.dimension();
-            const auto            positive = direction_t::is_positive(direction);
-            [[assume(idxs[dim] > 0)]];
+            using direction_t   = std::remove_cvref_t<decltype(direction)>;
+            const auto dim      = direction.dimension();
+            const auto positive = direction_t::is_positive(direction);
+            [[assume(idxs[dim] >= s_halo_width)]];
             auto from_idxs = idxs;
-            from_idxs[dim] += positive ? -index_t{ sizes[dim] } : index_t{ sizes[dim] };
+            from_idxs[dim] +=
+                positive ? -index_t{ s_sizes[dim] } : index_t{ s_sizes[dim] };
             self_patch[idxs] = other_patch[from_idxs];
         }
     };
@@ -335,9 +343,16 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto const&                               current_patch,
             [[maybe_unused]] std::ranges::contiguous_range auto const& neighbor_patches,
             [[maybe_unused]] auto const&                               direction,
+            [[maybe_unused]] auto const&                               idxs,
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            using direction_t         = std::remove_cvref_t<decltype(direction)>;
+            const auto dim            = direction.dimension();
+            const auto positive       = direction_t::is_positive(direction);
+            const auto section_size   = static_cast<index_t>(s_sizes[dim] / s_1d_fanout);
+            const auto section_idx    = static_cast<index_t>(idxs[dim] / section_size);
+            const auto subsection_idx = idxs[dim] % section_size;
         }
     };
 
@@ -347,16 +362,21 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&       self_patch,
             [[maybe_unused]] auto const& other_patch,
             [[maybe_unused]] auto const& direction,
-            [[maybe_unused]] auto const& idxs
+            [[maybe_unused]] auto const& idxs,
+            [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            using direction_t              = std::remove_cvref_t<decltype(direction)>;
+            static constexpr auto sizes    = patch_layout_t::data_layout_t::sizes();
+            const auto            dim      = direction.dimension();
+            const auto            positive = direction_t::is_positive(direction);
         }
     };
 
-    inline static constexpr boundary_condition_t boundary_condition{};
-    inline static constexpr same_t               same{};
-    inline static constexpr finer_t              finer{};
-    inline static constexpr coarser_t            coarser{};
+    inline static constexpr boundary_t boundary{};
+    inline static constexpr same_t     same{};
+    inline static constexpr finer_t    finer{};
+    inline static constexpr coarser_t  coarser{};
 };
 
 } // namespace patches

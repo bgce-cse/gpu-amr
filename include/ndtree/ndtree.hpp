@@ -54,7 +54,7 @@ public:
     using neighbor_linear_index_variant_t = neighbor_variant_base_t<linear_index_t>;
     using patch_neighbors_t               = typename neighbor_utils_t::patch_neighbors_t;
     using halo_exchange_operator_impl_t =
-        utils::patches::halo_exchange_impl_t<patch_layout_t>;
+        utils::patches::halo_exchange_impl_t<patch_index_t, patch_layout_t>;
     static_assert(std::is_same_v<
                   typename neighbor_utils_t::neighbor_variant_t,
                   neighbor_patch_index_variant_t>);
@@ -378,7 +378,7 @@ public:
             const auto parent_id = patch_index_t::parent_of(node_id);
             parent_patch_idx.push_back(parent_id);
         }
-        std::sort(parent_patch_idx.begin(), parent_patch_idx.end());
+        std::ranges::sort(parent_patch_idx, std::less{});
         parent_patch_idx.erase(
             std::unique(parent_patch_idx.begin(), parent_patch_idx.end()),
             parent_patch_idx.end()

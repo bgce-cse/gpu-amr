@@ -88,7 +88,7 @@ int main()
 
     tree_t tree(100000); // Provide initial capacity
 
-    ndt::print::example_patch_print<Halo, M, N> printer("circle_tree");
+    amr::ndt::print::example_patch_print<Halo, M, N> printer("circle_tree");
 
     auto refine_criterion = [](const patch_index_t& idx)
     {

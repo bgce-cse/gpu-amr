@@ -115,7 +115,7 @@ concept TreeType =
 
 template<typename HEO>
 concept HaloExchangeOperator = requires{
-    HEO::none;
+    HEO::boundary;
     HEO::same;
     HEO::finer;
     HEO::coarser;
