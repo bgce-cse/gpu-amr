@@ -300,7 +300,7 @@ struct halo_exchange_impl_t
     using index_t        = typename patch_layout_t::index_t;
 
     static constexpr auto s_halo_width = patch_layout_t::halo_width();
-    static constexpr auto s_dimension  = patch_layout_t::dimension();
+    static constexpr auto s_dimension  = patch_layout_t::rank();
     static constexpr auto s_1d_fanout  = patch_index_t::fanout();
     static constexpr auto s_nd_fanout  = patch_index_t::nd_fanout();
     static constexpr auto s_sizes      = patch_layout_t::data_layout_t::sizes();

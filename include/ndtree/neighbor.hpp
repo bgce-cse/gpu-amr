@@ -341,7 +341,10 @@ public:
                     {
                         return neighbor_variant_t{
                             typename neighbor_variant_t::coarser{
-                                                                 neighbor.id, child_multiindex[d.index()] }
+                                                                 neighbor.id,
+                                                                 static_cast<typename neighbor_variant_t::fanout_t>(
+                                    child_multiindex[d.index()]
+                                ) }
                         };
                     }
                     else if constexpr (std::is_same_v<
