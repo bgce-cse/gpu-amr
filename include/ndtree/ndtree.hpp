@@ -540,7 +540,7 @@ public:
                         {
                             neighbor_patch_index_variant_t new_neighbor{
                                 typename neighbor_patch_index_variant_t::coarser{
-                                    parent_node_id }
+                                    parent_node_id,  }
                             };
                             m_neighbors[m_index_map.at(neighbor_data.ids[i])]
                                        [opposite_d.index()] = new_neighbor;
