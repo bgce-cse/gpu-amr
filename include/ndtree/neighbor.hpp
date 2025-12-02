@@ -343,7 +343,9 @@ public:
                             typename neighbor_variant_t::coarser{
                                                                  neighbor.id,
                                                                  static_cast<typename neighbor_variant_t::fanout_t>(
-                                    child_multiindex[d.index()]
+                                    compute_fine_boundary_linear_index(
+                                        child_multiindex, d.dimension()
+                                    )
                                 ) }
                         };
                     }

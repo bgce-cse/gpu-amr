@@ -347,11 +347,16 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            using direction_t         = std::remove_cvref_t<decltype(direction)>;
-            const auto dim            = direction.dimension();
-            const auto positive       = direction_t::is_positive(direction);
-            const auto section_size   = static_cast<index_t>(s_sizes[dim] / s_1d_fanout);
-            const auto section_idx    = static_cast<index_t>(idxs[dim] / section_size);
+            using direction_t = std::remove_cvref_t<decltype(direction)>;
+            [[maybe_unused]]
+            const auto dim = direction.dimension();
+            [[maybe_unused]]
+            const auto positive = direction_t::is_positive(direction);
+            [[maybe_unused]]
+            const auto section_size = static_cast<index_t>(s_sizes[dim] / s_1d_fanout);
+            [[maybe_unused]]
+            const auto section_idx = static_cast<index_t>(idxs[dim] / section_size);
+            [[maybe_unused]]
             const auto subsection_idx = idxs[dim] % section_size;
         }
     };
@@ -366,10 +371,13 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            using direction_t              = std::remove_cvref_t<decltype(direction)>;
-            static constexpr auto sizes    = patch_layout_t::data_layout_t::sizes();
-            const auto            dim      = direction.dimension();
-            const auto            positive = direction_t::is_positive(direction);
+            using direction_t = std::remove_cvref_t<decltype(direction)>;
+            [[maybe_unused]]
+            static constexpr auto sizes = patch_layout_t::data_layout_t::sizes();
+            [[maybe_unused]]
+            const auto dim = direction.dimension();
+            [[maybe_unused]]
+            const auto positive = direction_t::is_positive(direction);
         }
     };
 
