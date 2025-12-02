@@ -227,6 +227,7 @@ constexpr auto halo_apply_section_impl(
                     Halo_Exchange_Operator::coarser,
                     p_n.data(),
                     D,
+                    neighbor.dim_offset,
                     std::forward<decltype(args)>(args)...
                 );
             } },
@@ -368,6 +369,7 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto const& other_patch,
             [[maybe_unused]] auto const& direction,
             [[maybe_unused]] auto const& idxs,
+            [[maybe_unused]] auto const& dim_offset,
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
