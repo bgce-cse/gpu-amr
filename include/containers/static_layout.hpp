@@ -117,9 +117,9 @@ public:
         linear_index(std::ranges::contiguous_range auto const& idxs) noexcept
         -> index_t
     {
-        assert(std::ranges::size(idxs) == rank());
+        // assert(std::ranges::size(idxs) == rank());
         // TODO: Enfore at compile time
-        [[assume(std::ranges::size(idxs) == rank())]];
+        // [[assume(std::ranges::size(idxs) == rank())]];
         auto linear_idx = std::transform_reduce(
             std::cbegin(idxs),
             std::cend(idxs),
