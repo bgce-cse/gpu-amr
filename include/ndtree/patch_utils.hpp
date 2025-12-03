@@ -7,6 +7,7 @@
 #include "ndconcepts.hpp"
 #include "ndutils.hpp"
 #include "utility/compile_time_utility.hpp"
+#include "neighbor.hpp"
 #include <algorithm>
 
 namespace amr::ndt::utils
@@ -340,19 +341,82 @@ struct halo_exchange_impl_t
     struct finer_t
     {
         static constexpr auto operator()(
-            [[maybe_unused]] auto const&                               current_patch,
-            [[maybe_unused]] std::ranges::contiguous_range auto const& neighbor_patches,
-            [[maybe_unused]] auto const&                               direction,
-            [[maybe_unused]] auto const&                               idxs,
+            auto&                                              current_patch,
+            std::ranges::contiguous_range auto const&          neighbor_patches,
+            auto const&                                        direction,
+            auto const&                                        idxs,
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            using direction_t         = std::remove_cvref_t<decltype(direction)>;
-            const auto dim            = direction.dimension();
-            const auto positive       = direction_t::is_positive(direction);
-            const auto section_size   = static_cast<index_t>(s_sizes[dim] / s_1d_fanout);
-            const auto section_idx    = static_cast<index_t>(idxs[dim] / section_size);
-            const auto subsection_idx = idxs[dim] % section_size;
+            using direction_t = std::remove_cvref_t<decltype(direction)>;
+            using value_t = std::remove_cvref_t<decltype(current_patch[idxs])>;
+            
+            const auto dim      = direction.dimension();
+            const auto positive = direction_t::is_positive(direction);
+            
+            // Step 1: Determine which fine patch to read from based on perpendicular coordinates
+            auto compute_fine_patch_index = [&]() -> index_t
+            {
+                index_t patch_linear_idx = 0;
+                index_t stride = 1;
+                
+                for (index_t d = 0; d < s_dimension; ++d)
+                {
+                    // Determine which section of the boundary we're in for this dimension
+                    const auto section_size = s_sizes[d] / s_1d_fanout;
+                    const auto section_idx = (idxs[d] - s_halo_width) / section_size;
+                    
+                    patch_linear_idx += section_idx * stride;
+                    stride *= s_1d_fanout;
+                }
+                return patch_linear_idx;
+            };
+            
+            const auto fine_patch_idx = compute_fine_patch_index();
+            auto& fine_patch = neighbor_patches[fine_patch_idx].get();
+            
+            // Step 2: Compute the base "parent" position in the fine patch (same as same_t)
+            auto from_idxs = idxs;
+            from_idxs[dim] += positive ? -index_t{s_sizes[dim]} : index_t{s_sizes[dim]};
+            
+            // Step 3: Compute fanout^dimension child indices relative to from_idxs
+            // Each coarse cell at from_idxs corresponds to fanout^dimension fine cells
+            // We need to scale from_idxs by fanout to get the base fine position
+            auto base_fine_idxs = from_idxs;
+            for (index_t d = 0; d < s_dimension; ++d)
+            {
+                // Map coarse coordinate to fine coordinate
+                // from_idxs is in coarse space, multiply by fanout to get fine space
+                base_fine_idxs[d] = (from_idxs[d] - s_halo_width) * s_1d_fanout + s_halo_width;
+            }
+            
+            // Step 4: Average over all fanout^dimension fine cells
+            value_t sum{};
+            constexpr index_t num_fine_cells = []() constexpr {
+                index_t count = 1;
+                for (index_t d = 0; d < s_dimension; ++d)
+                    count *= s_1d_fanout;
+                return count;
+            }();
+            
+            // Iterate through all fine cell offsets (this is what you'll replace with your function)
+            for (index_t fine_offset = 0; fine_offset < num_fine_cells; ++fine_offset)
+            {
+                
+                // For now, compute multi-dimensional offset from linear offset
+                auto fine_cell_idxs = base_fine_idxs;
+                index_t remaining = fine_offset;
+                for (index_t d = 0; d < s_dimension; ++d)
+                {
+                    fine_cell_idxs[d] += remaining % s_1d_fanout;
+                    remaining /= s_1d_fanout;
+                }
+                
+                sum += fine_patch[fine_cell_idxs];
+            }
+            
+            // Step 5: Store averaged value
+            current_patch[idxs] = sum / static_cast<value_t>(num_fine_cells);
         }
     };
 
