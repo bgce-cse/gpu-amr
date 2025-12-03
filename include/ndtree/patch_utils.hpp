@@ -228,6 +228,7 @@ constexpr auto halo_apply_section_impl(
                     Halo_Exchange_Operator::coarser,
                     p_n.data(),
                     D,
+                    neighbor.dim_offset,
                     std::forward<decltype(args)>(args)...
                 );
             } },
@@ -427,13 +428,17 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto const& other_patch,
             [[maybe_unused]] auto const& direction,
             [[maybe_unused]] auto const& idxs,
+            [[maybe_unused]] auto const& dim_offset,
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            using direction_t              = std::remove_cvref_t<decltype(direction)>;
-            static constexpr auto sizes    = patch_layout_t::data_layout_t::sizes();
-            const auto            dim      = direction.dimension();
-            const auto            positive = direction_t::is_positive(direction);
+            using direction_t = std::remove_cvref_t<decltype(direction)>;
+            [[maybe_unused]]
+            static constexpr auto sizes = patch_layout_t::data_layout_t::sizes();
+            [[maybe_unused]]
+            const auto dim = direction.dimension();
+            [[maybe_unused]]
+            const auto positive = direction_t::is_positive(direction);
         }
     };
 

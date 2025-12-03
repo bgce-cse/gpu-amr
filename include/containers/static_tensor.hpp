@@ -91,8 +91,10 @@ public:
     [[nodiscard]]
     static constexpr auto
         linear_index(std::ranges::contiguous_range auto const& idxs) noexcept -> index_t
-        requires(std::ranges::size(idxs) == rank())
+        requires(std::is_same_v<std::ranges::range_value_t<decltype(idxs)>, index_t>)
     {
+        // TODO: Check at compile time
+        assert(std::ranges::size(idxs) == std::size_t{ rank() });
         return layout_t::linear_index(idxs);
     }
 
@@ -108,8 +110,9 @@ public:
     constexpr auto
         operator[](std::ranges::contiguous_range auto const& idxs) const noexcept
         -> const_reference
-        requires(std::ranges::size(idxs) == rank() && std::is_same_v<std::ranges::range_value_t<decltype(idxs)>, index_t>)
+        requires(std::is_same_v<std::ranges::range_value_t<decltype(idxs)>, index_t>)
     {
+        assert(std::ranges::size(idxs) == std::size_t{ rank() });
         return data_[linear_index(idxs)];
     }
 
