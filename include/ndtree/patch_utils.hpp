@@ -486,21 +486,90 @@ struct halo_exchange_impl_t
     struct coarser_t
     {
         static constexpr auto operator()(
-            [[maybe_unused]] auto&       self_patch,
-            [[maybe_unused]] auto const& other_patch,
-            [[maybe_unused]] auto const& direction,
-            [[maybe_unused]] auto const& idxs,
-            [[maybe_unused]] auto const& dim_offset,
+            auto&       self_patch,
+            auto const& other_patch,
+            auto const& direction,
+            auto const& dim_offset,      // Just a plain unsigned int!
+            auto const& idxs,
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
             using direction_t = std::remove_cvref_t<decltype(direction)>;
-            [[maybe_unused]]
-            static constexpr auto sizes = patch_layout_t::data_layout_t::sizes();
-            [[maybe_unused]]
-            const auto dim = direction.dimension();
-            [[maybe_unused]]
+            using value_t = std::remove_cvref_t<decltype(self_patch[idxs])>;
+            
+            const auto dim      = direction.dimension();
             const auto positive = direction_t::is_positive(direction);
+            
+            std::printf("=== coarser_t operator ===\n");
+            std::printf("Direction: dim=%zu, positive=%d\n", 
+                        static_cast<std::size_t>(dim), static_cast<int>(positive));
+            std::printf("Input idxs (fine halo): [");
+            for (index_t d = 0; d < s_dimension; ++d)
+                std::printf("%zu%s", static_cast<std::size_t>(idxs[d]), 
+                           d < s_dimension - 1 ? ", " : "");
+            std::printf("]\n");
+            std::printf("dim_offset=%u\n", static_cast<unsigned int>(dim_offset));
+            
+            // Step 1: Compute from_idxs
+            auto from_idxs = idxs;
+            from_idxs[dim] += positive ? -index_t{s_sizes[dim]} : index_t{s_sizes[dim]};
+            
+            std::printf("from_idxs (fine space, after offset): [");
+            for (index_t d = 0; d < s_dimension; ++d)
+                std::printf("%zu%s", static_cast<std::size_t>(from_idxs[d]), 
+                           d < s_dimension - 1 ? ", " : "");
+            std::printf("]\n");
+            
+            // Step 2: Map fine cell to coarse cell
+            auto coarse_idxs = from_idxs;
+            for (index_t d = 0; d < s_dimension; ++d)
+            {
+                const auto fine_coord = from_idxs[d] - s_halo_width;
+                const auto local_fine_coord = fine_coord % s_sizes[d];
+                const auto coarse_coord = local_fine_coord / s_1d_fanout;
+                
+                // In the exchange dimension, use dim_offset
+                // In other dimensions, compute from current position
+                index_t child_base_offset;
+                if (d == dim)
+                {
+                    // Use the provided dim_offset for the exchange dimension
+                    child_base_offset =  positive? 0 : (s_sizes[d] / s_1d_fanout) ;
+                }
+                else
+                {
+                    // Compute which section we're in for perpendicular dimensions
+                    // const auto section_idx = (idxs[d] - s_halo_width) / (s_sizes[d] / s_1d_fanout);
+                    child_base_offset = dim_offset * (s_sizes[d] / s_1d_fanout);
+                }
+                
+                coarse_idxs[d] = coarse_coord + child_base_offset + s_halo_width;
+                
+                std::printf("  coarse_idxs[%zu]: fine_coord=%zu, local=%zu, coarse=%zu, "
+                           "child_offset=%zu, final=%zu\n",
+                           static_cast<std::size_t>(d),
+                           static_cast<std::size_t>(fine_coord),
+                           static_cast<std::size_t>(local_fine_coord),
+                           static_cast<std::size_t>(coarse_coord),
+                           static_cast<std::size_t>(child_base_offset),
+                           static_cast<std::size_t>(coarse_idxs[d]));
+            }
+            
+            std::printf("coarse_idxs (coarse patch): [");
+            for (index_t d = 0; d < s_dimension; ++d)
+                std::printf("%zu%s", static_cast<std::size_t>(coarse_idxs[d]), 
+                           d < s_dimension - 1 ? ", " : "");
+            std::printf("]\n");
+            
+            const auto coarse_value = other_patch[coarse_idxs];
+            self_patch[idxs] = coarse_value;
+            
+            std::printf("Copied value: ");
+            if constexpr (std::is_arithmetic_v<value_t>)
+                std::printf("%g", static_cast<double>(coarse_value));
+            else
+                std::printf("<complex_type>");
+            std::printf("\n=== coarser_t done ===\n\n");
         }
     };
 

@@ -67,8 +67,8 @@ auto operator<<(std::ostream& os, cell const& c) -> std::ostream&
 
 int main()
 {
-    constexpr std::size_t N    = 2;
-    constexpr std::size_t M    = 4;
+    constexpr std::size_t N    = 4;
+    constexpr std::size_t M    = 8;
     constexpr std::size_t Halo = 2;
     // using linear_index_t    = std::uint32_t;
     [[maybe_unused]]
@@ -85,6 +85,7 @@ int main()
 
     // amr::ndt::print::structured_print p(std::cout);
     amr::ndt::print::example_halo_patch_print<Halo, M, N> p1("halo_amr_tree");
+    amr::ndt::print::example_patch_print<Halo, M, N> p2("halo_tree");
 
     std::cout << "Print 0\n";
     p1.print(tree, "_test_0.vtk");
@@ -125,12 +126,15 @@ int main()
     std::cout << "Print 1\n";
     // p.print(tree);
     p1.print(tree,"_test_1.vtk");
+    p2.print(tree,"_test_1.vtk");
 
     tree.halo_exchange_update();
 
     std::cout << "Print 2\n";
     // p.print(tree);
     p1.print(tree,"_test_2.vtk");
+    p2.print(tree,"_test_2.vtk");
+
 
 
     tree.reconstruct_tree(refine_criterion);
@@ -139,6 +143,7 @@ int main()
     std::cout << "Print 3\n";
     // p.print(tree);
     p1.print(tree,"_test_3.vtk");
+    p2.print(tree,"_test_3.vtk");
 
     for (std::size_t idx = 0; idx < tree.size(); idx++)
     {
@@ -157,10 +162,12 @@ int main()
     }
 
     p1.print(tree,"_test_4.vtk");
+    p2.print(tree,"_test_4.vtk");
 
     tree.halo_exchange_update();
 
     p1.print(tree,"_test_5.vtk");
+    p2.print(tree,"_test_5.vtk");
 
 
     tree.reconstruct_tree(refine_criterion);
@@ -168,6 +175,7 @@ int main()
     
     std::cout << "Print 4\n";
     p1.print(tree,"_test_6.vtk");
+    p2.print(tree,"_test_6.vtk");
     // p.print(tree);
 
 
@@ -187,10 +195,12 @@ int main()
         }
     }
     p1.print(tree,"_test_7.vtk");
+    p2.print(tree,"_test_7.vtk");
 
     tree.halo_exchange_update();
 
     p1.print(tree,"_test_8.vtk");
+    p2.print(tree,"_test_8.vtk");
 
 
     return EXIT_SUCCESS;
