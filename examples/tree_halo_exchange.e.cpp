@@ -3,7 +3,8 @@
 #include "morton/morton_id.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
-#include "ndtree/structured_print.hpp"
+// #include "ndtree/structured_print.hpp"
+#include "ndtree/print_tree_a.hpp" 
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iostream>
@@ -66,8 +67,8 @@ auto operator<<(std::ostream& os, cell const& c) -> std::ostream&
 
 int main()
 {
-    constexpr std::size_t N    = 4;
-    constexpr std::size_t M    = 6;
+    constexpr std::size_t N    = 2;
+    constexpr std::size_t M    = 4;
     constexpr std::size_t Halo = 2;
     // using linear_index_t    = std::uint32_t;
     [[maybe_unused]]
@@ -82,10 +83,11 @@ int main()
 
     tree_t tree(100000);
 
-    amr::ndt::print::structured_print p(std::cout);
+    // amr::ndt::print::structured_print p(std::cout);
+    amr::ndt::print::example_halo_patch_print<Halo, M, N> p1("halo_amr_tree");
 
     std::cout << "Print 0\n";
-    p.print(tree);
+    p1.print(tree, "_test_0.vtk");
 
     auto refine_criterion = [](const patch_index_t& idx)
     {
@@ -121,21 +123,75 @@ int main()
     }
 
     std::cout << "Print 1\n";
-    p.print(tree);
+    // p.print(tree);
+    p1.print(tree,"_test_1.vtk");
 
     tree.halo_exchange_update();
 
     std::cout << "Print 2\n";
-    p.print(tree);
+    // p.print(tree);
+    p1.print(tree,"_test_2.vtk");
 
-    for (int i = 0; i != 2; ++i)
+
+    tree.reconstruct_tree(refine_criterion);
+    tree.halo_exchange_update();
+    
+    std::cout << "Print 3\n";
+    // p.print(tree);
+    p1.print(tree,"_test_3.vtk");
+
+    for (std::size_t idx = 0; idx < tree.size(); idx++)
     {
-        tree.reconstruct_tree(refine_criterion);
-        tree.halo_exchange_update();
+        // Access S1 values (float)
+        auto& s1_patch = tree.template get_patch<S1>(idx);
+
+        for (index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
+             ++linear_idx)
+        {
+            if (amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
+            {
+                continue;
+            }
+            s1_patch[linear_idx] += 1;
+        }
     }
 
-    std::cout << "Print 3\n";
-    p.print(tree);
+    p1.print(tree,"_test_4.vtk");
+
+    tree.halo_exchange_update();
+
+    p1.print(tree,"_test_5.vtk");
+
+
+    tree.reconstruct_tree(refine_criterion);
+    tree.halo_exchange_update();
+    
+    std::cout << "Print 4\n";
+    p1.print(tree,"_test_6.vtk");
+    // p.print(tree);
+
+
+    for (std::size_t idx = 0; idx < tree.size(); idx++)
+    {
+        // Access S1 values (float)
+        auto& s1_patch = tree.template get_patch<S1>(idx);
+
+        for (index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
+             ++linear_idx)
+        {
+            if (amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
+            {
+                continue;
+            }
+            s1_patch[linear_idx] += 1;
+        }
+    }
+    p1.print(tree,"_test_7.vtk");
+
+    tree.halo_exchange_update();
+
+    p1.print(tree,"_test_8.vtk");
+
 
     return EXIT_SUCCESS;
 }
