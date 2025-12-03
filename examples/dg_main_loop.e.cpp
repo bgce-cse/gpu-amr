@@ -1,0 +1,252 @@
+#include "containers/container_utils.hpp"
+#include "containers/static_layout.hpp"
+#include "containers/static_shape.hpp"
+#include "containers/static_vector.hpp"
+#include "dg_helpers/basis.hpp"
+#include "dg_helpers/equations.hpp"
+#include "dg_helpers/equations/advection.hpp"
+#include "dg_helpers/globals.hpp"
+#include "dg_helpers/rhs.hpp"
+#include "dg_helpers/surface.hpp"
+#include "dg_helpers/time.hpp"
+#include "generated_config.hpp"
+#include "morton/morton_id.hpp"
+#include "ndtree/ndhierarchy.hpp"
+#include "ndtree/ndtree.hpp"
+#include "ndtree/patch_layout.hpp"
+#include "ndtree/print_dg_tree.hpp"
+#include "ndtree/print_dg_tree_advanced.hpp"
+#include "ndtree/print_tree_a.hpp"
+#include "utility/random.hpp"
+#include <cstddef>
+#include <iomanip>
+#include <iomanip> // for std::setw, std::setprecision
+#include <iostream>
+#include <limits> // for std::numeric_limits
+#include <random>
+#include <tuple>
+
+using namespace amr::equations;
+using namespace amr::Basis;
+using namespace amr::containers;
+using namespace amr::config;
+using namespace amr::global;
+using namespace amr::time_integration;
+
+struct S1
+{
+    using dof_value_t = static_vector<double, DOFs>;
+    using type = typename utils::types::tensor::hypercube_t<dof_value_t, Order, Dim>;
+
+    static constexpr auto index() noexcept -> std::size_t
+    {
+        return 0;
+    }
+
+    type value;
+};
+
+struct S2
+{
+    using dof_value_t = static_vector<double, DOFs>;
+    using dof_t = typename utils::types::tensor::hypercube_t<dof_value_t, Order, Dim>;
+    using type  = static_vector<dof_t, Dim>;
+
+    static constexpr auto index() noexcept -> std::size_t
+    {
+        return 1;
+    }
+
+    type value;
+};
+
+struct S3
+{
+    using type = static_vector<double, Dim>;
+
+    static constexpr auto index() noexcept -> std::size_t
+    {
+        return 2;
+    }
+
+    type value;
+};
+
+// Marker cell type for tree AMR with DG data (DOF tensor, flux, center)
+struct MarkerCell
+{
+    using deconstructed_types_map_t = std::tuple<S1, S2, S3>;
+
+    MarkerCell() = default;
+
+    auto data_tuple() -> auto&
+    {
+        return m_data;
+    }
+
+    auto data_tuple() const -> auto const&
+    {
+        return m_data;
+    }
+
+    deconstructed_types_map_t m_data;
+};
+
+auto operator<<(std::ostream& os, MarkerCell const&) -> std::ostream&
+{
+    return os << "S1(DOF), S2(Flux), S3(Center)";
+}
+
+/**
+ * @brief DG Solver with Adaptive Mesh Refinement
+ *
+ * Demonstrates:
+ * - Configuration-driven equation and mesh setup
+ * - Tree-based AMR with Morton indexing
+ * - Per-cell DOF storage and time-stepping
+ * - RHS evaluation using finite volume/DG approach
+ * - VTK output of DG field data
+ */
+int main()
+{
+    std::cout << "====================================\n";
+    std::cout << "  DG Solver - AMR Main Loop\n";
+    std::cout << "====================================\n\n";
+
+    // Configuration
+    std::cout << "Configuration:\n";
+    std::cout << "  Order=" << Order << ", Dim=" << Dim << ", DOFs=" << DOFs << "\n";
+    std::cout << "  Equation=" << Equation << "\n\n";
+
+    // Initialize basis and equation
+    Basis<Order, Dim> basis(0.0, GridSize);
+    auto              eq      = make_configured_equation();
+    auto              kernels = amr::global::FaceKernels<Order, Dim>(basis);
+
+    // Setup tree mesh
+    constexpr std::size_t PatchSize = 16;
+    constexpr std::size_t HaloWidth = 1;
+    constexpr std::size_t MaxDepth  = 1;
+
+    using shape_t        = static_shape<PatchSize, PatchSize>;
+    using layout_t       = static_layout<shape_t>;
+    using patch_index_t  = amr::ndt::morton::morton_id<MaxDepth, Dim>;
+    using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, HaloWidth>;
+    using tree_t = amr::ndt::tree::ndtree<MarkerCell, patch_index_t, patch_layout_t>;
+
+    tree_t tree(10000);
+    using patch_container_t = decltype(tree.template get_patch<S1>(0).data());
+    auto integrator         = make_configured_time_integrator<patch_container_t>();
+
+    std::cout << "Tree: MaxDepth=" << MaxDepth << ", Patches=" << tree.size() << "\n\n";
+
+    // Initialize DG patches for each leaf
+    // Populate leaf data
+    for (std::size_t idx = 0; idx < tree.size(); ++idx)
+    {
+        auto& dof_patch          = tree.template get_patch<S1>(idx);
+        auto& center_coord_patch = tree.template get_patch<S3>(idx);
+
+        auto patch_id                    = patch_index_t(idx);
+        auto [patch_coords, patch_level] = patch_index_t::decode(patch_id.id());
+        double patch_level_size          = 1.0 / static_cast<double>(1u << patch_level);
+        double cell_size = patch_level_size / static_cast<double>(PatchSize);
+
+        for (std::size_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
+             ++linear_idx)
+        {
+            if (amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
+                continue;
+
+            // Convert linear index to local coordinates (dimension-generic)
+            auto coords_with_halo =
+                linear_to_local_coords<Dim, PatchSize, HaloWidth>(linear_idx);
+            auto local_indices = remove_halo<Dim, HaloWidth>(coords_with_halo);
+
+            // Compute global cell center using generic function
+            auto cell_center =
+                compute_cell_center<PatchSize, HaloWidth, Dim>(patch_id, local_indices);
+
+            center_coord_patch[linear_idx] = cell_center;
+            dof_patch[linear_idx]          = amr::equations::interpolate_initial_dofs(
+                *eq, cell_center, cell_size, basis
+            );
+        }
+    }
+
+    try
+    {
+        ndt::print::dg_tree_printer_advanced<Dim, Order, PatchSize, HaloWidth, DOFs>
+            advanced_printer("dg_tree_advanced_timestep");
+        std::cout << "Advanced printer created successfully\n";
+        advanced_printer.template print<S1>(tree, "_0.vtk");
+        std::cout << "Advanced printer completed\n";
+
+        // Print debug info for DOF inspection
+        // advanced_printer.template print_debug_info<S1>(tree);
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Exception caught: " << e.what() << "\n";
+    }
+
+    // Time-stepping loop
+    double time     = 0.0;
+    double dt       = 0.01; // TODO: CFL condition based on max eigenvalue
+    int    timestep = 0;
+
+    std::cout << "\n====================================\n";
+    std::cout << "  Starting Time Integration\n";
+    std::cout << "====================================\n\n";
+
+    while (time < EndTime)
+    {
+        // Apply time integrator to each patch in the tree
+        for (std::size_t idx = 0; idx < tree.size(); ++idx)
+        {
+            auto& dof_patch  = tree.template get_patch<S1>(idx);
+            auto& flux_patch = tree.template get_patch<S2>(idx);
+
+            auto patch_id                    = patch_index_t(idx);
+            auto [patch_coords, patch_level] = patch_index_t::decode(patch_id.id());
+            double patch_level_size = 1.0 / static_cast<double>(1u << patch_level);
+            double cell_size        = patch_level_size / static_cast<double>(PatchSize);
+
+            auto residual_callback = [&](patch_container_t&       rhs_dofs,
+                                         const patch_container_t& current_dofs,
+                                         double                   t)
+            {
+                amr::rhs::evaluate_rhs<Order, Dim, PatchSize, HaloWidth, DOFs>(
+                    *eq,
+                    basis,
+                    current_dofs,      // whole patch
+                    flux_patch.data(), // whole flux patch
+                    rhs_dofs,          // whole RHS patch
+                    cell_size,
+                    kernels,
+                    t,
+                    patch_layout_t{} // patch layout instance
+                );
+            };
+
+            // pass the entire patch container to the integrator
+            integrator->step(residual_callback, dof_patch.data(), time, dt);
+
+            time += dt;
+            timestep++;
+
+            if (timestep % 10 == 0)
+            {
+                std::cout << "Timestep " << timestep << ", time = " << time << "\n";
+            }
+
+            // TODO: Adaptive mesh refinement every N steps
+            // TODO: Adaptive time stepping based on CFL
+            // TODO: Periodic output to VTK file
+        }
+
+        std::cout << "\nTime integration completed at t = " << time << "\n";
+
+        return 0;
+    }
+}

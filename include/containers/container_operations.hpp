@@ -14,6 +14,11 @@ namespace amr::containers
 namespace detail
 {
 
+// Helper to check if scalar can be converted to vector's value_type
+template <typename T, typename Scalar>
+concept ScalarCompatibleWith =
+    std::is_arithmetic_v<Scalar> && std::convertible_to<Scalar, T>;
+
 template <typename T1, typename T2>
     requires concepts::Vector<T1> || concepts::Vector<T2>
 struct common_type;
@@ -42,13 +47,18 @@ struct common_type<V1, V2>
     using type = V2;
 };
 
+// Modified: Handle arithmetic types that are compatible with the vector's value_type
 template <concepts::Vector V, typename T>
     requires std::is_arithmetic_v<T>
 struct common_type<V, T>
 {
-    static_assert(std::is_same_v<
-                  typename V::value_type,
-                  std::common_type_t<typename V::value_type, T>>);
+    // Check if T is compatible with V's value_type (allowing nested vectors)
+    // If V::value_type is itself a Vector, we need recursive compatibility
+    static_assert(
+        std::convertible_to<T, typename V::value_type> ||
+            concepts::Vector<typename V::value_type>,
+        "Scalar type must be convertible to vector's value type"
+    );
     using type = V;
 };
 
@@ -56,9 +66,11 @@ template <typename T, concepts::Vector V>
     requires std::is_arithmetic_v<T>
 struct common_type<T, V>
 {
-    static_assert(std::is_same_v<
-                  typename V::value_type,
-                  std::common_type_t<typename V::value_type, T>>);
+    static_assert(
+        std::convertible_to<T, typename V::value_type> ||
+            concepts::Vector<typename V::value_type>,
+        "Scalar type must be convertible to vector's value type"
+    );
     using type = V;
 };
 

@@ -907,13 +907,10 @@ public:
     }
 
     constexpr auto halo_exchange_update() noexcept -> void
+
     {
         for (linear_index_t i = 0; i != m_size; ++i)
         {
-            // TODO: TODO
-            utils::patches::halo_apply<halo_exchange_operator_impl_t, patch_direction_t>(
-                *this, i
-            );
         }
     }
 
