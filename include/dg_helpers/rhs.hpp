@@ -104,67 +104,89 @@ template <
 inline void evaluate_rhs(
     const EquationType&               eq,
     [[maybe_unused]] const BasisType& basis,
-    const DOFTensorType&              dof_patch,
+    DOFTensorType&                    dof_patch,
     FluxVectorType&                   flux_patch,
-    [[maybe_unused]] DOFTensorType&   rhs_patch,
+    DOFTensorType&                    rhs_patch,
     [[maybe_unused]] double           cell_size,
     const KernelsType&                kernels,
     [[maybe_unused]] double&          t,
     const PatchLayoutType&            patch_layout_t
 )
 {
-    using direction_t   = amr::ndt::neighbors::direction<Dim>;
-    using data_layout_t = typename PatchLayoutType::data_layout_t;
-    using flux_vector_t = std::decay_t<decltype(flux_patch[0])>;
-    using size_type     = typename flux_vector_t::size_type;
+    using direction_t     = amr::ndt::neighbors::direction<Dim>;
+    using padded_layout_t = typename PatchLayoutType::padded_layout_t;
+    using flux_vector_t   = std::decay_t<decltype(flux_patch[0])>;
+    using size_type       = typename flux_vector_t::size_type;
 
-    // Loop over each cell in the patch
+    // Initialize RHS buffer to zero for all cells (interior and halo)
     for (std::size_t linear_idx = 0; linear_idx < patch_layout_t.flat_size();
          ++linear_idx)
     {
+        rhs_patch[linear_idx] = std::decay_t<decltype(rhs_patch[0])>{};
+    }
+
+    // Loop over each cell in the patch (including halos)
+    for (std::size_t linear_idx = 0; linear_idx < patch_layout_t.flat_size();
+         ++linear_idx)
+    {
+        if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutType>(linear_idx))
+        {
+            // std::cout << "  [HALO] Skipping halo cell at linear_idx=" << linear_idx
+            //           << "\n";
+            continue;
+        }
+
+        // std::cout << "  [INTERIOR] Processing interior cell at linear_idx=" <<
+        // linear_idx;
+
+        // Get cell coordinates for display
+        // auto cell_coords = padded_layout_t::multi_index(
+        //     static_cast<typename padded_layout_t::index_t>(linear_idx)
+        // );
+        // std::cout << " coords=[" << cell_coords[0];
+        // for (std::size_t i = 1; i < Dim; ++i)
+        //     std::cout << "," << cell_coords[i];
+        // std::cout << "]\n";
+
         // Compute flux for current cell
         eq.evaluate_flux(dof_patch[linear_idx], flux_patch[linear_idx]);
 
         // Loop over neighbor directions
         for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
         {
-            auto neighbor_coords = data_layout_t::multi_index(
-                static_cast<typename data_layout_t::index_t>(linear_idx)
+            // Use padded_layout_t for coordinate conversion (12×12)
+            auto neighbor_coords = padded_layout_t::multi_index(
+                static_cast<typename padded_layout_t::index_t>(linear_idx)
             );
+
             const std::size_t dim  = d.dimension();
             const int         sign = direction_t::is_negative(d) ? 0 : 1;
 
             neighbor_coords[dim] += (direction_t::is_negative(d) ? -1 : 1);
 
-            // Check if neighbor is within patch interior
-            bool in_bounds = true;
-            for (std::size_t i = 0; i < Dim; ++i)
-            {
-                if (neighbor_coords[i] < 0 ||
-                    neighbor_coords[i] >= static_cast<int>(PatchSize))
-                {
-                    in_bounds = false;
-                    break;
-                }
-            }
+            // Convert back to linear index using padded_layout_t
+            auto neighbor_linear_idx = padded_layout_t::linear_index(neighbor_coords);
 
-            if (!in_bounds) continue;
+            // Bounds check using padded layout size
+            if (neighbor_linear_idx >= patch_layout_t.flat_size()) continue;
 
-            auto neighbor_linear_idx = data_layout_t::linear_index(neighbor_coords);
-
-            // Cast dim to the size_type of the flux vector to avoid conversion warnings
             const auto dim_idx = static_cast<size_type>(dim);
 
-            // Project to faces using dimension dispatch
-            // flux_patch[linear_idx] is S2::type = static_vector<dof_t, Dim>
-            // flux_patch[linear_idx][dim_idx] is dof_t = the flux tensor for dimension
-            // 'dim'
-            [[maybe_unused]]
+            // std::string direction_str = (direction_t::is_negative(d) ? "-" : "+");
+            // std::cout << "    [PROJECTION] dim=" << dim << ", direction=" <<
+            // direction_str
+            //           << ", neighbor_coords=[" << neighbor_coords[0];
+            // for (std::size_t i = 1; i < Dim; ++i)
+            //     std::cout << "," << neighbor_coords[i];
+            // std::cout << "], neighbor_idx=" << neighbor_linear_idx << "\n"; // Project
+            // to faces using dimension dispatch flux_patch[linear_idx] is S2::type =
+            // static_vector<dof_t, Dim> flux_patch[linear_idx][dim_idx] is dof_t = the
+            // flux tensor for dimension 'dim'
+
             auto cell_data = dispatch_project_to_faces<Dim>(
                 kernels, dof_patch[linear_idx], flux_patch[linear_idx][dim_idx], sign, dim
             );
 
-            [[maybe_unused]]
             auto neighbor_data = dispatch_project_to_faces<Dim>(
                 kernels,
                 dof_patch[neighbor_linear_idx],
@@ -172,12 +194,28 @@ inline void evaluate_rhs(
                 !sign,
                 dim
             );
-
+            [[maybe_unused]]
+            double curr_eigenval{};
+            auto   face_du = amr::surface::evaluate_face_integral(
+                curr_eigenval,
+                eq,
+                kernels,
+                std::get<0>(cell_data),
+                std::get<0>(neighbor_data),
+                std::get<1>(cell_data),
+                std::get<1>(neighbor_data),
+                dim,
+                sign,
+                0.1 // edge surface
+            );
             // TODO: Compute numerical flux and update RHS
             // eq.numerical_flux(cell_data, neighbor_data, rhs_patch[linear_idx], dim,
             // sign);
+
+            rhs_patch[linear_idx] = rhs_patch[linear_idx] + face_du;
         }
     }
+    dof_patch = rhs_patch;
 }
 
 } // namespace amr::rhs

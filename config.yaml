@@ -4,13 +4,13 @@
 # Simulation parameters
 simulation:
   end_time: 4.0                    # Total simulation time
-  grid_elements: 16                # Number of elements per dimension
+  grid_elements: 10                # Number of elements per dimension
   grid_size: 1.0                   # Physical domain size
   offset: [0.0, 0.0]               # Domain offset
 
 # Solver configuration
 solver:
-  order: 1                          # Polynomial order for basis functions (Order)
+  order: 2                        # Polynomial order for basis functions (Order)
   courant: 0.5                      # CFL number for time stepping
   timeintegrator: SSPRK2            # Time integration scheme
 
@@ -28,5 +28,5 @@ output:
 # DOFs depends on equation type:
 # - advection: variable (1, 2, 3, etc.)
 # - euler: 4 (2D) or 5 (3D)
-Dim: 2                              # Spatial dimension (2D or 3D)
+Dim: 2                            # Spatial dimension (2D or 3D)
 DOFs: 3                             # Degrees of freedom per cell (3 for advection with multiple waves)

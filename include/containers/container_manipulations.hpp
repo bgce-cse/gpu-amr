@@ -315,6 +315,7 @@ constexpr auto contract(Tensor const& tensor, Vec const& vec) noexcept
     using result_hypercube_t = utils::types::tensor::hypercube_t<value_t, size, rank - 1>;
     auto result              = result_hypercube_t::zero();
     // Iterate through result indices and sum over the contracted dimension
+
     {
         auto result_idx = typename result_hypercube_t::multi_index_t{};
         do
@@ -353,6 +354,20 @@ constexpr auto contract(Tensor const& tensor, Vec const& vec) noexcept
     }
     return result;
 }
+
+template <typename Tensor, typename Vec>
+constexpr auto prepend_shape(Tensor const&, Vec const& vec)
+{
+    constexpr auto                    rank      = Tensor::rank();
+    constexpr auto                    size      = Vec::elements();
+    auto                              old_sizes = Tensor::sizes();
+    std::array<std::size_t, rank + 1> new_sizes{};
+    new_sizes[0] = size;
+    for (std::size_t i = 0; i < rank; ++i)
+        new_sizes[i + 1] = old_sizes[i];
+    return new_sizes;
+}
+
 } // namespace amr::containers::manipulators
 
 #endif // AMR_INCLUDED_CONTAINER_MANIPULATIONS

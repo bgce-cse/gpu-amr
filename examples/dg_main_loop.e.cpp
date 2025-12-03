@@ -19,6 +19,7 @@
 #include "ndtree/print_tree_a.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
+#include <fstream>
 #include <iomanip>
 #include <iomanip> // for std::setw, std::setprecision
 #include <iostream>
@@ -124,7 +125,7 @@ int main()
     auto              kernels = amr::global::FaceKernels<Order, Dim>(basis);
 
     // Setup tree mesh
-    constexpr std::size_t PatchSize = 16;
+    constexpr std::size_t PatchSize = GridElements;
     constexpr std::size_t HaloWidth = 1;
     constexpr std::size_t MaxDepth  = 1;
 
@@ -184,69 +185,115 @@ int main()
 
         // Print debug info for DOF inspection
         // advanced_printer.template print_debug_info<S1>(tree);
+
+        // Time-stepping loop
+        double time     = 0.0;
+        double dt       = 0.1; // TODO: CFL condition based on max eigenvalue
+        int    timestep = 0;
+
+        std::vector<std::string> vtk_files;
+        std::vector<double>      times;
+
+        std::cout << "\n====================================\n";
+        std::cout << "  Starting Time Integration\n";
+        std::cout << "====================================\n\n";
+
+        while (time < EndTime)
+        {
+            // Apply time integrator to each patch in the tree
+            for (std::size_t idx = 0; idx < tree.size(); ++idx)
+            {
+                auto& dof_patch  = tree.template get_patch<S1>(idx);
+                auto& flux_patch = tree.template get_patch<S2>(idx);
+
+                auto patch_id                    = patch_index_t(idx);
+                auto [patch_coords, patch_level] = patch_index_t::decode(patch_id.id());
+                double patch_level_size = 1.0 / static_cast<double>(1u << patch_level);
+                double cell_size = patch_level_size / static_cast<double>(PatchSize);
+
+                auto residual_callback = [&](patch_container_t&       rhs_dofs,
+                                             const patch_container_t& current_dofs,
+                                             double                   t)
+                {
+                    amr::rhs::evaluate_rhs<Order, Dim, PatchSize, HaloWidth, DOFs>(
+                        *eq,
+                        basis,
+                        current_dofs,      // whole patch
+                        flux_patch.data(), // whole flux patch
+                        rhs_dofs,          // whole RHS patch
+                        cell_size,
+                        kernels,
+                        t,
+                        patch_layout_t{} // patch layout instance
+                    );
+                };
+
+                // pass the entire patch container to the integrator
+
+                // Debug: capture DOF sum before step
+                double dof_sum_before = 0.0;
+                for (const auto& elem : dof_patch.data())
+                {
+                    for (const auto& inner : elem)
+                    {
+                        dof_sum_before += inner[0]; // first DOF component
+                    }
+                }
+
+                integrator->step(residual_callback, dof_patch.data(), time, dt);
+
+                // Debug: capture DOF sum after step
+                double dof_sum_after = 0.0;
+                for (const auto& elem : dof_patch.data())
+                {
+                    for (const auto& inner : elem)
+                    {
+                        dof_sum_after += inner[0]; // first DOF component
+                    }
+                }
+
+                if (timestep % 10 == 1)
+                {
+                    std::cout << "  [DEBUG STEP] Before: " << dof_sum_before
+                              << " After: " << dof_sum_after
+                              << " Delta: " << (dof_sum_after - dof_sum_before) << "\n";
+                }
+                if (timestep % 10 == 0)
+                {
+                    std::cout << "Timestep " << timestep << ", time = " << time << "\n";
+                }
+
+                // TODO: Adaptive mesh refinement every N steps
+                // TODO: Adaptive time stepping based on CFL
+            };
+            if (timestep % 10 == 9)
+            {
+                // Construct the filename for this timestep
+                std::string vtk_filename = "vtk_output/dg_tree_advanced_timestep_" +
+                                           std::to_string(timestep) + ".vtk";
+
+                // Print the VTK file
+                advanced_printer.template print<S1>(
+                    tree, "_" + std::to_string(timestep) + ".vtk"
+                );
+
+                // Store the filename relative to the .pvd file
+                vtk_files.push_back(
+                    "dg_tree_advanced_timestep_" + std::to_string(timestep) + ".vtk"
+                );
+                times.push_back(time);
+            }
+
+            // Advance time
+            time += dt;
+            ++timestep;
+        }
     }
+
     catch (const std::exception& e)
     {
         std::cerr << "Exception caught: " << e.what() << "\n";
     }
 
-    // Time-stepping loop
-    double time     = 0.0;
-    double dt       = 0.01; // TODO: CFL condition based on max eigenvalue
-    int    timestep = 0;
-
-    std::cout << "\n====================================\n";
-    std::cout << "  Starting Time Integration\n";
-    std::cout << "====================================\n\n";
-
-    while (time < EndTime)
-    {
-        // Apply time integrator to each patch in the tree
-        for (std::size_t idx = 0; idx < tree.size(); ++idx)
-        {
-            auto& dof_patch  = tree.template get_patch<S1>(idx);
-            auto& flux_patch = tree.template get_patch<S2>(idx);
-
-            auto patch_id                    = patch_index_t(idx);
-            auto [patch_coords, patch_level] = patch_index_t::decode(patch_id.id());
-            double patch_level_size = 1.0 / static_cast<double>(1u << patch_level);
-            double cell_size        = patch_level_size / static_cast<double>(PatchSize);
-
-            auto residual_callback = [&](patch_container_t&       rhs_dofs,
-                                         const patch_container_t& current_dofs,
-                                         double                   t)
-            {
-                amr::rhs::evaluate_rhs<Order, Dim, PatchSize, HaloWidth, DOFs>(
-                    *eq,
-                    basis,
-                    current_dofs,      // whole patch
-                    flux_patch.data(), // whole flux patch
-                    rhs_dofs,          // whole RHS patch
-                    cell_size,
-                    kernels,
-                    t,
-                    patch_layout_t{} // patch layout instance
-                );
-            };
-
-            // pass the entire patch container to the integrator
-            integrator->step(residual_callback, dof_patch.data(), time, dt);
-
-            time += dt;
-            timestep++;
-
-            if (timestep % 10 == 0)
-            {
-                std::cout << "Timestep " << timestep << ", time = " << time << "\n";
-            }
-
-            // TODO: Adaptive mesh refinement every N steps
-            // TODO: Adaptive time stepping based on CFL
-            // TODO: Periodic output to VTK file
-        }
-
-        std::cout << "\nTime integration completed at t = " << time << "\n";
-
-        return 0;
-    }
+    return 0;
 }
