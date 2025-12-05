@@ -233,9 +233,7 @@ int main()
         while (time < EndTime)
         {
             // Initialize halo cells with periodic boundary conditions
-            std::cout << "Initializing halo cells with periodic boundary conditions...\n";
             tree.halo_exchange_update();
-            std::cout << "Halo cells initialized.\n\n";
             // Apply time integrator to each patch in the tree
             for (std::size_t idx = 0; idx < tree.size(); ++idx)
             {
@@ -263,14 +261,11 @@ int main()
                 };
 
                 integrator->step(residual_callback, dof_patch.data(), time, dt);
-
-                // std::cout << "flnqiruengqlvirjbnvlobiquwgvlowrubvwloirtubholwrtu "
-                //           << dof_patch.data() << "\n";
             }
 
             // Update halo cells with periodic boundary conditions
             tree.halo_exchange_update();
-            if (true)
+            if (timestep % 5 == 4)
             {
                 // Print the VTU file
                 time_extension = "_t" + std::to_string(timestep) + ".vtk";

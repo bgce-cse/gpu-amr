@@ -114,17 +114,13 @@ public:
 
     [[nodiscard]]
     constexpr static auto
-        linear_index(std::ranges::contiguous_range auto const& idxs) noexcept
-        -> index_t
+        linear_index(std::ranges::contiguous_range auto const& idxs) noexcept -> index_t
     {
         // assert(std::ranges::size(idxs) == rank());
         // TODO: Enfore at compile time
         // [[assume(std::ranges::size(idxs) == rank())]];
         auto linear_idx = std::transform_reduce(
-            std::cbegin(idxs),
-            std::cend(idxs),
-            std::cbegin(s_strides),
-            index_t{}
+            std::cbegin(idxs), std::cend(idxs), std::cbegin(s_strides), index_t{}
         );
         assert(linear_idx < elements());
         if constexpr (std::is_signed_v<index_t>)

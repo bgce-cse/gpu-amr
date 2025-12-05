@@ -107,8 +107,8 @@ inline void evaluate_rhs(
     [[maybe_unused]] const BasisType& basis,
     DOFTensorType&                    dof_patch,
     FluxVectorType&                   flux_patch,
-    DOFTensorType&                    rhs_patch,
-    CenterType&                       cell_center,
+    DOFTensorType&                    patch_update,
+    [[maybe_unused]] CenterType&      cell_center,
     const KernelsType&                kernels,
     [[maybe_unused]] double&          dt,
     const PatchLayoutType&            patch_layout_t
@@ -134,42 +134,51 @@ inline void evaluate_rhs(
         // Loop over neighbor directions
         for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
         {
-            // Use padded_layout_t for coordinate conversion (12×12)
-            auto neighbor_coords = padded_layout_t::multi_index(
+            // Convert current linear index to multi-index using padded_layout_t
+            auto current_coords = padded_layout_t::multi_index(
                 static_cast<typename padded_layout_t::index_t>(linear_idx)
             );
+            // TODO:fix this shit
+            //  Swap dimension interpretation: layout dim 0 → user dim 1 (Y), layout dim 1
+            //  → user dim 0 (X)
+            const std::size_t layout_dim = d.dimension();
+            const std::size_t user_dim   = (layout_dim == 0) ? 1 : 0; // Swap dimensions
+            const int         sign       = direction_t::is_negative(d) ? 0 : 1;
 
-            const std::size_t dim  = d.dimension();
-            const int         sign = direction_t::is_negative(d) ? 0 : 1;
+            // Compute neighbor coordinates
+            auto neighbor_coords = current_coords;
+            neighbor_coords[layout_dim] += (direction_t::is_negative(d) ? -1 : 1);
 
-            neighbor_coords[dim] += (direction_t::is_negative(d) ? -1 : 1);
-
-            // Convert back to linear index using padded_layout_t
+            // Convert neighbor coordinates back to linear index using padded_layout_t
             auto neighbor_linear_idx = padded_layout_t::linear_index(neighbor_coords);
 
             // Bounds check using padded layout size
-            if (neighbor_linear_idx >= patch_layout_t.flat_size()) continue;
+            if (neighbor_linear_idx >= padded_layout_t::flat_size()) continue;
 
-            const auto dim_idx = static_cast<size_type>(dim);
-            std::cout << "Processing cell " << cell_center[linear_idx]
-                      << " neighbor in dim " << dim << " sign " << sign
-                      << " neighbor idx " << cell_center[neighbor_linear_idx]
-                      << "cell dofs " << dof_patch[linear_idx] << " neighbor dofs "
-                      << dof_patch[neighbor_linear_idx] << "\n";
+            const auto dim_idx = static_cast<size_type>(layout_dim);
+
             auto cell_data = dispatch_project_to_faces<Dim>(
-                kernels, dof_patch[linear_idx], flux_patch[linear_idx][dim_idx], sign, dim
+                kernels,
+                dof_patch[linear_idx],
+                flux_patch[linear_idx][dim_idx],
+                sign,
+                user_dim
             );
-
+            // std::cout << "  cell projected of cell " << cell_center[linear_idx]
+            //           << " projected dof " << std::get<0>(cell_data) << " projected
+            //           flux "
+            //           << std::get<1>(cell_data) << "\n";
             auto neighbor_data = dispatch_project_to_faces<Dim>(
                 kernels,
                 dof_patch[neighbor_linear_idx],
                 flux_patch[neighbor_linear_idx][dim_idx],
                 !sign,
-                dim
+                user_dim
             );
-            std::cout << "  cell projected of cell " << cell_center[linear_idx]
-                      << " projected dof " << std::get<0>(neighbor_data)
-                      << " projected flux " << std::get<1>(neighbor_data) << "\n";
+            // std::cout << "  cell projected of neigh " <<
+            // cell_center[neighbor_linear_idx]
+            //           << " projected dof " << std::get<0>(neighbor_data)
+            //           << " projected flux " << std::get<1>(neighbor_data) << "\n";
             [[maybe_unused]]
             double curr_eigenval = 1.0;
             auto   face_du       = amr::surface::evaluate_face_integral(
@@ -180,15 +189,18 @@ inline void evaluate_rhs(
                 std::get<0>(neighbor_data),
                 std::get<1>(cell_data),
                 std::get<1>(neighbor_data),
-                dim,
+                layout_dim,
                 sign,
                 0.1 // edge surface
             );
-            // TODO: Compute numerical flux and update RHS
-            // eq.numerical_flux(cell_data, neighbor_data, rhs_patch[linear_idx], dim,
-            // sign);
 
-            rhs_patch[linear_idx] = rhs_patch[linear_idx] + face_du;
+            // std::cout << "  face contribution to du/dt for cell "
+            //           << cell_center[linear_idx] << " from neighbor in dim " <<
+            //           user_dim
+            //           << " sign " << sign << ": " << face_du << "\n";
+            patch_update[linear_idx] = patch_update[linear_idx] + face_du;
+            // std::cout << "  updated du/dt for cell " << cell_center[linear_idx] << ": "
+            //           << patch_update[linear_idx] << "\n";
         }
     }
 }

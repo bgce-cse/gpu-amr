@@ -58,8 +58,8 @@ double rusanov(
                     ((flux_face + flux_face_neigh) * 0.5 +
                      (dofs_face - dofs_face_neigh) * (0.5 * maxeigenval)) *
                     surface;
-    std::cout << "direction=" << direction << " numericalflux = " << numericalflux
-              << "\n";
+    // std::cout << "direction=" << direction << " numericalflux = " << numericalflux
+    //           << "\n";
     return maxeigenval;
 }
 
@@ -103,16 +103,16 @@ ResultTensor outer_product(const Vec1& a, const Vec2& b)
 // -----------------------------
 template <typename EquationType, StaticTensor Tensor>
 auto evaluate_face_integral(
-    double&                      maxeigenval,
-    const EquationType&          eq,
-    const auto&                  kernels,
-    const Tensor&                dofs_face,
-    const Tensor&                dofs_face_neigh,
-    const Tensor&                flux_face,
-    const Tensor&                flux_face_neigh,
-    [[maybe_unused]] std::size_t direction,
-    int                          dir,
-    double                       surface
+    double&             maxeigenval,
+    const EquationType& eq,
+    const auto&         kernels,
+    const Tensor&       dofs_face,
+    const Tensor&       dofs_face_neigh,
+    const Tensor&       flux_face,
+    const Tensor&       flux_face_neigh,
+    std::size_t         direction,
+    int                 dir,
+    double              surface
 )
 {
     using value_t       = typename Tensor::value_type;
@@ -131,7 +131,7 @@ auto evaluate_face_integral(
         dir,
         numericalflux
     );
-
+    // std::cout << "  numerical flux before weights: " << numericalflux << "\n";
     auto kernel_vec = kernels[dir];
 
     // Apply quadrature weights along non-face dimensions

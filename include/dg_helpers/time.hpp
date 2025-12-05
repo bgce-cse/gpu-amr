@@ -62,7 +62,13 @@ public:
             elem = {};
 
         residual(patch_update, patch_dofs, time);
+        std::cout << "Before ExplicitEuler step at time " << time
+                  << ", patch data: " << patch_dofs << "\n";
+        std::cout << "  patch update: " << patch_update << "\n";
+        std::cout << "  dt: " << dt << "\n";
         patch_dofs = patch_dofs + (patch_update * dt);
+        std::cout << "After ExplicitEuler step at time " << time + dt
+                  << ", patch data: " << patch_dofs << "\n";
     }
 };
 

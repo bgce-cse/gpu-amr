@@ -85,8 +85,8 @@ struct dg_tree_printer
                 const auto& cell_size   = size_patch[idx];
                 const auto& cell_dofs   = dof_patch[idx];
 
-                std::cout << "[DEBUG] Processing cell at center (" << cell_center[0]
-                          << ", " << cell_center[1] << ")\n";
+                // std::cout << "[DEBUG] Processing cell at center (" << cell_center[0]
+                //           << ", " << cell_center[1] << ")\n";
 
                 // -------------------------
                 // 1. Insert corner vertices with placeholder DOF values
