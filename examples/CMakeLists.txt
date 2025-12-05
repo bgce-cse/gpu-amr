@@ -309,6 +309,13 @@ endif()
 
 set(EXAMPLES_DIR "./")
 find_package(TBB REQUIRED)
+find_package(VTK REQUIRED COMPONENTS
+    CommonCore
+    IOXML
+    IOLegacy
+    ImagingCore
+    CommonDataModel
+)
 
 # Generate executable for all .e.cpp
 file(GLOB EXAMPLE_FILES "${EXAMPLES_DIR}/*.e.cpp")
@@ -318,7 +325,8 @@ foreach(EXAMPLE_FILE ${EXAMPLE_FILES})
     target_include_directories(${TARGET_NAME} PUBLIC ../include ../lib ${CMAKE_BINARY_DIR})
     target_compile_options(${TARGET_NAME} PRIVATE ${CXX_FLAGS})
     target_link_options(${TARGET_NAME} PRIVATE ${LINK_FLAGS})
-    target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb)
+    target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb ${VTK_LIBRARIES})
+    target_include_directories(${TARGET_NAME} PRIVATE ${VTK_INCLUDE_DIRS})
     # Ensure generated config is created before compiling
     add_dependencies(${TARGET_NAME} generated_config_header)
 endforeach()

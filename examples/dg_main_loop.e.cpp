@@ -1,3 +1,4 @@
+#include "../build/generated_config.hpp"
 #include "containers/container_utils.hpp"
 #include "containers/static_layout.hpp"
 #include "containers/static_shape.hpp"
@@ -9,14 +10,11 @@
 #include "dg_helpers/rhs.hpp"
 #include "dg_helpers/surface.hpp"
 #include "dg_helpers/time.hpp"
-#include "generated_config.hpp"
 #include "morton/morton_id.hpp"
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
-#include "ndtree/print_dg_tree.hpp"
 #include "ndtree/print_dg_tree_advanced.hpp"
-#include "ndtree/print_tree_a.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
 #include <fstream>
@@ -26,6 +24,7 @@
 #include <limits> // for std::numeric_limits
 #include <random>
 #include <tuple>
+#include <utility>
 
 using namespace amr::equations;
 using namespace amr::Basis;
@@ -73,10 +72,23 @@ struct S3
     type value;
 };
 
+struct S4
+{
+    using type = static_vector<double, Dim>;
+
+    static constexpr auto index() noexcept -> std::size_t
+    {
+        return 3;
+    }
+
+    type value;
+}; // End of S4
+
 // Marker cell type for tree AMR with DG data (DOF tensor, flux, center)
+
 struct MarkerCell
 {
-    using deconstructed_types_map_t = std::tuple<S1, S2, S3>;
+    using deconstructed_types_map_t = std::tuple<S1, S2, S3, S4>;
 
     MarkerCell() = default;
 
@@ -95,7 +107,7 @@ struct MarkerCell
 
 auto operator<<(std::ostream& os, MarkerCell const&) -> std::ostream&
 {
-    return os << "S1(DOF), S2(Flux), S3(Center)";
+    return os << "S1(DOF), S2(Flux), S3(Center), S4(Size)";
 }
 
 /**
@@ -128,6 +140,10 @@ int main()
     constexpr std::size_t PatchSize = GridElements;
     constexpr std::size_t HaloWidth = 1;
     constexpr std::size_t MaxDepth  = 1;
+    // Time-stepping loop
+    double time     = 0.0;
+    double dt       = 0.1; // TODO: CFL condition based on max eigenvalue
+    int    timestep = 0;
 
     using shape_t        = static_shape<PatchSize, PatchSize>;
     using layout_t       = static_layout<shape_t>;
@@ -147,6 +163,7 @@ int main()
     {
         auto& dof_patch          = tree.template get_patch<S1>(idx);
         auto& center_coord_patch = tree.template get_patch<S3>(idx);
+        auto& size_patch         = tree.template get_patch<S4>(idx);
 
         auto patch_id                    = patch_index_t(idx);
         auto [patch_coords, patch_level] = patch_index_t::decode(patch_id.id());
@@ -167,29 +184,28 @@ int main()
             // Compute global cell center using generic function
             auto cell_center =
                 compute_cell_center<PatchSize, HaloWidth, Dim>(patch_id, local_indices);
-
+            // std::cout << "cell center: " << cell_center << std::endl;
             center_coord_patch[linear_idx] = cell_center;
             dof_patch[linear_idx]          = amr::equations::interpolate_initial_dofs(
                 *eq, cell_center, cell_size, basis
             );
+            size_patch[linear_idx] = { cell_size, cell_size };
         }
     }
 
     try
     {
+        std::cout << "\n====================================\n";
+        std::cout << "  Initializing DG Tree Printer (Advanced)\n";
+        std::cout << "====================================\n\n";
         ndt::print::dg_tree_printer_advanced<Dim, Order, PatchSize, HaloWidth, DOFs>
-            advanced_printer("dg_tree_advanced_timestep");
-        std::cout << "Advanced printer created successfully\n";
-        advanced_printer.template print<S1>(tree, "_0.vtk");
-        std::cout << "Advanced printer completed\n";
+            printer("dg_tree");
+        std::cout << "DG tree printer created successfully\n";
+        printer.template print<S1>(tree, ".vtk");
+        std::cout << "DG tree printer completed\n";
 
         // Print debug info for DOF inspection
         // advanced_printer.template print_debug_info<S1>(tree);
-
-        // Time-stepping loop
-        double time     = 0.0;
-        double dt       = 0.1; // TODO: CFL condition based on max eigenvalue
-        int    timestep = 0;
 
         std::vector<std::string> vtk_files;
         std::vector<double>      times;
@@ -228,58 +244,20 @@ int main()
                     );
                 };
 
-                // pass the entire patch container to the integrator
-
-                // Debug: capture DOF sum before step
-                double dof_sum_before = 0.0;
-                for (const auto& elem : dof_patch.data())
-                {
-                    for (const auto& inner : elem)
-                    {
-                        dof_sum_before += inner[0]; // first DOF component
-                    }
-                }
-
                 integrator->step(residual_callback, dof_patch.data(), time, dt);
-
-                // Debug: capture DOF sum after step
-                double dof_sum_after = 0.0;
-                for (const auto& elem : dof_patch.data())
-                {
-                    for (const auto& inner : elem)
-                    {
-                        dof_sum_after += inner[0]; // first DOF component
-                    }
-                }
-
-                if (timestep % 10 == 1)
-                {
-                    std::cout << "  [DEBUG STEP] Before: " << dof_sum_before
-                              << " After: " << dof_sum_after
-                              << " Delta: " << (dof_sum_after - dof_sum_before) << "\n";
-                }
-                if (timestep % 10 == 0)
-                {
-                    std::cout << "Timestep " << timestep << ", time = " << time << "\n";
-                }
 
                 // TODO: Adaptive mesh refinement every N steps
                 // TODO: Adaptive time stepping based on CFL
             };
-            if (timestep % 10 == 9)
+            if (timestep % 5 == 4)
             {
-                // Construct the filename for this timestep
-                std::string vtk_filename = "vtk_output/dg_tree_advanced_timestep_" +
-                                           std::to_string(timestep) + ".vtk";
+                // Print the VTU file
+                std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
+                printer.template print<S1>(tree, time_extension);
 
-                // Print the VTK file
-                advanced_printer.template print<S1>(
-                    tree, "_" + std::to_string(timestep) + ".vtk"
-                );
-
-                // Store the filename relative to the .pvd file
+                // Store the filename and time
                 vtk_files.push_back(
-                    "dg_tree_advanced_timestep_" + std::to_string(timestep) + ".vtk"
+                    "dg_tree_Order" + std::to_string(Order) + time_extension
                 );
                 times.push_back(time);
             }
@@ -288,8 +266,16 @@ int main()
             time += dt;
             ++timestep;
         }
-    }
 
+        // TODO: Generate PVD file for time series visualization
+        // ndt::print::dg_tree_printer<Dim, Order, PatchSize, HaloWidth, DOFs> printer(
+        //     "dg_tree_timestep"
+        // );
+        // printer.generate_pvd_file(
+        //     "vtk_output/dg_tree_advanced_simulation.pvd", vtk_files, times
+        // );
+        // std::cout << "PVD file generated successfully\n";
+    }
     catch (const std::exception& e)
     {
         std::cerr << "Exception caught: " << e.what() << "\n";

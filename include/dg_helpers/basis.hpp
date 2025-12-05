@@ -13,110 +13,17 @@
 #include <cmath>
 #include <functional>
 
+// Forward declaration to avoid circular dependency
+namespace amr::global
+{
+template <unsigned int Order>
+struct QuadData;
+}
+
 namespace amr::Basis
 {
 template <auto N>
 using vector = amr::containers::static_vector<double, N>;
-
-/**
- * @brief Pre-computed Gauss-Legendre quadrature data template on [-1, 1]
- */
-template <unsigned int Order>
-struct QuadData;
-
-template <>
-struct QuadData<1>
-{
-    static constexpr std::array<double, 1> points  = { 0.0 };
-    static constexpr std::array<double, 1> weights = { 2.0 };
-};
-
-template <>
-struct QuadData<2>
-{
-    static constexpr std::array<double, 2> points  = { -0.5773502691896257,
-                                                       0.5773502691896257 };
-    static constexpr std::array<double, 2> weights = { 1.0, 1.0 };
-};
-
-template <>
-struct QuadData<3>
-{
-    static constexpr std::array<double, 3> points  = { -0.7745966692414834,
-                                                       0.0,
-                                                       0.7745966692414834 };
-    static constexpr std::array<double, 3> weights = { 0.5555555555555556,
-                                                       0.8888888888888888,
-                                                       0.5555555555555556 };
-};
-
-template <>
-struct QuadData<4>
-{
-    static constexpr std::array<double, 4> points  = { -0.8611363115940526,
-                                                       -0.3399810435848563,
-                                                       0.3399810435848563,
-                                                       0.8611363115940526 };
-    static constexpr std::array<double, 4> weights = { 0.3478548451374538,
-                                                       0.6521451548625461,
-                                                       0.6521451548625461,
-                                                       0.3478548451374538 };
-};
-
-template <>
-struct QuadData<5>
-{
-    static constexpr std::array<double, 5> points  = { -0.9061798459386640,
-                                                       -0.5384693101056831,
-                                                       0.0,
-                                                       0.5384693101056831,
-                                                       0.9061798459386640 };
-    static constexpr std::array<double, 5> weights = { 0.2369268850561891,
-                                                       0.4786286704993665,
-                                                       0.5688888888888889,
-                                                       0.4786286704993665,
-                                                       0.2369268850561891 };
-};
-
-template <>
-struct QuadData<6>
-{
-    static constexpr std::array<double, 6> points = {
-        -0.9324695142031521, -0.6612093864662645, -0.2386191860831969,
-        0.2386191860831969,  0.6612093864662645,  0.9324695142031521
-    };
-    static constexpr std::array<double, 6> weights = {
-        0.1713244923791704, 0.3607615730481386, 0.4679139345726910,
-        0.4679139345726910, 0.3607615730481386, 0.1713244923791704
-    };
-};
-
-template <>
-struct QuadData<7>
-{
-    static constexpr std::array<double, 7> points = {
-        -0.9491079123427585, -0.7415311855993945, -0.4058451513773972, 0.0,
-        0.4058451513773972,  0.7415311855993945,  0.9491079123427585
-    };
-    static constexpr std::array<double, 7> weights = {
-        0.1294849661688697, 0.2797053914892766, 0.3818300505051189, 0.4179591836734694,
-        0.3818300505051189, 0.2797053914892766, 0.1294849661688697
-    };
-};
-
-template <>
-struct QuadData<8>
-{
-    static constexpr std::array<double, 8> points = {
-        -0.9602898564975363, -0.7966664774136267, -0.5255324099163290,
-        -0.1834346424956498, 0.1834346424956498,  0.5255324099163290,
-        0.7966664774136267,  0.9602898564975363
-    };
-    static constexpr std::array<double, 8> weights = {
-        0.1012285362903763, 0.2223810344533745, 0.3137066458778873, 0.3626837833783620,
-        0.3626837833783620, 0.3137066458778873, 0.2223810344533745, 0.1012285362903763
-    };
-};
 
 /**
  * @brief Class for precomputed 1D Gauss–Legendre quadrature points and weights.
@@ -166,9 +73,9 @@ private:
      */
     void initialize_from_precomputed(double start, double end)
     {
-        // Copy precomputed values
-        constexpr auto& precomputed_points  = QuadData<Order>::points;
-        constexpr auto& precomputed_weights = QuadData<Order>::weights;
+        // Copy precomputed values from globals
+        constexpr auto& precomputed_points  = amr::global::QuadData<Order>::points;
+        constexpr auto& precomputed_weights = amr::global::QuadData<Order>::weights;
 
         for (unsigned int i = 0; i < Order; ++i)
         {
@@ -335,7 +242,7 @@ public:
      */
     template <typename CoeffTensor>
     [[nodiscard]]
-    auto evaluate_basis(const CoeffTensor& coeffs, const vector<Dim>& position) const
+    auto evaluate_basis(const CoeffTensor& coeffs, const vector<Dim> position) const
     {
         static_assert(
             CoeffTensor::rank() == Dim,

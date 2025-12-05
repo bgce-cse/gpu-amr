@@ -136,18 +136,6 @@ inline void evaluate_rhs(
             continue;
         }
 
-        // std::cout << "  [INTERIOR] Processing interior cell at linear_idx=" <<
-        // linear_idx;
-
-        // Get cell coordinates for display
-        // auto cell_coords = padded_layout_t::multi_index(
-        //     static_cast<typename padded_layout_t::index_t>(linear_idx)
-        // );
-        // std::cout << " coords=[" << cell_coords[0];
-        // for (std::size_t i = 1; i < Dim; ++i)
-        //     std::cout << "," << cell_coords[i];
-        // std::cout << "]\n";
-
         // Compute flux for current cell
         eq.evaluate_flux(dof_patch[linear_idx], flux_patch[linear_idx]);
 

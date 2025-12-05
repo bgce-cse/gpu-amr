@@ -8,32 +8,39 @@
 #include "equations/equation_impl.hpp"
 #include "globals.hpp"
 #include <cassert>
-#include <iostream>
 #include <tuple>
 
 namespace amr::surface
 {
 
-// Generic traits for static_tensor
-template <typename Tensor>
-struct tensor_traits;
-
-template <typename T, amr::containers::concepts::StaticLayout Layout>
-struct tensor_traits<amr::containers::static_tensor<T, Layout>>
-{
-    using value_type = T;
-    using layout_t   = Layout;
-    using shape_t    = typename Layout::shape_t;
-
-    static constexpr auto rank  = Layout::rank();
-    static constexpr auto order = shape_t::first(); // adjust if shape stores uniform size
+// -----------------------------
+// Concepts
+// -----------------------------
+template <typename T>
+concept StaticTensor = requires(T t) {
+    typename T::value_type;
+    typename T::layout_t;
+    { T::rank() } -> std::convertible_to<std::size_t>;
 };
 
-/**
- * @brief Computes the Rusanov (local Lax-Friedrichs) numerical flux.
- * Works with any static_tensor type.
- */
-template <typename EquationType, typename Tensor>
+// -----------------------------
+// Tensor traits
+// -----------------------------
+template <StaticTensor Tensor>
+struct tensor_traits
+{
+    using value_type = typename Tensor::value_type;
+    using layout_t   = typename Tensor::layout_t;
+    using shape_t    = typename layout_t::shape_t;
+
+    static constexpr std::size_t rank  = layout_t::rank();
+    static constexpr std::size_t order = shape_t::first();
+};
+
+// -----------------------------
+// Rusanov flux
+// -----------------------------
+template <typename EquationType, StaticTensor Tensor>
 double rusanov(
     [[maybe_unused]] const EquationType& eq,
     const Tensor&                        dofs_face,
@@ -51,48 +58,65 @@ double rusanov(
                     ((flux_face + flux_face_neigh) * 0.5 +
                      (dofs_face - dofs_face_neigh) * (0.5 * maxeigenval)) *
                     surface;
-
-    return maxeigenval * surface;
+    return maxeigenval;
 }
 
-/**
- * @brief Projects DOFs and flux to a face using contraction.
- * Returns rank-reduced tensors (contracting along specified direction).
- */
-template <typename KernelsType, int direction, typename Tensor>
+// -----------------------------
+// Project to faces
+// -----------------------------
+template <typename KernelsType, int Direction, StaticTensor Tensor>
 auto project_to_faces(
-    const KernelsType& kernels,
-    const Tensor&      dofs,
-    const Tensor&      flux,
-    auto               sign
+    const KernelsType&   kernels,
+    const Tensor&        dofs,
+    const Tensor&        flux,
+    [[maybe_unused]] int sign
 )
 {
-    auto dofsface =
-        amr::containers::manipulators::contract<direction>(dofs, kernels[sign]);
-    auto fluxface =
-        amr::containers::manipulators::contract<direction>(flux, kernels[sign]);
-
-    return std::make_tuple(dofsface, fluxface);
+    auto dofs_face =
+        amr::containers::manipulators::contract<Direction>(dofs, kernels[sign]);
+    auto flux_face =
+        amr::containers::manipulators::contract<Direction>(flux, kernels[sign]);
+    return std::make_tuple(dofs_face, flux_face);
 }
 
-/**
- * @brief Evaluates the face integral contribution to cell residuals.
- * Generic over any static_tensor type.
- */
-template <typename EquationType, typename Tensor>
+// -----------------------------
+// Outer product helper
+// -----------------------------
+template <StaticTensor ResultTensor, typename Vec1, typename Vec2>
+ResultTensor outer_product(const Vec1& a, const Vec2& b)
+{
+    using index_t = typename ResultTensor::multi_index_t;
+
+    ResultTensor result = ResultTensor::zero();
+    index_t      idx{};
+    do
+    {
+        result[idx] = a[idx[0]] * b[idx[1]];
+    } while (idx.increment());
+    return result;
+}
+
+// -----------------------------
+// Evaluate face integral
+// -----------------------------
+template <typename EquationType, StaticTensor Tensor>
 auto evaluate_face_integral(
-    double&             maxeigenval,
-    const EquationType& eq,
-    const auto&         kernels,
-    const Tensor&       dofs_face,
-    const Tensor&       dofs_face_neigh,
-    const Tensor&       flux_face,
-    const Tensor&       flux_face_neigh,
-    std::size_t         direction,
-    int                 sign,
-    double              surface
+    double&                      maxeigenval,
+    const EquationType&          eq,
+    const auto&                  kernels,
+    const Tensor&                dofs_face,
+    const Tensor&                dofs_face_neigh,
+    const Tensor&                flux_face,
+    const Tensor&                flux_face_neigh,
+    [[maybe_unused]] std::size_t direction,
+    int                          sign,
+    double                       surface
 )
 {
+    using value_t       = typename Tensor::value_type;
+    using face_result_t = amr::containers::utils::types::tensor::
+        hypercube_t<value_t, amr::config::Order, amr::config::Dim>;
+
     Tensor numericalflux{};
     maxeigenval = rusanov(
         eq,
@@ -106,25 +130,39 @@ auto evaluate_face_integral(
         numericalflux
     );
 
-    // Expand rank-1 flux to rank-2 by outer product with kernel
-    // Result type: rank-2 tensor with same scalar type as numericalflux
-    using scalar_t = typename Tensor::value_type;
+    auto kernel_vec = kernels[sign];
 
-    // Result is a rank-2 hypercube tensor
-    using result_t = amr::containers::utils::types::tensor::
-        hypercube_t<scalar_t, amr::config::Order, amr::config::Dim>;
-    auto face_du = result_t::zero();
-
-    // Compute outer product: result[i, j] = kernel[i] * numericalflux[j]
-    // This gives the contribution to cell DOFs from the face integral
-    auto                             kernel_vec = kernels[sign];
-    typename result_t::multi_index_t idx{};
-    do
+    // Apply quadrature weights along non-face dimensions
+    // For 2D: apply weights along dimension 0 (non-face)
+    // For 3D: apply weights along dimensions 0,1 (non-faces)
+    if constexpr (amr::config::Dim == 2)
     {
-        face_du[idx] = kernel_vec[idx[0]] * numericalflux[idx[1]];
-    } while (idx.increment());
+        // In 2D, we have one non-face dimension (d=0)
+        const auto& weights_array = amr::global::QuadData<amr::config::Order>::weights;
+        amr::containers::static_vector<double, amr::config::Order> weights_vec;
+        for (unsigned int i = 0; i < static_cast<unsigned int>(amr::config::Order); ++i)
+        {
+            weights_vec[i] = weights_array[i];
+        }
+        numericalflux =
+            amr::containers::manipulators::einsum_apply<0>(numericalflux, weights_vec);
+    }
+    else if constexpr (amr::config::Dim == 3)
+    {
+        // In 3D, we have two non-face dimensions (d=0, d=1)
+        const auto& weights_array = amr::global::QuadData<amr::config::Order>::weights;
+        amr::containers::static_vector<double, amr::config::Order> weights_vec;
+        for (unsigned int i = 0; i < static_cast<unsigned int>(amr::config::Order); ++i)
+        {
+            weights_vec[i] = weights_array[i];
+        }
+        numericalflux =
+            amr::containers::manipulators::einsum_apply<0>(numericalflux, weights_vec);
+        numericalflux =
+            amr::containers::manipulators::einsum_apply<1>(numericalflux, weights_vec);
+    }
 
-    return face_du;
+    return outer_product<face_result_t>(kernel_vec, numericalflux);
 }
 
 } // namespace amr::surface
