@@ -3,6 +3,12 @@
 
 #include <filesystem>
 #include <fstream>
+#include <vector>
+#include <array>
+#include <cmath>
+#include <string>
+
+#include "solver/cell_types.hpp"
 
 struct S1;
 
@@ -62,6 +68,10 @@ private:
 
         std::vector<std::array<uint32_t, 3>> points;
         std::vector<float>                   s1_values;
+        std::vector<double> rho_values;
+        std::vector<double> pressure_values;
+        std::vector<std::array<double, 3>> velocity_vectors;
+        std::vector<int> level_values;
         std::vector<int>                     is_halo_flags; // 0=data, 1=halo
 
         size_t   total_cells = tree.size() * total_patch_elements;
@@ -83,6 +93,12 @@ private:
 
             // Get the S1 data for this patch
             auto s1_patch = tree.template get_patch<S1>(patch_idx);
+
+            // Get references to specific data components
+            const auto& rho_patch  = tree.template get_patch<amr::cell::Rho>(patch_idx);
+            const auto& rhou_patch = tree.template get_patch<amr::cell::Rhou>(patch_idx);
+            const auto& rhov_patch = tree.template get_patch<amr::cell::Rhov>(patch_idx);
+            const auto& e_patch    = tree.template get_patch<amr::cell::E2D>(patch_idx);
 
             // Iterate over ALL cells including halos
             for (std::size_t i = 0; i < total_size_y; i++)  // rows (Y)
@@ -180,11 +196,8 @@ public:
     example_patch_print(std::string base_filename)
         : m_base_filename(std::move(base_filename))
     {
-        std::filesystem::path dir = "vtk_output";
-        std::filesystem::create_directory(dir);
-
-        // Print the absolute path where it's created
-        std::cout << "Output directory: " << std::filesystem::absolute(dir) << '\n';
+        // Ensure output directory exists
+        std::filesystem::create_directory("vtk_output");
     }
 
     void print(auto const& tree, std::string filename_extension) const
@@ -217,6 +230,7 @@ private:
 
         std::vector<std::array<uint32_t, 3>> points;
         std::vector<float>                   s1_values;
+        std::vector<double> rho_values;
 
         size_t   total_cells = tree.size() * total_patch_elements;
         uint32_t max_coord   = 1u << IndexType::max_depth();
@@ -238,9 +252,8 @@ private:
             // Get the S1 data for this patch
             //auto s1_patch = tree.template get_patch<S1>(patch_idx);
 
-            // Get the Rho data (Density) for this patch, which is the 
-            // first component of your EulerCell.
-            auto rho_patch = tree.template get_patch<amr::cell::Rho>(patch_idx);
+            // Get references to specific data components
+            const auto& rho_patch  = tree.template get_patch<amr::cell::Rho>(patch_idx);
 
             // For each cell in the patch_size_x * patch_size_y patch
             for (std::size_t i = 0; i < patch_size_x; i++)
@@ -266,7 +279,7 @@ private:
                     points.push_back({ cell_x, flipped_y, 0 }); // bottom-left
 
                     // Store the S1 value for this cell
-                    s1_values.push_back(s1_patch[j + Halo, i + Halo]);
+                    rho_values.push_back(rho_patch[j + Halo, i + Halo]);
                 }
             }
         }
@@ -296,11 +309,11 @@ private:
 
         // Write S1 values as cell data
         file << "CELL_DATA " << total_cells << "\n";
-        file << "SCALARS RHO_values double 1\n";
+        file << "SCALARS RHO_values float 1\n";
         file << "LOOKUP_TABLE default\n";
-        for (size_t i = 0; i < s1_values.size(); ++i)
+        for (size_t i = 0; i < rho_values.size(); ++i)
         {
-            file << s1_values[i] << "\n";
+            file << rho_values[i] << "\n";
         }
     }
 

@@ -34,7 +34,7 @@ int main() {
     using tree_t         = amr::ndt::tree::ndtree<amr::cell::EulerCell2D, patch_index_t, patch_layout_t>;
 
 
-    ndt::print::example_patch_print<Halo, M, N> printer("euler_tree");
+    amr::ndt::print::example_patch_print<Halo, M, N> printer("euler_tree");
 
 
     double tmax = 90000000; // Example tmax, adjust as needed
@@ -46,9 +46,9 @@ int main() {
 
     auto acousticWaveCriterion = [&](const patch_index_t& idx) {
         // Define Thresholds and Limits
-        constexpr double REFINE_RHO_THRESHOLD = 2.5; // Refine if Rho > 1.01 (1% above background)
-        constexpr double COARSEN_RHO_THRESHOLD = 2; // Coarsen if Rho < 1.005
-        constexpr int MAX_LEVEL = 4;
+        constexpr double REFINE_RHO_THRESHOLD = 0.6;
+        constexpr double COARSEN_RHO_THRESHOLD = 0.55;
+        constexpr int MAX_LEVEL = 3;
         constexpr int MIN_LEVEL = 0;
         
         int level = idx.level();
@@ -80,9 +80,9 @@ int main() {
     };
 
     // Parameters for the Acoustic Pulse
-    constexpr double RHO_BG = 1.0;
+    constexpr double RHO_BG = 0.5;
     constexpr double P_BG = 1.0;
-    constexpr double AMPLITUDE = 5;
+    constexpr double AMPLITUDE = 10.0;
     constexpr double PULSE_WIDTH_SQ = 0.01; // sigma^2
     constexpr double CENTER_X = 0.5;
     constexpr double CENTER_Y = 0.5;
@@ -100,7 +100,7 @@ int main() {
         double perturbation = AMPLITUDE * std::exp(-r_sq / PULSE_WIDTH_SQ);
 
         // Set primitive variables: [rho, u, v, p]
-        prim[0] = RHO_BG + perturbation;  // Density (rho)
+        prim[0] = RHO_BG + (perturbation*0.2);  // Density (rho)
         prim[1] = 0.0;                    // X-velocity (u)
         prim[2] = 0.0;                    // Y-velocity (v)
         prim[3] = P_BG + perturbation;    // Pressure (p)
@@ -110,6 +110,7 @@ int main() {
 
     std::cout << "Initializing solver..." << std::endl;
     solver.initialize(acousticPulseIC);
+    solver.get_tree().halo_exchange_update();
 
     // CHECK INITIAL CONDITIONS
     // std::cout << "\n=== Checking Initial Conditions ===" << std::endl;
@@ -168,7 +169,11 @@ int main() {
         
         // std::cout << "Step " << step << " completed, no NaN in solver" << std::endl;
         
-        // solver.get_tree().reconstruct_tree(acousticWaveCriterion);
+        if (step%5 == 0)
+        {
+            solver.get_tree().reconstruct_tree(acousticWaveCriterion);
+            solver.get_tree().halo_exchange_update();
+        }
 
         std::string file_extension = "_iteration_" + std::to_string(step) + ".vtk";
         printer.print(solver.get_tree(), file_extension);
@@ -176,8 +181,8 @@ int main() {
         t += dt;
         step++;
 
-        if (step > 100) {
-            std::cout << "Breaking after 100 steps for testing..." << std::endl;
+        if (step > 30) {
+            std::cout << "Breaking after 10 steps for testing..." << std::endl;
             break;
         }
     }

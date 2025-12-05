@@ -9,7 +9,6 @@
 #include <iostream>
 #include <libmorton/morton.h>
 #include <utility>
-#include <optional>
 
 namespace amr::ndt::morton
 {
@@ -72,7 +71,7 @@ public:
         auto [coords, level] = decode(id.m_id);
         uint32_t delta_x_y   = 1u << (s_depth - level);
         offset_t x_offset    = offset % 2;
-        offset_t y_offset    = (offset / 2) % 2;
+        offset_t y_offset    = offset > 1 ? 1 : 0;
 
         coords[0] += x_offset * delta_x_y;
         coords[1] += y_offset * delta_x_y;
@@ -246,22 +245,14 @@ public:
     using mask_t      = uint64_t;
     using coord_array = std::array<uint32_t, 3>;
     using offset_t    = uint32_t;
-    using size_type   = uint32_t;
-    using direction_t = direction;
     using level_t     = uint8_t;
 
     static constexpr auto s_depth = Depth;
     static constexpr auto s_rank  = 3u;
 
-    constexpr morton_id() : m_id(0) {}
-    constexpr morton_id(mask_t id)
-        : m_id{ id }
+    static constexpr offset_t offset_of(mask_t id)
     {
-    }
-
-    static constexpr offset_t offset_of(morton_id id)
-    {
-        auto [coords, level] = decode(id.m_id);
+        auto [coords, level] = decode(id);
         uint32_t delta_x_y_z = 1u << (s_depth - level + 1);
         offset_t x_offset    = coords[0] % delta_x_y_z == 0 ? 0 : 1;
         offset_t y_offset    = coords[1] % delta_x_y_z == 0 ? 0 : 2;
@@ -269,7 +260,7 @@ public:
         return x_offset + y_offset + z_offset;
     }
 
-    static constexpr morton_id offset(morton_id id, offset_t offset)
+    static constexpr mask_t offset(mask_t id, offset_t offset)
     {
         // Assume offset in {0, 1, ..., 7}
         // Assume id corresponds to zero sibling (bits 6-7 are 0)
@@ -277,29 +268,34 @@ public:
             offset_of(id) == 0 && "This function assumes it is called for zero sibling"
         );
         assert(offset <= 7 && "Offset must be 0, 1, ..., or 7");
-        auto [coords, level] = decode(id.m_id);
-        uint32_t delta_x_y_z = 1u << (s_depth - level);
+        auto [coords, level] = decode(id);
+        uint32_t delta_x_y   = 1u << (s_depth - level);
         offset_t x_offset    = offset % 2;
-        offset_t y_offset    = (offset / 2) % 2;
-        offset_t z_offset    = offset / 4;
+        offset_t z_offset    = offset > 3 ? 1 : 0;
+        offset_t y_offset    = offset - z_offset > 1 ? 1 : 0;
 
-        coords[0] += x_offset * delta_x_y_z;
-        coords[1] += y_offset * delta_x_y_z;
-        coords[2] += z_offset * delta_x_y_z;
+        coords[0] += x_offset * delta_x_y;
+        coords[1] += y_offset * delta_x_y;
+        coords[1] += z_offset * delta_x_y;
 
         auto sibling_id = encode(coords, level);
 
-        return morton_id(sibling_id);
+        return sibling_id;
     }
 
-    static constexpr morton_id root()
+    static constexpr mask_t root()
     {
-        return morton_id(0);
+        return 0;
     }
 
-    static constexpr size_t bits()
+    static constexpr bool less(mask_t lhs, mask_t rhs)
     {
-        return sizeof(mask_t) * CHAR_BIT;
+        return lhs < rhs;
+    }
+
+    static constexpr bool equal(mask_t lhs, mask_t rhs)
+    {
+        return lhs == rhs;
     }
 
     static constexpr bool isvalid_coord(coord_array coordinates, level_t level)
@@ -311,9 +307,9 @@ public:
                (coordinates[1] < max_coord) && (coordinates[2] < max_coord);
     }
 
-    static constexpr morton_id parent_of(morton_id morton_code)
+    static constexpr mask_t parent_of(mask_t morton_code)
     {
-        auto [coords, level] = decode(morton_code.id());
+        auto [coords, level] = decode(morton_code);
         assert(level > 0 && "Root has no parent");
         uint32_t offset = 1u << (s_depth - level);
         coords[0] &= ~offset;
@@ -321,7 +317,7 @@ public:
         coords[2] &= ~offset;
         assert(isvalid_coord(coords, level - 1) && "invalid parent coordinates");
 
-        return morton_id(encode(coords, level - 1));
+        return encode(coords, level - 1);
     }
 
     static constexpr std::pair<coord_array, level_t> decode(mask_t id)
@@ -334,8 +330,8 @@ public:
 
         return {
             { static_cast<uint32_t>(x),
-              static_cast<uint32_t>(y),
-              static_cast<uint32_t>(z) },
+             static_cast<uint32_t>(y),
+             static_cast<uint32_t>(z) },
             level
         };
     }
@@ -351,25 +347,17 @@ public:
         return (morton_id << 6) | (level & 0x3F);
     }
 
-    static constexpr morton_id child_of(morton_id parent_id, offset_t off)
+    static constexpr mask_t child_of(mask_t parent_id)
     {
-        auto [coords, level] = decode(parent_id.id());
+        auto [coords, level] = decode(parent_id);
         assert(level < s_depth && "Cell already at max level");
-        auto sibling = offset(parent_id.id() + 1, off);
 
-        return sibling;
+        return parent_id + 1;
     }
 
-    static constexpr auto level(morton_id id)
+    static constexpr mask_t getNeighbor(mask_t morton, direction dir)
     {
-        auto [_, level] = decode(id.id());
-        return level;
-    }
-
-    static constexpr std::optional<morton_id>
-        neighbour_at(morton_id morton, direction dir)
-    {
-        auto [coords, level] = decode(morton.id());
+        auto [coords, level] = decode(morton);
         uint32_t x_coord     = coords[0];
         uint32_t y_coord     = coords[1];
         uint32_t z_coord     = coords[2];
@@ -388,63 +376,12 @@ public:
 
         if (!isvalid_coord({ x_coord, y_coord, z_coord }, level))
         {
-            return std::nullopt;
+            return 0;
         }
 
-        return morton_id(encode({ x_coord, y_coord, z_coord }, level));
+        return encode({ x_coord, y_coord, z_coord }, level);
     }
-
-    constexpr auto id() const noexcept
-    {
-        return m_id;
-    }
-
-    constexpr auto repr() const noexcept -> std::string
-    {
-        return std::bitset<bits()>(m_id).to_string();
-    }
-
-    constexpr auto level() const noexcept
-    {
-        auto [_, level] = decode(m_id);
-        return level;
-    }
-
-    static constexpr auto dimension()
-    {
-        return s_dim;
-    }
-
-    static constexpr size_type nd_fanout()
-    {
-        return 8;
-    }
-
-    static constexpr size_type fanout()
-    {
-        return 2;
-    }
-
-    static constexpr size_type max_depth()
-    {
-        return s_depth;
-    }
-
-    auto operator==(morton_id const&) const noexcept -> bool = default;
-    // auto operator<(morton_id const&) const noexcept -> bool = default;
-
-private:
-    mask_t m_id;
 };
-
-template <std::unsigned_integral auto Depth>
-auto operator<(
-    morton_id<Depth, 3u> const& idx_a,
-    morton_id<Depth, 3u> const& idx_b
-) noexcept
-{
-    return idx_a.id() < idx_b.id();
-}
 
 } // namespace amr::ndt::morton
 

@@ -102,9 +102,9 @@ public:
             for (std::size_t linear_idx = 0; linear_idx != patch_flat_size; ++linear_idx) {
                 
                 // Skip Halo Cells on initialization
-                //if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(linear_idx)) {
-                //    continue;
-                //}
+                if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(linear_idx)) {
+                    continue;
+                }
 
                 // Calculate 2D coordinates (i, j) within the **unpadded** patch layout
                 uint32_t i = static_cast<uint32_t>(linear_idx % patch_size_padded_x);
@@ -138,8 +138,6 @@ public:
                 e_patch[linear_idx]    = cons[3];
             }
         }
-        // After initialization, the halo regions must be synchronized for the first flux calculation
-        // m_tree.exchange_halos();
     }
 
     template<typename InitFunc>
@@ -182,9 +180,9 @@ public:
             for (std::size_t linear_idx = 0; linear_idx != patch_flat_size; ++linear_idx) {
                 
                 // Skip Halo Cells on initialization
-                //if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(linear_idx)) {
-                //    continue;
-                //}
+                if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(linear_idx)) {
+                    continue;
+                }
 
                 // Calculate 3D coordinates (i, j, k) within the **unpadded** patch layout
                 uint32_t i = static_cast<uint32_t>(linear_idx % patch_size_padded_x);
@@ -225,8 +223,6 @@ public:
                 e_patch[linear_idx]    = cons[4];
             }
         }
-        // After initialization, the halo regions must be synchronized for the first flux calculation
-        // m_tree.exchange_halos();
     }
 
     void time_step_2d(double dt){
