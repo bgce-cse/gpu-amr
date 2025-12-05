@@ -54,7 +54,7 @@ public:
     using neighbor_linear_index_variant_t = neighbor_variant_base_t<linear_index_t>;
     using patch_neighbors_t               = typename neighbor_utils_t::patch_neighbors_t;
     using halo_exchange_operator_impl_t =
-        utils::patches::halo_exchange_impl_t<patch_layout_t>;
+        utils::patches::halo_exchange_impl_t<patch_index_t, patch_layout_t>;
     static_assert(std::is_same_v<
                   typename neighbor_utils_t::neighbor_variant_t,
                   neighbor_patch_index_variant_t>);
@@ -158,7 +158,15 @@ public:
             (pointer_t<patch_neighbors_t>)std::malloc(size * sizeof(patch_neighbors_t));
 
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
-        append(patch_index_t::root(), patch_neighbors_t{});
+        patch_neighbors_t root_neighbors;
+        for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel(); d.advance())
+        {
+            neighbor_patch_index_variant_t periodic_neighbor;
+            periodic_neighbor.data = typename neighbor_patch_index_variant_t::same{ patch_index_t::root() };
+            root_neighbors[d.index()] = periodic_neighbor;
+        }
+        append(patch_index_t::root(), root_neighbors);
+
     }
 
     ~ndtree() noexcept
@@ -267,7 +275,11 @@ public:
                         ) } };
                 },
                 [this](typename neighbor_patch_index_variant_t::coarser const& n)
-                { return ret_t{ typename ret_t::same{ get_linear_index_at(n.id) } }; } },
+                {
+                    return ret_t{
+                        typename ret_t::coarser{ get_linear_index_at(n.id), n.dim_offset }
+                    };
+                } },
             neighbor.data
         );
     }
@@ -378,7 +390,7 @@ public:
             const auto parent_id = patch_index_t::parent_of(node_id);
             parent_patch_idx.push_back(parent_id);
         }
-        std::sort(parent_patch_idx.begin(), parent_patch_idx.end());
+        std::ranges::sort(parent_patch_idx, std::less{});
         parent_patch_idx.erase(
             std::unique(parent_patch_idx.begin(), parent_patch_idx.end()),
             parent_patch_idx.end()
@@ -532,13 +544,14 @@ public:
                                                finer>)
                     {
                         // Finer neighbors now see the parent as a coarser neighbor
-                        for (size_type i = 0; i < neighbor_data.ids.size(); i++)
+                        for (size_type i = 0; i != neighbor_data.num_neighbors(); i++)
                         {
-                            neighbor_patch_index_variant_t new_neighbor;
-                            new_neighbor.data =
+                            neighbor_patch_index_variant_t new_neighbor{
                                 typename neighbor_patch_index_variant_t::coarser{
-                                    parent_node_id
-                                };
+                                                                                 parent_node_id,
+                                                                                 static_cast<typename neighbor_patch_index_variant_t::
+                                                    fanout_t>(i) }
+                            };
                             m_neighbors[m_index_map.at(neighbor_data.ids[i])]
                                        [opposite_d.index()] = new_neighbor;
                         }

@@ -21,9 +21,12 @@ template <auto Fanout_1D, auto Fanout_ND, typename Identifier>
 struct neighbor_variant
 {
     static_assert(std::is_same_v<decltype(Fanout_1D), decltype(Fanout_ND)>);
-    using identifier_t                = Identifier;
-    static constexpr auto s_1d_fanout = Fanout_1D;
-    static constexpr auto s_nd_fanout = Fanout_ND;
+    using identifier_t = Identifier;
+    using fanout_t     = decltype(Fanout_1D);
+    static_assert(std::is_same_v<decltype(Fanout_1D), decltype(Fanout_ND)>);
+
+    static constexpr fanout_t s_1d_fanout = Fanout_1D;
+    static constexpr fanout_t s_nd_fanout = Fanout_ND;
 
     struct none
     {
@@ -36,8 +39,8 @@ struct neighbor_variant
 
     struct coarser
     {
-        // TODO: Maybe store information about relative position?
         identifier_t id;
+        fanout_t     dim_offset;
     };
 
     struct finer
@@ -298,30 +301,33 @@ public:
         return boundary_children;
     }
 
+    [[nodiscard]]
     static auto compute_child_neighbors(
-        patch_index_t     parent_id,
-        patch_neighbors_t parent_neighbor_array,
-        const index_t     local_child_id
+        patch_index_t const&     parent_id,
+        patch_neighbors_t const& parent_neighbor_array,
+        index_t const&           local_child_id
     ) -> patch_neighbors_t
     {
-        auto child_multiindex = child_expansion_t::layout_t::multi_index(local_child_id);
-        auto relations        = s_neighbor_relation_maps[local_child_id];
+        const auto child_multiindex =
+            child_expansion_t::layout_t::multi_index(local_child_id);
+        const auto        relations = s_neighbor_relation_maps[local_child_id];
         patch_neighbors_t child_neighbor_array{};
 
         for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
         {
-            auto directional_relation = relations[d.index()];
-            if (directional_relation == NeighborRelation::Sibling)
+            const auto directional_relation = relations[d.index()];
+            if (directional_relation == NeighborRelation::Sibling || parent_id == patch_index_t::root())
             {
-                auto sibling_offset = get_sibling_offset(child_multiindex, d);
-                auto sibling_id     = patch_index_t::child_of(parent_id, sibling_offset);
+                const auto sibling_offset = get_sibling_offset(child_multiindex, d);
+                const auto sibling_id =
+                    patch_index_t::child_of(parent_id, sibling_offset);
                 neighbor_variant_t nb;
                 nb.data = typename neighbor_variant_t::same{ sibling_id };
                 child_neighbor_array[d.index()] = nb;
             }
             else
             {
-                auto visitor = [&](auto&& neighbor) -> neighbor_variant_t
+                static auto visitor = [&](auto const& neighbor) -> neighbor_variant_t
                 {
                     using T = std::decay_t<decltype(neighbor)>;
 
@@ -333,8 +339,15 @@ public:
                                            T,
                                            typename neighbor_variant_t::same>)
                     {
-                        return neighbor_variant_t{ typename neighbor_variant_t::coarser{
-                            neighbor.id } };
+                        return neighbor_variant_t{
+                            typename neighbor_variant_t::coarser{
+                                                                 neighbor.id,
+                                                                 static_cast<typename neighbor_variant_t::fanout_t>(
+                                    compute_fine_boundary_linear_index(
+                                        child_multiindex, d.dimension()
+                                    )
+                                ) }
+                        };
                     }
                     else if constexpr (std::is_same_v<
                                            T,

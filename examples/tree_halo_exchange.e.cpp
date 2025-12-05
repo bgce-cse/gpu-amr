@@ -1,10 +1,9 @@
-#include "ndtree/structured_print.hpp"
 #include "containers/static_layout.hpp"
 #include "containers/static_shape.hpp"
 #include "morton/morton_id.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
-#include "ndtree/print_tree_a.hpp"
+#include "ndtree/print_tree_a.hpp" 
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iostream>
@@ -65,85 +64,117 @@ auto operator<<(std::ostream& os, cell const& c) -> std::ostream&
 
 // --- End cell type ---
 
-int main()
+template<typename Tree, typename PatchLayout>
+void increment_all_data_cells(Tree& tree)
 {
-    constexpr std::size_t N    = 4;
-    constexpr std::size_t M    = 6;
-    constexpr std::size_t Halo = 2;
-    // using linear_index_t    = std::uint32_t;
-    [[maybe_unused]]
-    constexpr auto Fanout = 2;
-    using shape_t         = amr::containers::static_shape<N, M>;
-    using layout_t        = amr::containers::static_layout<shape_t>;
-    using index_t         = typename layout_t::index_t;
-
-    using patch_index_t  = amr::ndt::morton::morton_id<9u, 2u>;
-    using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
-    using tree_t         = amr::ndt::tree::ndtree<cell, patch_index_t, patch_layout_t>;
-
-    tree_t tree(100000);
-
-    amr::ndt::print::structured_print p(std::cout);
-
-    std::cout << "Print 0\n";
-    p.print(tree);
-
-    auto refine_criterion = [](const patch_index_t& idx)
+    using index_t = typename PatchLayout::index_t;
+    
+    for (std::size_t idx = 0; idx < tree.size(); idx++)
     {
-        auto [coords, level] = patch_index_t::decode(idx.id());
-        auto max_size        = 1u << idx.max_depth();
-        auto cell_size       = 1u << (idx.max_depth() - level);
+        auto& s1_patch = tree.template get_patch<S1>(idx);
 
-        double mid_x  = coords[0] + 0.5 * cell_size;
-        double mid_y  = coords[1] + 0.5 * cell_size;
-        double center = 0.5 * max_size;
-        double dist2 =
-            (mid_x - center) * (mid_x - center) + (mid_y - center) * (mid_y - center);
-
-        // Only refine if not at max level!
-        if (idx.level() == 0 ||
-            (level < idx.max_depth() && dist2 < 0.3 / idx.level() * max_size * max_size))
+        for (index_t linear_idx = 0; linear_idx != PatchLayout::flat_size(); ++linear_idx)
         {
-            return tree_t::refine_status_t::Refine;
+            if (amr::ndt::utils::patches::is_halo_cell<PatchLayout>(linear_idx))
+            {
+                continue;
+            }
+            s1_patch[linear_idx] += 5.0f;
         }
-        return tree_t::refine_status_t::Stable;
-    };
+    }
+}
 
-    std::cout << "patch size: "<< patch_layout_t::flat_size() << '\n';
-
+template<typename Tree, typename PatchLayout>
+void initialize_data_cells(Tree& tree)
+{
+    using index_t = typename PatchLayout::index_t;
+    
     int ii = 0;
     for (std::size_t idx = 0; idx < tree.size(); idx++)
     {
-        // Access S1 values (float)
         auto& s1_patch = tree.template get_patch<S1>(idx);
 
-        for (index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
-             ++linear_idx)
+        for (index_t linear_idx = 0; linear_idx != PatchLayout::flat_size(); ++linear_idx)
         {
-            if (amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
+            if (amr::ndt::utils::patches::is_halo_cell<PatchLayout>(linear_idx))
             {
                 continue;
             }
             s1_patch[linear_idx] = static_cast<float>(ii++);
         }
     }
+}
 
-    std::cout << "Print 1\n";
-    p.print(tree);
+int main()
+{
+    constexpr std::size_t N    = 4;
+    constexpr std::size_t M    = 8;
+    constexpr std::size_t Halo = 2;
+   
+    
+    using shape_t         = amr::containers::static_shape<N, M>;
+    using layout_t        = amr::containers::static_layout<shape_t>;
+    // using index_t         = typename layout_t::index_t;
+    using patch_index_t  = amr::ndt::morton::morton_id<9u, 2u>;
+    using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
+    using tree_t         = amr::ndt::tree::ndtree<cell, patch_index_t, patch_layout_t>;
 
-    tree.halo_exchange_update();
+    tree_t tree(100000);
 
-    std::cout << "Print 2\n";
-    p.print(tree);
+    amr::ndt::print::example_halo_patch_print<Halo, M, N> p1("tree_halo");
+    amr::ndt::print::example_patch_print<Halo, M, N> p2("tree_no_halo");
 
-    for (int i = 0; i != 1; ++i)
+    auto refine_criterion = [](const patch_index_t& idx)
     {
-        tree.reconstruct_tree(refine_criterion);
-        tree.halo_exchange_update();
+        const auto prob = 0.3f;
+        const auto r    = utility::random::srandom::randfloat<float>();
+        if (idx.level() == 0 || (r < prob))
+        {
+            return tree_t::refine_status_t::Refine;
+        }
+        else
+        {
+            return tree_t::refine_status_t::Stable;
+        }
+    };
+
+    std::cout << "Patch size: " << patch_layout_t::flat_size() << '\n';
+
+    // Initialize data
+    initialize_data_cells<tree_t, patch_layout_t>(tree);
+    
+    // Initial output
+    std::cout << "Step 0: Initial state\n";
+    p1.print(tree, "_step_0.vtk");
+    p2.print(tree, "_step_0.vtk");
+
+    // Main iteration loop
+    constexpr int num_steps = 6;
+    for (int step = 1; step <= num_steps; ++step)
+    {
+        std::cout << "Step " << step << ": ";
+        
+        // Refine on steps 1, 3, 5
+        if (step % 2 == 1)
+        {
+            std::cout << "Refining and exchanging halos\n";
+            tree.reconstruct_tree(refine_criterion);
+            tree.halo_exchange_update();
+        }
+        else
+        {
+            std::cout << "Incrementing data and exchanging halos\n";
+            increment_all_data_cells<tree_t, patch_layout_t>(tree);
+            tree.halo_exchange_update();
+        }
+        
+        // Output after this step
+        std::string suffix = "_step_" + std::to_string(step) + ".vtk";
+        p1.print(tree, suffix);
+        p2.print(tree, suffix);
     }
 
-    std::cout << "Print 3\n";
-    p.print(tree);
+    std::cout << "Simulation complete. Output files written to vtk_output/\n";
 
     return EXIT_SUCCESS;
 }
