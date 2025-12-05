@@ -62,7 +62,6 @@ public:
             elem = {};
 
         residual(patch_update, patch_dofs, time);
-
         patch_dofs = patch_dofs + (patch_update * dt);
     }
 };

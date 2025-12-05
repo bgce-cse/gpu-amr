@@ -12,7 +12,7 @@ simulation:
 solver:
   order: 1                      # Polynomial order for basis functions (Order)
   courant: 0.5                      # CFL number for time stepping
-  timeintegrator: SSPRK2            # Time integration scheme
+  timeintegrator: SSPRK1            # Time integration scheme
 
 # Equation and scenario selection
 equation:

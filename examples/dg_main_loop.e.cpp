@@ -166,6 +166,7 @@ int main()
     for (std::size_t idx = 0; idx < tree.size(); ++idx)
     {
         auto& dof_patch          = tree.template get_patch<S1>(idx);
+        auto& flux_patch         = tree.template get_patch<S2>(idx);
         auto& center_coord_patch = tree.template get_patch<S3>(idx);
         auto& size_patch         = tree.template get_patch<S4>(idx);
 
@@ -202,17 +203,10 @@ int main()
             dof_patch[linear_idx]          = amr::equations::interpolate_initial_dofs(
                 *eq, cell_center, cell_size, basis
             );
+            eq->evaluate_flux(dof_patch[linear_idx], flux_patch[linear_idx]);
             size_patch[linear_idx] = { cell_size, cell_size };
-            std::cout << "cell number: " << linear_idx << " center: " << cell_center
-                      << " size: " << size_patch[linear_idx]
-                      << " DOFs: " << dof_patch[linear_idx] << std::endl;
         }
     }
-
-    // Initialize halo cells with periodic boundary conditions
-    std::cout << "Initializing halo cells with periodic boundary conditions...\n";
-    tree.halo_exchange_update();
-    std::cout << "Halo cells initialized.\n\n";
 
     try
     {
@@ -238,6 +232,10 @@ int main()
 
         while (time < EndTime)
         {
+            // Initialize halo cells with periodic boundary conditions
+            std::cout << "Initializing halo cells with periodic boundary conditions...\n";
+            tree.halo_exchange_update();
+            std::cout << "Halo cells initialized.\n\n";
             // Apply time integrator to each patch in the tree
             for (std::size_t idx = 0; idx < tree.size(); ++idx)
             {
@@ -245,7 +243,8 @@ int main()
                 auto& flux_patch   = tree.template get_patch<S2>(idx);
                 auto& center_patch = tree.template get_patch<S3>(idx);
 
-                std::cout << dof_patch.data() << "\n";
+                // std::cout << "patch value " << dof_patch.data() << ": ";
+
                 auto residual_callback = [&](patch_container_t&       patch_update,
                                              const patch_container_t& current_dofs,
                                              double                   t)
@@ -265,13 +264,13 @@ int main()
 
                 integrator->step(residual_callback, dof_patch.data(), time, dt);
 
-                // TODO: Adaptive mesh refinement every N steps
-                // TODO: Adaptive time stepping based on CFL
+                // std::cout << "flnqiruengqlvirjbnvlobiquwgvlowrubvwloirtubholwrtu "
+                //           << dof_patch.data() << "\n";
             }
 
             // Update halo cells with periodic boundary conditions
             tree.halo_exchange_update();
-            if (timestep % 5 == 4)
+            if (true)
             {
                 // Print the VTU file
                 time_extension = "_t" + std::to_string(timestep) + ".vtk";

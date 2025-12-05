@@ -184,35 +184,36 @@ constexpr auto halo_apply_section_impl(
             },
             // Finer impl
             [&tree, &p_i, &n_idx, &args...](
-                typename n_linear_idx_varant_t::finer const& neighbor
+                [[maybe_unused]] typename n_linear_idx_varant_t::finer const& neighbor
             )
             {
-                using neighbor_t = std::remove_cvref_t<decltype(neighbor)>;
-                using patch_t =
-                    typename std::remove_cvref_t<decltype(tree)>::template patch_t<T>;
-
-                const auto p_neighbors = utility::compile_time_utility::array_factory<
-                    std::reference_wrapper<typename patch_t::container_t>,
-                    neighbor_t::num_neighbors()>(
-                    [&tree](auto const i, auto const& ids)
-                    {
-                        return std::ref(
-                            std::forward<decltype(tree)>(tree)
-                                .template get_patch<T>(ids[i])
-                                .data()
-                        );
-                    },
-                    neighbor.ids
-                );
-
-                containers::manipulators::for_each<
-                    typename patch_layout_t::template halo_iteration_control_t<D>>(
-                    p_i.data(),
-                    Halo_Exchange_Operator::finer,
-                    p_neighbors,
-                    D,
-                    std::forward<decltype(args)>(args)...
-                );
+                // TODO: finer_t implementation needs fixing for tensor types
+                // using neighbor_t = std::remove_cvref_t<decltype(neighbor)>;
+                // using patch_t =
+                //     typename std::remove_cvref_t<decltype(tree)>::template patch_t<T>;
+                //
+                // const auto p_neighbors = utility::compile_time_utility::array_factory<
+                //     std::reference_wrapper<typename patch_t::container_t>,
+                //     neighbor_t::num_neighbors()>(
+                //     [&tree](auto const i, auto const& ids)
+                //     {
+                //         return std::ref(
+                //             std::forward<decltype(tree)>(tree)
+                //                 .template get_patch<T>(ids[i])
+                //                 .data()
+                //         );
+                //     },
+                //     neighbor.ids
+                // );
+                //
+                // containers::manipulators::for_each<
+                //     typename patch_layout_t::template halo_iteration_control_t<D>>(
+                //     p_i.data(),
+                //     Halo_Exchange_Operator::finer,
+                //     p_neighbors,
+                //     D,
+                //     std::forward<decltype(args)>(args)...
+                // );
             },
             // Coarser impl
             [&tree,

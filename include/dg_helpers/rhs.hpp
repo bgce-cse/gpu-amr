@@ -119,21 +119,12 @@ inline void evaluate_rhs(
     using flux_vector_t   = std::decay_t<decltype(flux_patch[0])>;
     using size_type       = typename flux_vector_t::size_type;
 
-    // Initialize RHS buffer to zero for all cells (interior and halo)
-    for (std::size_t linear_idx = 0; linear_idx < patch_layout_t.flat_size();
-         ++linear_idx)
-    {
-        rhs_patch[linear_idx] = std::decay_t<decltype(rhs_patch[0])>{};
-    }
-
     // Loop over each cell in the patch (including halos)
     for (std::size_t linear_idx = 0; linear_idx < patch_layout_t.flat_size();
          ++linear_idx)
     {
         if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutType>(linear_idx))
         {
-            // std::cout << "  [HALO] Skipping halo cell at linear_idx=" << linear_idx
-            //           << "\n";
             continue;
         }
 
@@ -176,6 +167,9 @@ inline void evaluate_rhs(
                 !sign,
                 dim
             );
+            std::cout << "  cell projected of cell " << cell_center[linear_idx]
+                      << " projected dof " << std::get<0>(neighbor_data)
+                      << " projected flux " << std::get<1>(neighbor_data) << "\n";
             [[maybe_unused]]
             double curr_eigenval = 1.0;
             auto   face_du       = amr::surface::evaluate_face_integral(
