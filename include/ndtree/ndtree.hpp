@@ -159,14 +159,15 @@ public:
 
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
         patch_neighbors_t root_neighbors;
-        for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel(); d.advance())
+        for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
+             d.advance())
         {
             neighbor_patch_index_variant_t periodic_neighbor;
-            periodic_neighbor.data = typename neighbor_patch_index_variant_t::same{ patch_index_t::root() };
+            periodic_neighbor.data =
+                typename neighbor_patch_index_variant_t::same{ patch_index_t::root() };
             root_neighbors[d.index()] = periodic_neighbor;
         }
         append(patch_index_t::root(), root_neighbors);
-
     }
 
     ~ndtree() noexcept
@@ -924,6 +925,9 @@ public:
     {
         for (linear_index_t i = 0; i != m_size; ++i)
         {
+            utils::patches::halo_apply<halo_exchange_operator_impl_t, patch_direction_t>(
+                *this, i
+            );
         }
     }
 
