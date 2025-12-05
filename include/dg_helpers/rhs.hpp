@@ -100,16 +100,17 @@ template <
     typename DOFTensorType,
     typename FluxVectorType,
     typename KernelsType,
-    typename PatchLayoutType>
+    typename PatchLayoutType,
+    typename CenterType>
 inline void evaluate_rhs(
     const EquationType&               eq,
     [[maybe_unused]] const BasisType& basis,
     DOFTensorType&                    dof_patch,
     FluxVectorType&                   flux_patch,
     DOFTensorType&                    rhs_patch,
-    [[maybe_unused]] double           cell_size,
+    CenterType&                       cell_center,
     const KernelsType&                kernels,
-    [[maybe_unused]] double&          t,
+    [[maybe_unused]] double&          dt,
     const PatchLayoutType&            patch_layout_t
 )
 {
@@ -159,18 +160,11 @@ inline void evaluate_rhs(
             if (neighbor_linear_idx >= patch_layout_t.flat_size()) continue;
 
             const auto dim_idx = static_cast<size_type>(dim);
-
-            // std::string direction_str = (direction_t::is_negative(d) ? "-" : "+");
-            // std::cout << "    [PROJECTION] dim=" << dim << ", direction=" <<
-            // direction_str
-            //           << ", neighbor_coords=[" << neighbor_coords[0];
-            // for (std::size_t i = 1; i < Dim; ++i)
-            //     std::cout << "," << neighbor_coords[i];
-            // std::cout << "], neighbor_idx=" << neighbor_linear_idx << "\n"; // Project
-            // to faces using dimension dispatch flux_patch[linear_idx] is S2::type =
-            // static_vector<dof_t, Dim> flux_patch[linear_idx][dim_idx] is dof_t = the
-            // flux tensor for dimension 'dim'
-
+            std::cout << "Processing cell " << cell_center[linear_idx]
+                      << " neighbor in dim " << dim << " sign " << sign
+                      << " neighbor idx " << cell_center[neighbor_linear_idx]
+                      << "cell dofs " << dof_patch[linear_idx] << " neighbor dofs "
+                      << dof_patch[neighbor_linear_idx] << "\n";
             auto cell_data = dispatch_project_to_faces<Dim>(
                 kernels, dof_patch[linear_idx], flux_patch[linear_idx][dim_idx], sign, dim
             );
@@ -183,8 +177,8 @@ inline void evaluate_rhs(
                 dim
             );
             [[maybe_unused]]
-            double curr_eigenval{};
-            auto   face_du = amr::surface::evaluate_face_integral(
+            double curr_eigenval = 1.0;
+            auto   face_du       = amr::surface::evaluate_face_integral(
                 curr_eigenval,
                 eq,
                 kernels,
@@ -203,7 +197,6 @@ inline void evaluate_rhs(
             rhs_patch[linear_idx] = rhs_patch[linear_idx] + face_du;
         }
     }
-    dof_patch = rhs_patch;
 }
 
 } // namespace amr::rhs

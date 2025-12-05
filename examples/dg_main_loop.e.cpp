@@ -152,10 +152,14 @@ int main()
     using tree_t = amr::ndt::tree::ndtree<MarkerCell, patch_index_t, patch_layout_t>;
 
     tree_t tree(10000);
+
     using patch_container_t = decltype(tree.template get_patch<S1>(0).data());
     auto integrator         = make_configured_time_integrator<patch_container_t>();
 
-    std::cout << "Tree: MaxDepth=" << MaxDepth << ", Patches=" << tree.size() << "\n\n";
+    // Tree initialized with root patch having periodic boundaries (set in ndtree
+    // constructor)
+    std::cout << "Tree: MaxDepth=" << MaxDepth << ", Patches=" << tree.size()
+              << " (single root patch with periodic BC)\n\n";
 
     // Initialize DG patches for each leaf
     // Populate leaf data
@@ -173,25 +177,42 @@ int main()
         for (std::size_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
              ++linear_idx)
         {
+            // Compute global cell center using generic function
+            // std::cout << "Initializing patch " << idx << " cell linear_idx " <<
+            // linear_idx
+            //           << "is it halo? "
+            //           << amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(
+            //                  linear_idx
+            //              )
+            //           << "patch coords: " << patch_coords[0] << "," << patch_coords[1]
+            //           << " patch level: " << static_cast<int>(patch_level) << "\n";
             if (amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
                 continue;
+            // debug print
 
             // Convert linear index to local coordinates (dimension-generic)
             auto coords_with_halo =
                 linear_to_local_coords<Dim, PatchSize, HaloWidth>(linear_idx);
             auto local_indices = remove_halo<Dim, HaloWidth>(coords_with_halo);
 
-            // Compute global cell center using generic function
             auto cell_center =
                 compute_cell_center<PatchSize, HaloWidth, Dim>(patch_id, local_indices);
-            // std::cout << "cell center: " << cell_center << std::endl;
+
             center_coord_patch[linear_idx] = cell_center;
             dof_patch[linear_idx]          = amr::equations::interpolate_initial_dofs(
                 *eq, cell_center, cell_size, basis
             );
             size_patch[linear_idx] = { cell_size, cell_size };
+            std::cout << "cell number: " << linear_idx << " center: " << cell_center
+                      << " size: " << size_patch[linear_idx]
+                      << " DOFs: " << dof_patch[linear_idx] << std::endl;
         }
     }
+
+    // Initialize halo cells with periodic boundary conditions
+    std::cout << "Initializing halo cells with periodic boundary conditions...\n";
+    tree.halo_exchange_update();
+    std::cout << "Halo cells initialized.\n\n";
 
     try
     {
@@ -201,7 +222,8 @@ int main()
         ndt::print::dg_tree_printer_advanced<Dim, Order, PatchSize, HaloWidth, DOFs>
             printer("dg_tree");
         std::cout << "DG tree printer created successfully\n";
-        printer.template print<S1>(tree, ".vtk");
+        std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
+        printer.template print<S1>(tree, time_extension);
         std::cout << "DG tree printer completed\n";
 
         // Print debug info for DOF inspection
@@ -219,15 +241,12 @@ int main()
             // Apply time integrator to each patch in the tree
             for (std::size_t idx = 0; idx < tree.size(); ++idx)
             {
-                auto& dof_patch  = tree.template get_patch<S1>(idx);
-                auto& flux_patch = tree.template get_patch<S2>(idx);
+                auto& dof_patch    = tree.template get_patch<S1>(idx);
+                auto& flux_patch   = tree.template get_patch<S2>(idx);
+                auto& center_patch = tree.template get_patch<S3>(idx);
 
-                auto patch_id                    = patch_index_t(idx);
-                auto [patch_coords, patch_level] = patch_index_t::decode(patch_id.id());
-                double patch_level_size = 1.0 / static_cast<double>(1u << patch_level);
-                double cell_size = patch_level_size / static_cast<double>(PatchSize);
-
-                auto residual_callback = [&](patch_container_t&       rhs_dofs,
+                std::cout << dof_patch.data() << "\n";
+                auto residual_callback = [&](patch_container_t&       patch_update,
                                              const patch_container_t& current_dofs,
                                              double                   t)
                 {
@@ -236,8 +255,8 @@ int main()
                         basis,
                         current_dofs,      // whole patch
                         flux_patch.data(), // whole flux patch
-                        rhs_dofs,          // whole RHS patch
-                        cell_size,
+                        patch_update,      // whole RHS patch
+                        center_patch.data(),
                         kernels,
                         t,
                         patch_layout_t{} // patch layout instance
@@ -248,11 +267,14 @@ int main()
 
                 // TODO: Adaptive mesh refinement every N steps
                 // TODO: Adaptive time stepping based on CFL
-            };
+            }
+
+            // Update halo cells with periodic boundary conditions
+            tree.halo_exchange_update();
             if (timestep % 5 == 4)
             {
                 // Print the VTU file
-                std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
+                time_extension = "_t" + std::to_string(timestep) + ".vtk";
                 printer.template print<S1>(tree, time_extension);
 
                 // Store the filename and time

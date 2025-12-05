@@ -3,7 +3,7 @@
 #include "morton/morton_id.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
-#include "ndtree/print_tree_a.hpp" 
+#include "ndtree/print_tree_a.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iostream>
@@ -64,11 +64,11 @@ auto operator<<(std::ostream& os, cell const& c) -> std::ostream&
 
 // --- End cell type ---
 
-template<typename Tree, typename PatchLayout>
+template <typename Tree, typename PatchLayout>
 void increment_all_data_cells(Tree& tree)
 {
     using index_t = typename PatchLayout::index_t;
-    
+
     for (std::size_t idx = 0; idx < tree.size(); idx++)
     {
         auto& s1_patch = tree.template get_patch<S1>(idx);
@@ -84,11 +84,11 @@ void increment_all_data_cells(Tree& tree)
     }
 }
 
-template<typename Tree, typename PatchLayout>
+template <typename Tree, typename PatchLayout>
 void initialize_data_cells(Tree& tree)
 {
     using index_t = typename PatchLayout::index_t;
-    
+
     int ii = 0;
     for (std::size_t idx = 0; idx < tree.size(); idx++)
     {
@@ -109,11 +109,10 @@ int main()
 {
     constexpr std::size_t N    = 4;
     constexpr std::size_t M    = 8;
-    constexpr std::size_t Halo = 2;
-   
-    
-    using shape_t         = amr::containers::static_shape<N, M>;
-    using layout_t        = amr::containers::static_layout<shape_t>;
+    constexpr std::size_t Halo = 1;
+
+    using shape_t  = amr::containers::static_shape<N, M>;
+    using layout_t = amr::containers::static_layout<shape_t>;
     // using index_t         = typename layout_t::index_t;
     using patch_index_t  = amr::ndt::morton::morton_id<9u, 2u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
@@ -122,7 +121,7 @@ int main()
     tree_t tree(100000);
 
     amr::ndt::print::example_halo_patch_print<Halo, M, N> p1("tree_halo");
-    amr::ndt::print::example_patch_print<Halo, M, N> p2("tree_no_halo");
+    amr::ndt::print::example_patch_print<Halo, M, N>      p2("tree_no_halo");
 
     auto refine_criterion = [](const patch_index_t& idx)
     {
@@ -142,7 +141,7 @@ int main()
 
     // Initialize data
     initialize_data_cells<tree_t, patch_layout_t>(tree);
-    
+
     // Initial output
     std::cout << "Step 0: Initial state\n";
     p1.print(tree, "_step_0.vtk");
@@ -153,7 +152,7 @@ int main()
     for (int step = 1; step <= num_steps; ++step)
     {
         std::cout << "Step " << step << ": ";
-        
+
         // Refine on steps 1, 3, 5
         if (step % 2 == 1)
         {
@@ -167,7 +166,7 @@ int main()
             increment_all_data_cells<tree_t, patch_layout_t>(tree);
             tree.halo_exchange_update();
         }
-        
+
         // Output after this step
         std::string suffix = "_step_" + std::to_string(step) + ".vtk";
         p1.print(tree, suffix);

@@ -4,13 +4,13 @@
 # Simulation parameters
 simulation:
   end_time: 4.0                    # Total simulation time
-  grid_elements: 32               # Number of elements per dimension
+  grid_elements: 10              # Number of elements per dimension
   grid_size: 1.0                   # Physical domain size
   offset: [0.0, 0.0]               # Domain offset
 
 # Solver configuration
 solver:
-  order: 1                        # Polynomial order for basis functions (Order)
+  order: 1                      # Polynomial order for basis functions (Order)
   courant: 0.5                      # CFL number for time stepping
   timeintegrator: SSPRK2            # Time integration scheme
 
