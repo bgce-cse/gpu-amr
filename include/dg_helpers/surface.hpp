@@ -54,12 +54,14 @@ double rusanov(
 )
 {
     double maxeigenval = 1.0; // placeholder
-    numericalflux      = (sign ? 1 : -1) *
-                    ((flux_face + flux_face_neigh) * 0.5 +
+    numericalflux      = (sign * (flux_face + flux_face_neigh) * 0.5 +
                      (dofs_face - dofs_face_neigh) * (0.5 * maxeigenval)) *
                     surface;
-    // std::cout << "direction=" << direction << " numericalflux = " << numericalflux
-    //           << "\n";
+    std::cout << "sign: " << sign << " numerical flux: " << numericalflux << "\n"
+              << "dofs_face: " << dofs_face << " flux_face: " << flux_face << "\n"
+              << "dofs_neigh: " << dofs_face_neigh
+              << " flux_face_neigh: " << flux_face_neigh << "\n"
+              << "surface: " << surface << " maxeigenval: " << maxeigenval << "\n";
     return maxeigenval;
 }
 
@@ -111,7 +113,8 @@ auto evaluate_face_integral(
     const Tensor&       flux_face,
     const Tensor&       flux_face_neigh,
     std::size_t         direction,
-    int                 dir,
+    int                 sign,
+    int                 sign_idx,
     double              surface
 )
 {
@@ -128,11 +131,11 @@ auto evaluate_face_integral(
         flux_face_neigh,
         surface,
         direction,
-        dir,
+        sign,
         numericalflux
     );
     // std::cout << "  numerical flux before weights: " << numericalflux << "\n";
-    auto kernel_vec = kernels[dir];
+    auto kernel_vec = kernels[sign_idx];
 
     // Apply quadrature weights along non-face dimensions
     // For 2D: apply weights along dimension 0 (non-face)

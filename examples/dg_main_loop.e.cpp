@@ -136,6 +136,9 @@ int main()
     auto              eq      = make_configured_equation();
     auto              kernels = amr::global::FaceKernels<Order, Dim>(basis);
 
+    // Create interpolator for initial DOF values
+    auto interpolator = amr::equations::InitialDOFInterpolator(*eq, basis);
+
     // Setup tree mesh
     constexpr std::size_t PatchSize = GridElements;
     constexpr std::size_t HaloWidth = 1;
@@ -200,9 +203,7 @@ int main()
                 compute_cell_center<PatchSize, HaloWidth, Dim>(patch_id, local_indices);
 
             center_coord_patch[linear_idx] = cell_center;
-            dof_patch[linear_idx]          = amr::equations::interpolate_initial_dofs(
-                *eq, cell_center, cell_size, basis
-            );
+            dof_patch[linear_idx]          = interpolator(cell_center, cell_size);
             eq->evaluate_flux(dof_patch[linear_idx], flux_patch[linear_idx]);
             size_patch[linear_idx] = { cell_size, cell_size };
         }

@@ -165,6 +165,9 @@ int main()
     Basis<Order, Dim> basis(0.0, GridSize);
     auto              eq = make_configured_equation();
 
+    // Create interpolator for initial DOF values
+    auto interpolator = amr::equations::InitialDOFInterpolator(*eq, basis);
+
     // Setup tree mesh
     constexpr std::size_t PatchSize = 4;
     constexpr std::size_t HaloWidth = 1;
@@ -224,9 +227,7 @@ int main()
             center_coord_patch[linear_idx] = cell_center_coords;
 
             // Initialize DOF tensor with interpolated initial conditions
-            dof_patch[linear_idx] = amr::equations::interpolate_initial_dofs(
-                *eq, cell_center_coords, cell_size, basis
-            );
+            dof_patch[linear_idx] = interpolator(cell_center_coords, cell_size);
         }
     }
 

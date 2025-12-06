@@ -131,6 +131,29 @@ inline void evaluate_rhs(
         // Compute flux for current cell
         eq.evaluate_flux(dof_patch[linear_idx], flux_patch[linear_idx]);
 
+        // ========== DIRECTION SYSTEM EXPLANATION ==========
+        // The tree uses a NATURAL DIRECTION ORDERING based on the layout strides:
+        // static_layout uses ROW-MAJOR order where the LAST dimension varies fastest
+        // For 2D shape [size_0, size_1]: stride[0]=size_1, stride[1]=1
+        //
+        // This means direction dimensions map as follows:
+        //   - Direction dimension 0 → Layout dimension 0 → NORTH/SOUTH (Y-direction)
+        //   - Direction dimension 1 → Layout dimension 1 → EAST/WEST (X-direction)
+        //
+        // Direction iteration order and meaning (2D):
+        //   d.index() = 0  →  Dimension 0, NEGATIVE direction (SOUTH, -Y)
+        //   d.index() = 1  →  Dimension 0, POSITIVE direction (NORTH, +Y)
+        //   d.index() = 2  →  Dimension 1, NEGATIVE direction (WEST, -X)
+        //   d.index() = 3  →  Dimension 1, POSITIVE direction (EAST, +X)
+        //
+        // Key functions:
+        //   d.dimension() = d.index() / 2        → which dimension (0 or 1)
+        //   is_negative(d) = (d.index() % 2 == 0) → true if NEGATIVE (SOUTH or WEST)
+        //
+        // Since layout is [dim0][dim1] with dim1 fastest, NO SWAP is needed!
+        // layout_dim = dim_in_direction directly
+        // =====================================================
+
         // Loop over neighbor directions
         for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
         {
@@ -138,47 +161,77 @@ inline void evaluate_rhs(
             auto current_coords = padded_layout_t::multi_index(
                 static_cast<typename padded_layout_t::index_t>(linear_idx)
             );
-            // TODO:fix this shit
-            //  Swap dimension interpretation: layout dim 0 → user dim 1 (Y), layout dim 1
-            //  → user dim 0 (X)
-            const std::size_t layout_dim = d.dimension();
-            const std::size_t user_dim   = (layout_dim == 0) ? 1 : 0; // Swap dimensions
-            const int         sign       = direction_t::is_negative(d) ? 0 : 1;
 
-            // Compute neighbor coordinates
+            // Natural neighbor in dimension d
+            const std::size_t dim_idx  = d.dimension();
+            const bool        is_neg   = direction_t::is_negative(d);
+            const int         sign     = is_neg ? -1 : 1;
+            const int         sign_idx = is_neg ? 0 : 1;
+
+            // std::cout << "\n[NEIGHBOR] d.index()=" << d.index() << " dim_idx=" <<
+            // dim_idx
+            //           << " is_neg=" << is_neg << " sign=" << sign << "\n";
+            // std::cout << "[COORDS] current=[" << current_coords[0] << ", "
+            //           << current_coords[1] << "]\n";
+
+            // Compute neighbor
             auto neighbor_coords = current_coords;
-            neighbor_coords[layout_dim] += (direction_t::is_negative(d) ? -1 : 1);
+            neighbor_coords[dim_idx] += sign;
 
-            // Convert neighbor coordinates back to linear index using padded_layout_t
+            // std::cout << "[COORDS] neighbor=[" << neighbor_coords[0] << ", "
+            //           << neighbor_coords[1] << "]\n";
+
             auto neighbor_linear_idx = padded_layout_t::linear_index(neighbor_coords);
 
-            // Bounds check using padded layout size
-            if (neighbor_linear_idx >= padded_layout_t::flat_size()) continue;
+            // std::cout << "[LINEAR] current_linear=" << linear_idx
+            //           << " neighbor_linear=" << neighbor_linear_idx << "\n";
 
-            const auto dim_idx = static_cast<size_type>(layout_dim);
+            // Bounds check using padded layout size
+            if (neighbor_linear_idx >= padded_layout_t::flat_size())
+            {
+                std::cout << "[BOUNDS] OUT OF BOUNDS\n";
+                continue;
+            }
+
+            const auto actual_dim    = Dim - dim_idx - 1;
+            const auto actual_dim_sz = static_cast<size_type>(actual_dim);
+
+            // Determine semantic direction (top/bottom for dim 0, left/right for dim 1)
+            std::string direction;
+            if (actual_dim == 1)
+            {
+                direction = is_neg ? "BOTTOM" : "TOP";
+            }
+            else if (actual_dim == 0)
+            {
+                direction = is_neg ? "LEFT" : "RIGHT";
+            }
+            else
+            {
+                direction = "UNKNOWN";
+            }
+
+            std::cout << "[EIGENVALUE] face=" << direction << ")\n";
 
             auto cell_data = dispatch_project_to_faces<Dim>(
                 kernels,
                 dof_patch[linear_idx],
-                flux_patch[linear_idx][dim_idx],
-                sign,
-                user_dim
+                flux_patch[linear_idx][actual_dim_sz],
+                sign_idx,
+                actual_dim
             );
-            // std::cout << "  cell projected of cell " << cell_center[linear_idx]
-            //           << " projected dof " << std::get<0>(cell_data) << " projected
-            //           flux "
-            //           << std::get<1>(cell_data) << "\n";
+            // std::cout << "[CELL DATA] dof_face=" << std::get<0>(cell_data)
+            //           << " flux_face=" << std::get<1>(cell_data) << "\n";
             auto neighbor_data = dispatch_project_to_faces<Dim>(
                 kernels,
                 dof_patch[neighbor_linear_idx],
-                flux_patch[neighbor_linear_idx][dim_idx],
-                !sign,
-                user_dim
+                flux_patch[neighbor_linear_idx][actual_dim_sz],
+                !sign_idx,
+                actual_dim
             );
-            // std::cout << "  cell projected of neigh " <<
-            // cell_center[neighbor_linear_idx]
-            //           << " projected dof " << std::get<0>(neighbor_data)
-            //           << " projected flux " << std::get<1>(neighbor_data) << "\n";
+
+            // std::cout << "[NEIGHBOR DATA] dof_face=" << std::get<0>(neighbor_data)
+            //           << " flux_face=" << std::get<1>(neighbor_data) << "\n";
             [[maybe_unused]]
             double curr_eigenval = 1.0;
             auto   face_du       = amr::surface::evaluate_face_integral(
@@ -189,8 +242,9 @@ inline void evaluate_rhs(
                 std::get<0>(neighbor_data),
                 std::get<1>(cell_data),
                 std::get<1>(neighbor_data),
-                layout_dim,
+                actual_dim,
                 sign,
+                sign_idx,
                 0.1 // edge surface
             );
 
