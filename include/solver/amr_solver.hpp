@@ -112,11 +112,11 @@ public:
                 
                 // Calculate absolute cell center coordinates in max_coord units
                 // x_units = (Patch Origin X) + (Cell Index i) * (Cell Size in units) + (Half Cell Size)
-                uint32_t cell_x_units = patch_coords_raw[0] * cell_size_units + 
+                uint32_t cell_x_units = patch_coords_raw[0] *  static_cast<uint32_t>(patch_size_padded_x) + 
                                         static_cast<uint32_t>(i) * cell_size_units + 
                                         cell_size_units / 2;
                 
-                uint32_t cell_y_units = patch_coords_raw[1] * cell_size_units + 
+                uint32_t cell_y_units = patch_coords_raw[1] *  static_cast<uint32_t>(patch_size_padded_y) + 
                                         static_cast<uint32_t>(j) * cell_size_units + 
                                         cell_size_units / 2;
 
