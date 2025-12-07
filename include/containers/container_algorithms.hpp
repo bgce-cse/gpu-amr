@@ -43,12 +43,14 @@ constexpr auto tensor_product(T1 const& t1, T2 const& t2) noexcept -> utils::typ
 {
     using ret_t = utils::types::tensor::
         tensor_product_result_t<std::remove_cvref_t<T1>, std::remove_cvref_t<T2>>;
-    ret_t ret{};
-    using lc_t = control::loop_control<ret_t, 0, ret_t::sizes(), 1>;
     static_assert(
         std::tuple_size_v<std::remove_cvref_t<decltype(ret_t::sizes())>> ==
         T1::rank() + T2::rank()
     );
+
+    ret_t ret{};
+    /*
+    using lc_t = control::loop_control<ret_t, 0, ret_t::sizes(), 1>;
     manipulators::shaped_for<lc_t>(
         [&ret](auto const& a, auto const& b, auto const& idxs)
         {
@@ -60,6 +62,17 @@ constexpr auto tensor_product(T1 const& t1, T2 const& t2) noexcept -> utils::typ
         t1,
         t2
     );
+    */
+    using index_t          = typename ret_t::index_t;
+    constexpr auto outter_size = static_cast<index_t>(T1::shape_t::elements());
+    constexpr auto inner_size  = static_cast<index_t>(T2::shape_t::elements());
+    for (auto i = index_t{}; i != outter_size; ++i)
+    {
+        for (auto j = index_t{}; j != inner_size; ++j)
+        {
+            ret[i * inner_size + j] = t1[i] * t2[j];
+        }
+    }
     return ret;
 }
 

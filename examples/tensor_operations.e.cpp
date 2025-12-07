@@ -201,10 +201,10 @@ int main()
     amr::containers::static_vector<double, 3> v{ 1., 2., 3. };
     auto power = amr::containers::algorithms::tensor::template tensor_power<2>(v);
     [[maybe_unused]]
-    const auto out2 = amr::containers::algorithms::tensor::tensor_product(v, power);
+    const auto out = amr::containers::algorithms::tensor::tensor_product(v, power);
     std::cout << "tensor value: " << v << std::endl;
     std::cout << "tensor value: " << power << std::endl;
-    std::cout << "tensor product value: " << out2 << std::endl;
+    std::cout << "tensor product value: " << out << std::endl;
 
     std::cout << "product tensor value: "
               << amr::containers::algorithms::tensor::tensor_dot(power, power) << std::endl;
