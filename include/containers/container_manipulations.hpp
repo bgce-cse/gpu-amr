@@ -10,6 +10,7 @@
 #include <array>
 #include <concepts>
 #include <functional>
+#include <numeric>
 #include <type_traits>
 
 namespace amr::containers::manipulators
@@ -355,17 +356,50 @@ constexpr auto contract(Tensor const& tensor, Vec const& vec) noexcept
     return result;
 }
 
-template <typename Tensor, typename Vec>
-constexpr auto prepend_shape(Tensor const&, Vec const& vec)
+template <typename TensorA, typename TensorB>
+auto tensor_product(const TensorA& A, const TensorB& B)
 {
-    constexpr auto                    rank      = Tensor::rank();
-    constexpr auto                    size      = Vec::elements();
-    auto                              old_sizes = Tensor::sizes();
-    std::array<std::size_t, rank + 1> new_sizes{};
-    new_sizes[0] = size;
-    for (std::size_t i = 0; i < rank; ++i)
-        new_sizes[i + 1] = old_sizes[i];
-    return new_sizes;
+    using LayoutOut =
+        amr::containers::static_layout<tensor_product_layout<TensorA, TensorB>>;
+    amr::containers::static_tensor<typename TensorA::value_type, LayoutOut> result{};
+
+    for (typename TensorA::size_type ia = 0; ia < TensorA::shape_t::elements(); ++ia)
+    {
+        for (typename TensorB::size_type ib = 0; ib < TensorB::shape_t::elements(); ++ib)
+        {
+            int idxOut     = static_cast<int>(ia * TensorB::shape_t::elements() + ib);
+            result[idxOut] = A[ia] * B[ib];
+        }
+    }
+
+    return result;
+}
+
+template <std::size_t N, typename TensorType>
+auto tensor_power(TensorType const& tensor)
+{
+    static_assert(N >= 1, "Tensor power must be at least 1");
+    if constexpr (N == 1)
+        return tensor;
+    else
+        return tensor_product(tensor, tensor_power<N - 1>(tensor));
+}
+
+template <typename TensorA, typename TensorB>
+auto tensor_dot(TensorA const& Ta, TensorB const& Tb)
+{
+    // Element-wise product of two tensors with the same shape
+    static_assert(
+        std::is_same_v<typename TensorA::shape_t, typename TensorB::shape_t>,
+        "tensor_dot requires tensors with the same shape"
+    );
+
+    TensorA result{};
+    for (typename TensorA::size_type i = 0; i < TensorA::shape_t::elements(); ++i)
+    {
+        result[i] = Ta[i] * Tb[i];
+    }
+    return result;
 }
 
 } // namespace amr::containers::manipulators

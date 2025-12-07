@@ -91,7 +91,7 @@ public:
     [[nodiscard]]
     static constexpr auto
         linear_index(std::ranges::contiguous_range auto const& idxs) noexcept -> index_t
-        
+
     {
         // assert(std::ranges::size(idxs) == rank());
         return layout_t::linear_index(idxs);
@@ -109,7 +109,8 @@ public:
     constexpr auto
         operator[](std::ranges::contiguous_range auto const& idxs) const noexcept
         -> const_reference
-        // requires(std::ranges::size(idxs) == rank() && std::is_same_v<std::ranges::range_value_t<decltype(idxs)>, index_t>) #TODO: @Miguel
+    // requires(std::ranges::size(idxs) == rank() &&
+    // std::is_same_v<std::ranges::range_value_t<decltype(idxs)>, index_t>) #TODO: @Miguel
     {
         return data_[linear_index(idxs)];
     }
@@ -289,6 +290,46 @@ auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
     os << postfix[rank - 1];
     return os;
 }
+
+template <typename TensorA, typename TensorB>
+struct tensor_product_layout
+{
+    using index_t   = int;
+    using rank_t    = std::size_t;
+    using size_type = int;
+
+    static constexpr auto s_rank = TensorA::shape_t::rank() + TensorB::shape_t::rank();
+
+    static constexpr auto compute_sizes()
+    {
+        std::array<index_t, s_rank> out_sizes{};
+        for (std::size_t i = 0; i < TensorA::shape_t::rank(); ++i)
+            out_sizes[i] = TensorA::shape_t::sizes()[i];
+        for (std::size_t i = 0; i < TensorB::shape_t::rank(); ++i)
+            out_sizes[TensorA::shape_t::rank() + i] = TensorB::shape_t::sizes()[i];
+        return out_sizes;
+    }
+
+    static constexpr auto s_sizes = compute_sizes();
+
+    static constexpr rank_t rank()
+    {
+        return s_rank;
+    }
+
+    static constexpr auto sizes() noexcept -> auto const&
+    {
+        return s_sizes;
+    }
+
+    static constexpr size_type elements()
+    {
+        size_type prod = 1;
+        for (auto s : sizes())
+            prod *= s;
+        return prod;
+    }
+};
 
 } // namespace amr::containers
 

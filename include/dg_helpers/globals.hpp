@@ -343,6 +343,22 @@ inline amr::containers::static_vector<double, Dim> compute_cell_center(
     return cell_center;
 }
 
+// template <typename TensorType, QuadData<Dim> QuadDataType>
+// struct MassTensor
+// {
+// apply_mass_matrix(const TensorType& input) const -> TensorType
+//     {
+//         TensorType result;
+//         using multi_index_t = typename TensorType::multi_index_t;
+//         multi_index_t idx{};
+//         // Apply mass matrix using quadrature points and weights
+//         do{
+
+//         }
+//         return result;
+//     }
+// };
+
 } // namespace amr::global
 
 #endif // GLOBAL_HPP

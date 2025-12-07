@@ -195,6 +195,14 @@ int main()
     std::cout << "✓ Dimension 2 contraction completed\n";
 
     std::cout << "\n✓ All einsum tests passed!\n";
+    amr::containers::static_vector<double, 3> v{ 1., 2., 3. };
+    auto power = amr::containers::manipulators::tensor_power<2>(v);
+    [[maybe_unused]]
+    auto out = amr::containers::manipulators::tensor_product(v, power);
+    std::cout << "tensor value: " << v << std::endl;
+    std::cout << "tensor product value: " << power << std::endl;
 
+    std::cout << "product tensor value: "
+              << amr::containers::manipulators::tensor_dot(power, power) << std::endl;
     return EXIT_SUCCESS;
 }
