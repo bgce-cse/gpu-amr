@@ -144,6 +144,7 @@ int main()
     initialize_data_cells<tree_t, patch_layout_t>(tree);
     
     // Initial output
+    tree.halo_exchange_update();
     std::cout << "Step 0: Initial state\n";
     p1.print(tree, "_step_0.vtk");
     p2.print(tree, "_step_0.vtk");
