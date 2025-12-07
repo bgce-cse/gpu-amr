@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../../build/generated_config.hpp"
-#include "../containers/static_tensor.hpp"
+#include "../examples/build/generated_config.hpp"
+#include "containers/static_tensor.hpp"
 #include <functional>
 #include <memory>
 #include <stdexcept>

@@ -2,8 +2,8 @@
 #define EULER_HPP
 
 #include "equation_impl.hpp"
-#include "../../containers/static_vector.hpp"
-#include "../../containers/static_tensor.hpp"
+#include "containers/static_vector.hpp"
+#include "containers/static_tensor.hpp"
 #include <cmath>
 
 namespace amr::equations {

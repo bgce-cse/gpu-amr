@@ -316,7 +316,8 @@ public:
         for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
         {
             const auto directional_relation = relations[d.index()];
-            if (directional_relation == NeighborRelation::Sibling || parent_id == patch_index_t::root())
+            if (directional_relation == NeighborRelation::Sibling ||
+                parent_id == patch_index_t::root())
             {
                 const auto sibling_offset = get_sibling_offset(child_multiindex, d);
                 const auto sibling_id =

@@ -19,22 +19,25 @@ int main()
     {
         return std::abs(a - b) < eps;
     };
-    constexpr auto N = 5;
+    constexpr auto N = 3;
+    constexpr auto M = 2;
     using F          = int;
-    using tensor_t   = static_tensor<F, static_layout<static_shape<N, 3, 4, 2, 3>>>;
-    std::cout << tensor_t::elements() << '\n';
-    for (int i = 0; i != tensor_t::rank(); ++i)
+    using tensor5_t   = static_tensor<F, static_layout<static_shape<N, 3, 4, 2, 3>>>;
+    using tensor2_t   = static_tensor<F, static_layout<static_shape<N, N, N>>>;
+    using tensor3_t   = static_tensor<F, static_layout<static_shape<M, M>>>;
+    std::cout << tensor5_t::elements() << '\n';
+    for (int i = 0; i != tensor5_t::rank(); ++i)
     {
-        std::cout << tensor_t::size(i) << ", ";
+        std::cout << tensor5_t::size(i) << ", ";
     }
     std::cout << '\n';
-    for (int i = 0; i != tensor_t::rank(); ++i)
+    for (int i = 0; i != tensor5_t::rank(); ++i)
     {
         std::cout << "i: " << i << '\n';
-        std::cout << "size: " << tensor_t::size(i) << '\n';
-        std::cout << "stride: " << tensor_t::stride(i) << '\n';
+        std::cout << "size: " << tensor5_t::size(i) << '\n';
+        std::cout << "stride: " << tensor5_t::stride(i) << '\n';
     }
-    tensor_t t{};
+    tensor5_t t{};
     F        check{};
     std::iota(std::begin(t), std::end(t), check);
     amr::containers::manipulators::apply(
@@ -56,10 +59,10 @@ int main()
     //     }
     // );
 
-    auto idx = typename tensor_t::multi_index_t{};
+    auto idx = typename tensor5_t::multi_index_t{};
     do
     {
-        std::cout << idx << " -> " << tensor_t::linear_index(idx) << '\n';
+        std::cout << idx << " -> " << tensor5_t::linear_index(idx) << '\n';
     } while (idx.increment());
     std::cout << idx << '\n';
 
@@ -96,7 +99,7 @@ int main()
     }
 
     static_vector<double, 2> vec_dim0{ 2.0, 3.0 };
-    auto result_dim0 = manipulators::einsum_apply<0>(tensor_3d, vec_dim0);
+    auto result_dim0 = amr::containers::algorithms::tensor::template einsum_apply<0>(tensor_3d, vec_dim0);
     std::cout << "Original 3D hypercube tensor shape [2,2,2]:\n" << tensor_3d << '\n';
     std::cout << "Vector applied along dim 0 [2.0, 3.0]:\n" << result_dim0 << '\n';
 
@@ -111,7 +114,7 @@ int main()
 
     // Test case 2: Vector applied along dimension 1
     static_vector<double, 2> vec_dim1{ 5.0, 6.0 };
-    auto result_dim1 = manipulators::einsum_apply<1>(tensor_3d, vec_dim1);
+    auto result_dim1 = amr::containers::algorithms::tensor::template einsum_apply<1>(tensor_3d, vec_dim1);
     std::cout << "\nVector applied along dim 1 [5.0, 6.0]:\n" << result_dim1 << '\n';
 
     // Verify dimension 1 application
@@ -125,7 +128,7 @@ int main()
 
     // Test case 3: Vector applied along dimension 2
     static_vector<double, 2> vec_dim2{ 10.0, 20.0 };
-    auto result_dim2 = manipulators::einsum_apply<2>(tensor_3d, vec_dim2);
+    auto result_dim2 = amr::containers::algorithms::tensor::template einsum_apply<2>(tensor_3d, vec_dim2);
     std::cout << "\nVector applied along dim 2 [10.0, 20.0]:\n" << result_dim2 << '\n';
 
     // Verify dimension 2 application
@@ -175,34 +178,45 @@ int main()
 
     // Contract along dimension 0 (vector size must match dimension size = 2)
     static_vector<double, 2> contract_vec_dim0{ 1.0, 2.0 };
-    auto result_contract_dim0 = manipulators::contract<0>(tensor_3d, contract_vec_dim0);
+    auto result_contract_dim0 = algorithms::tensor::template contract<0>(tensor_3d, contract_vec_dim0);
     std::cout << "Contract tensor along dim 0 with [1.0, 2.0]:\n"
               << result_contract_dim0 << '\n';
     std::cout << "✓ Dimension 0 contraction completed\n";
 
     // Contract along dimension 1
     static_vector<double, 2> contract_vec_dim1{ 1.0, 2.0 };
-    auto result_contract_dim1 = manipulators::contract<1>(tensor_3d, contract_vec_dim1);
+    auto result_contract_dim1 = algorithms::tensor::template contract<1>(tensor_3d, contract_vec_dim1);
     std::cout << "\nContract tensor along dim 1 with [1.0, 2.0]:\n"
               << result_contract_dim1 << '\n';
     std::cout << "✓ Dimension 1 contraction completed\n";
 
     // Contract along dimension 2
     static_vector<double, 2> contract_vec_dim2{ 1.0, 2.0 };
-    auto result_contract_dim2 = manipulators::contract<2>(tensor_3d, contract_vec_dim2);
+    auto result_contract_dim2 = algorithms::tensor::template contract<2>(tensor_3d, contract_vec_dim2);
     std::cout << "\nContract tensor along dim 2 with [1.0, 2.0]:\n"
               << result_contract_dim2 << '\n';
     std::cout << "✓ Dimension 2 contraction completed\n";
 
     std::cout << "\n✓ All einsum tests passed!\n";
     amr::containers::static_vector<double, 3> v{ 1., 2., 3. };
-    auto power = amr::containers::manipulators::tensor_power<2>(v);
+    auto power = amr::containers::algorithms::tensor::template tensor_power<2>(v);
     [[maybe_unused]]
-    auto out = amr::containers::manipulators::tensor_product(v, power);
+    const auto out2 = amr::containers::algorithms::tensor::tensor_product(v, power);
     std::cout << "tensor value: " << v << std::endl;
-    std::cout << "tensor product value: " << power << std::endl;
+    std::cout << "tensor value: " << power << std::endl;
+    std::cout << "tensor product value: " << out2 << std::endl;
 
     std::cout << "product tensor value: "
-              << amr::containers::manipulators::tensor_dot(power, power) << std::endl;
+              << amr::containers::algorithms::tensor::tensor_dot(power, power) << std::endl;
+    tensor2_t t2{};
+    tensor3_t t3{};
+    std::iota(std::begin(t2), std::end(t2), 0);
+    std::iota(std::begin(t3), std::end(t3), 0);
+    // std::cout << "Tensor product: \n";
+    // std::cout << "Rank 2 tensor\n" << t2 << '\n';
+    // std::cout << "Rank 3 tensor\n" << t3 << '\n';
+    // const auto tprod = amr::containers::algorithms::tensor::tensor_product(t2, t3);
+    // std::cout << tprod << '\n';
+
     return EXIT_SUCCESS;
 }

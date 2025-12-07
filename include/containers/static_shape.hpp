@@ -20,9 +20,10 @@ class static_shape
 public:
     // TODO: This can be dangerous, maybe hardcode a type once we know what we
     // need
-    using size_type = std::common_type_t<decltype(N), decltype(Ns)...>;
-    using rank_t    = size_type;
-    using index_t   = size_type;
+    using size_type   = std::common_type_t<decltype(N), decltype(Ns)...>;
+    using size_pack_t = std::integer_sequence<size_type, N, Ns...>;
+    using rank_t      = size_type;
+    using index_t     = size_type;
 
 private:
     inline static constexpr size_type                     s_elements = (N * ... * Ns);

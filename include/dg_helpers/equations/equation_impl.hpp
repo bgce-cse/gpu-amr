@@ -1,10 +1,10 @@
 #ifndef EQUATION_IMPL_HPP
 #define EQUATION_IMPL_HPP
 
-#include "../../containers/static_vector.hpp"
-#include "../../containers/static_matrix.hpp"
-#include "../../containers/static_tensor.hpp"
-#include "../basis.hpp"
+#include "containers/static_vector.hpp"
+#include "containers/static_matrix.hpp"
+#include "containers/static_tensor.hpp"
+#include "dg_helpers/basis.hpp"
 
 namespace amr::equations {
 

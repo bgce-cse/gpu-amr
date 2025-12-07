@@ -1,11 +1,8 @@
 #pragma once
 
-#include "../../build/generated_config.hpp"
-#include "../containers/container_manipulations.hpp"
-#include "../containers/container_operations.hpp"
-#include "../containers/static_tensor.hpp"
-#include "../containers/static_vector.hpp"
-#include "equations/equation_impl.hpp"
+#include "../examples/build/generated_config.hpp"
+#include "containers/container_algorithms.hpp"
+#include "containers/static_vector.hpp"
 #include "globals.hpp"
 #include <cassert>
 #include <tuple>
@@ -76,10 +73,12 @@ auto project_to_faces(
     [[maybe_unused]] int sign
 )
 {
-    auto dofs_face =
-        amr::containers::manipulators::contract<Direction>(dofs, kernels[sign]);
-    auto flux_face =
-        amr::containers::manipulators::contract<Direction>(flux, kernels[sign]);
+    auto dofs_face = amr::containers::algorithms::tensor::template contract<Direction>(
+        dofs, kernels[sign]
+    );
+    auto flux_face = amr::containers::algorithms::tensor::template contract<Direction>(
+        flux, kernels[sign]
+    );
     return std::make_tuple(dofs_face, flux_face);
 }
 
@@ -149,8 +148,9 @@ auto evaluate_face_integral(
         {
             weights_vec[i] = weights_array[i];
         }
-        numericalflux =
-            amr::containers::manipulators::einsum_apply<0>(numericalflux, weights_vec);
+        numericalflux = amr::containers::algorithms::tensor::template einsum_apply<0>(
+            numericalflux, weights_vec
+        );
     }
     else if constexpr (amr::config::Dim == 3)
     {
@@ -161,10 +161,12 @@ auto evaluate_face_integral(
         {
             weights_vec[i] = weights_array[i];
         }
-        numericalflux =
-            amr::containers::manipulators::einsum_apply<0>(numericalflux, weights_vec);
-        numericalflux =
-            amr::containers::manipulators::einsum_apply<1>(numericalflux, weights_vec);
+        numericalflux = amr::containers::algorithms::tensor::template einsum_apply<0>(
+            numericalflux, weights_vec
+        );
+        numericalflux = amr::containers::algorithms::tensor::template einsum_apply<1>(
+            numericalflux, weights_vec
+        );
     }
 
     return outer_product<face_result_t>(kernel_vec, numericalflux);

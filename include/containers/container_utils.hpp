@@ -13,6 +13,40 @@ namespace amr::containers::utils
 namespace types
 {
 
+namespace sequences
+{
+
+template <typename, typename>
+struct concatenate;
+
+template <std::integral I, I... As, I... Bs>
+struct concatenate<std::integer_sequence<I, As...>, std::integer_sequence<I, Bs...>>
+{
+    using type = std::integer_sequence<I, As..., Bs...>;
+};
+
+template <typename A, typename B>
+using concatenate_t = typename concatenate<A, B>::type;
+
+} // namespace sequences
+
+namespace shape
+{
+
+template <typename>
+struct static_shape_wrapper;
+
+template <std::integral I, I... Ns>
+struct static_shape_wrapper<std::integer_sequence<I, Ns...>>
+{
+    using type = static_shape<Ns...>;
+};
+
+template <typename T>
+using static_shape_wrapper_t = typename static_shape_wrapper<T>::type;
+
+} // namespace shape
+
 namespace layout
 {
 
@@ -56,6 +90,21 @@ struct hypercube
 
 template <typename T, std::integral auto Size, std::size_t Rank>
 using hypercube_t = typename hypercube<T, Size, Rank>::type;
+
+template <concepts::StaticContainer T1, concepts::StaticContainer T2>
+struct tensor_product_result
+{
+    using value_type =
+        std::common_type_t<typename T1::value_type, typename T2::value_type>;
+    using sizes_pack_t =
+        sequences::concatenate_t<typename T1::size_pack_t, typename T2::size_pack_t>;
+    using type = static_tensor<
+        value_type,
+        static_layout<utils::types::shape::static_shape_wrapper_t<sizes_pack_t>>>;
+};
+
+template <concepts::StaticContainer T1, concepts::StaticContainer T2>
+using tensor_product_result_t = typename tensor_product_result<T1, T2>::type;
 
 } // namespace tensor
 
