@@ -21,35 +21,42 @@
 
 int main() {
     std::cout << "Hello AMR world\n";
-    constexpr std::size_t N    = 16;
-    constexpr std::size_t M    = 16;
-    constexpr std::size_t Halo = 1;
+    constexpr std::size_t N    = 10;
+    constexpr std::size_t M    = 10;
+    constexpr std::size_t Halo = 2;
 
     using shape_t         = amr::containers::static_shape<N, M>;
     using layout_t        = amr::containers::static_layout<shape_t>;
     //using index_t         = typename layout_t::index_t;
 
-    using patch_index_t  = amr::ndt::morton::morton_id<9u, 2u>;
+    using patch_index_t  = amr::ndt::morton::morton_id<7u, 2u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
     using tree_t         = amr::ndt::tree::ndtree<amr::cell::EulerCell2D, patch_index_t, patch_layout_t>;
 
 
-    amr::ndt::print::example_patch_print<Halo, M, N> printer("euler_tree");
+    amr::ndt::print::example_halo_patch_print<Halo, M, N> printer("euler_halo");
+    amr::ndt::print::example_patch_print<Halo, M, N> printer2("euler_tree");
 
 
-    double tmax = 90000000; // Example tmax, adjust as needed
-    const std::string output_prefix = "solver_integration_test";
+    double tmax = 500; // Example tmax, adjust as needed
+    double print_frequency = 10.0; // Print every 10 seconds
+    const std::string output_prefix = "solver_integration_test_refine";
 
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t, 2> solver(100000); // Provide initial capacity for tree
+    amr_solver<tree_t, 2> solver(1000000); // Provide initial capacity for tree
+
+
+    auto refineAll = [&]([[maybe_unused]] const patch_index_t& idx) {
+    return tree_t::refine_status_t::Refine;
+    };
 
     auto acousticWaveCriterion = [&](const patch_index_t& idx) {
         // Define Thresholds and Limits
-        constexpr double REFINE_RHO_THRESHOLD = 0.6;
-        constexpr double COARSEN_RHO_THRESHOLD = 0.55;
-        constexpr int MAX_LEVEL = 3;
-        constexpr int MIN_LEVEL = 0;
+        constexpr double REFINE_RHO_THRESHOLD = 0.55;
+        constexpr double COARSEN_RHO_THRESHOLD = 0.47;
+        constexpr int MAX_LEVEL = 5;
+        constexpr int MIN_LEVEL = 1;
         
         int level = idx.level();
 
@@ -109,82 +116,48 @@ int main() {
     };
 
     std::cout << "Initializing solver..." << std::endl;
+    solver.get_tree().reconstruct_tree(refineAll);
+    solver.get_tree().halo_exchange_update();
     solver.initialize(acousticPulseIC);
     solver.get_tree().halo_exchange_update();
 
-    // CHECK INITIAL CONDITIONS
-    // std::cout << "\n=== Checking Initial Conditions ===" << std::endl;
-    // for (size_t patch_idx = 0; patch_idx < std::min(size_t(3), solver.get_tree().size()); ++patch_idx) {
-    //     auto& rho_patch = solver.get_tree().template get_patch<amr::cell::Rho>(patch_idx);
-    //     auto& rhou_patch = solver.get_tree().template get_patch<amr::cell::Rhou>(patch_idx);
-    //     auto& rhov_patch = solver.get_tree().template get_patch<amr::cell::Rhov>(patch_idx);
-    //     auto& e_patch = solver.get_tree().template get_patch<amr::cell::E2D>(patch_idx);
-        
-    //     std::cout << "Patch " << patch_idx << " first 3 cells:" << std::endl;
-    //     for (size_t i = 0; i < 3; ++i) {
-    //         std::cout << "  Cell " << i << ": "
-    //                   << "rho=" << rho_patch[i] 
-    //                   << ", rhou=" << rhou_patch[i]
-    //                   << ", rhov=" << rhov_patch[i]
-    //                   << ", E=" << e_patch[i] << std::endl;
-    //     }
-    // }
-
-    // std::cout << "\nWriting initial VTK..." << std::endl;
+    // Print initial state
     printer.print(solver.get_tree(), "_iteration_0.vtk");
 
     // Main Simulation Loop
     double t = 0.0;
+    double next_print_time = print_frequency;
     int step = 1;
+    int output_counter = 1;
 
     std::cout << "\nStarting AMR simulation..." << std::endl;
 
     while (t < tmax) {
-        // std::cout << "\n=== Step " << step << ", t=" << t << " ===" << std::endl;
-        
-        // double dt = 300; // Using a fixed dt for now
-        double dt = solver.compute_time_step(); // Test adaptive time step
+        double dt = solver.compute_time_step();
+
+        std::cout << "Step " << step << ", t=" << t << ", dt=" << dt << std::endl;
         
         solver.time_step(dt);
         
-        // // Check for NaN after timestep
-        // bool has_nan = false;
-        // for (size_t patch_idx = 0; patch_idx < solver.get_tree().size(); ++patch_idx) {
-        //     auto& rho_patch = solver.get_tree().template get_patch<amr::cell::Rho>(patch_idx);
-        //     for (size_t i = 0; i < 10; ++i) {
-        //         if (!std::isfinite(rho_patch[i])) {
-        //             std::cout << "NaN detected in SOLVER at patch " << patch_idx << " cell " << i << std::endl;
-        //             std::cout << "  Value: " << rho_patch[i] << std::endl;
-        //             has_nan = true;
-        //             break;
-        //         }
-        //     }
-        //     if (has_nan) break;
-        // }
-        
-        // if (has_nan) {
-        //     std::cout << "STOPPING DUE TO NaN IN SOLVER" << std::endl;
-        //     return 1;
-        // }
-        
-        // std::cout << "Step " << step << " completed, no NaN in solver" << std::endl;
-        
-        if (step%5 == 0)
+        if (step % 5 == 0)
         {
             solver.get_tree().reconstruct_tree(acousticWaveCriterion);
             solver.get_tree().halo_exchange_update();
         }
 
-        std::string file_extension = "_iteration_" + std::to_string(step) + ".vtk";
-        printer.print(solver.get_tree(), file_extension);
-
         t += dt;
+        
+        // Print only when we've passed the next print time
+        if (t >= next_print_time) {
+            std::string file_extension = "_iteration_" + std::to_string(output_counter) + ".vtk";
+            printer.print(solver.get_tree(), file_extension);
+            printer2.print(solver.get_tree(), file_extension);
+            next_print_time += print_frequency;
+            output_counter++;
+        }
+
         step++;
 
-        if (step > 30) {
-            std::cout << "Breaking after 10 steps for testing..." << std::endl;
-            break;
-        }
     }
 
     std::cout << "\nSimulation completed. Files in vtk_output/ directory." << std::endl;
