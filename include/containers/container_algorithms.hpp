@@ -1,6 +1,7 @@
 #ifndef AMR_INCLUDED_CONTAINER_FACTORIES
 #define AMR_INCLUDED_CONTAINER_FACTORIES
 
+#include "container_manipulations.hpp"
 #include "container_utils.hpp"
 #include "static_vector.hpp"
 #include <concepts>
@@ -11,6 +12,7 @@ namespace amr::containers::algorithms
 namespace tensor
 {
 
+// TODO: Update to shaped for rather than multiindex iteration
 template <std::integral auto Rank, typename T, std::integral auto Size>
 [[nodiscard]]
 constexpr auto cartesian_expansion(static_vector<T, Size> const& v) noexcept
@@ -35,10 +37,30 @@ constexpr auto cartesian_expansion(static_vector<T, Size> const& v) noexcept
 }
 
 template <concepts::StaticContainer T1, concepts::StaticContainer T2>
-[[nodiscrad]]
-constexpr auto tensor_product(T1 const& a, T2 const& b) noexcept -> utils::types::tensor::
-    tensor_product_result_t<std::remove_cvref_t<T1>, std::remove_cvref_t<T2>>
+[[nodiscard]]
+constexpr auto tensor_product(T1 const& t1, T2 const& t2) noexcept -> utils::types::
+    tensor::tensor_product_result_t<std::remove_cvref_t<T1>, std::remove_cvref_t<T2>>
 {
+    using ret_t = utils::types::tensor::
+        tensor_product_result_t<std::remove_cvref_t<T1>, std::remove_cvref_t<T2>>;
+    ret_t ret{};
+    using lc_t = control::loop_control<ret_t, 0, ret_t::sizes(), 1>;
+    static_assert(
+        std::tuple_size_v<std::remove_cvref_t<decltype(ret_t::sizes())>> ==
+        T1::rank() + T2::rank()
+    );
+    manipulators::shaped_for<lc_t>(
+        [&ret](auto const& a, auto const& b, auto const& idxs)
+        {
+            ret[idxs] = a[std::span<typename ret_t::index_t const, T1::rank()>{
+                            idxs.data(), T1::rank() }] *
+                        b[std::span<typename ret_t::index_t const, T2::rank()>{
+                            idxs.data() + T1::rank(), T2::rank() }];
+        },
+        t1,
+        t2
+    );
+    return ret;
 }
 
 template <

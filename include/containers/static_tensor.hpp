@@ -23,6 +23,7 @@ public:
     using layout_t        = Layout;
     using shape_t         = typename layout_t::shape_t;
     using size_type       = typename layout_t::size_type;
+    using size_pack_t       = typename layout_t::size_pack_t;
     using index_t         = typename layout_t::index_t;
     using rank_t          = typename layout_t::rank_t;
     using multi_index_t   = typename layout_t::multi_index_t;

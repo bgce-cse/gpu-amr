@@ -21,6 +21,7 @@ class static_layout
 public:
     using shape_t       = Shape;
     using size_type     = typename shape_t::size_type;
+    using size_pack_t   = typename shape_t::size_pack_t;
     using rank_t        = typename shape_t::rank_t;
     using index_t       = typename shape_t::index_t;
     using multi_index_t = index::static_multi_index<index_t, shape_t>;
@@ -114,17 +115,13 @@ public:
 
     [[nodiscard]]
     constexpr static auto
-        linear_index(std::ranges::contiguous_range auto const& idxs) noexcept
-        -> index_t
+        linear_index(std::ranges::contiguous_range auto const& idxs) noexcept -> index_t
     {
         // assert(std::ranges::size(idxs) == rank());
         // TODO: Enfore at compile time
         // [[assume(std::ranges::size(idxs) == rank())]];
         auto linear_idx = std::transform_reduce(
-            std::cbegin(idxs),
-            std::cend(idxs),
-            std::cbegin(s_strides),
-            index_t{}
+            std::cbegin(idxs), std::cend(idxs), std::cbegin(s_strides), index_t{}
         );
         assert(linear_idx < elements());
         if constexpr (std::is_signed_v<index_t>)

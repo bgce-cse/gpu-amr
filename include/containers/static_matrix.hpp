@@ -27,6 +27,7 @@ public:
     using shape_t         = static_shape<M, N>;
     using layout_t        = static_layout<shape_t>;
     using size_type       = typename layout_t::size_type;
+    using size_pack_t       = typename layout_t::size_pack_t;
     using index_t         = typename layout_t::index_t;
     using rank_t          = typename layout_t::rank_t;
     using const_iterator  = value_type const*;
