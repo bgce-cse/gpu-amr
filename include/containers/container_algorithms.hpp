@@ -34,6 +34,13 @@ constexpr auto cartesian_expansion(static_vector<T, Size> const& v) noexcept
     return ret;
 }
 
+template <concepts::StaticContainer T1, concepts::StaticContainer T2>
+[[nodiscrad]]
+constexpr auto tensor_product(T1 const& a, T2 const& b) noexcept -> utils::types::tensor::
+    tensor_product_result_t<std::remove_cvref_t<T1>, std::remove_cvref_t<T2>>
+{
+}
+
 template <
     std::floating_point F,
     std::integral auto  Rank,

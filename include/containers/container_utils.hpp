@@ -57,6 +57,14 @@ struct hypercube
 template <typename T, std::integral auto Size, std::size_t Rank>
 using hypercube_t = typename hypercube<T, Size, Rank>::type;
 
+template <concepts::StaticContainer T1, concepts::StaticContainer T2>
+struct tensor_product_result
+{
+};
+
+template <concepts::StaticContainer T1, concepts::StaticContainer T2>
+using tensor_product_result_t = typename tensor_product_result<T1, T2>::type;
+
 } // namespace tensor
 
 } // namespace types
