@@ -29,7 +29,6 @@ struct GaussLegendre
         return result;
     }();
 
-    // Compute weights by scaling precomputed weights
     static constexpr vector<Order> weights = []()
     {
         constexpr auto& precomputed = amr::global::QuadData<Order>::weights;
