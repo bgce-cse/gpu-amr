@@ -1,11 +1,11 @@
 #ifndef DG_HELPERS_EQUATIONS_HPP
 #define DG_HELPERS_EQUATIONS_HPP
 
+#include "dg_helpers/globals/globals.hpp"
+#include "dg_helpers/scenario.hpp"
 #include "equations/advection.hpp"
 #include "equations/equation_impl.hpp"
 #include "equations/euler.hpp"
-#include "globals.hpp"
-#include "scenario.hpp"
 #include <cmath>
 #include <memory>
 #include <stdexcept>
@@ -16,9 +16,6 @@ namespace amr::equations
 
 /**
  * @brief Get number of variables (DOFs - parameters)
- *
- * For most equations, parameters = 0, so this equals DOFs.
- * Override via specialization if parameters exist.
  */
 template <typename Equation>
 constexpr unsigned int get_nvars(const Equation& eq)
@@ -28,8 +25,6 @@ constexpr unsigned int get_nvars(const Equation& eq)
 
 /**
  * @brief Get number of material parameters
- *
- * Override via specialization for equations with parameters.
  */
 template <typename Equation>
 constexpr unsigned int get_nparams(const Equation& /* eq */)
@@ -38,43 +33,47 @@ constexpr unsigned int get_nparams(const Equation& /* eq */)
 }
 
 /**
- * @brief Helper struct to interpolate initial solution values onto DG basis
+ * @brief Interpolate initial solution onto DG basis
  *
- * Holds references to the equation and basis, which are initialized once
- * and reused for multiple interpolations.
+ * Uses basis from GlobalConfig to project initial conditions onto
+ * tensor-product Lagrange basis at quadrature points.
  *
  * Template parameters:
+ * - GlobalConfig: Configuration with embedded basis and quadrature data
  * - EquationType: The equation type (provides initial conditions)
- * - BasisType: The DG basis type (provides quadrature points for DOF nodes)
  */
-template <typename EquationType, typename BasisType>
+template <typename GlobalConfigType, typename EquationType>
 struct InitialDOFInterpolator
 {
     const EquationType& eq;
-    const BasisType&    basis;
+
+    using Order = std::integral_constant<unsigned int, GlobalConfigType::Basis_t::order>;
+    using Dim =
+        std::integral_constant<unsigned int, GlobalConfigType::Basis_t::dimensions>;
 
     /**
-     * @brief Interpolate initial solution values onto DG basis
+     * @brief Interpolate initial solution onto DG basis
      *
-     * Evaluates initial conditions at the global coordinates of DOF nodes
+     * Evaluates initial conditions at cell's quadrature point nodes
      * and projects them onto the reference basis.
      *
-     * @param cell_coords Global coordinates of cell center (static_vector)
+     * @param cell_center Global coordinates of cell center
      * @param cell_size Size of the cell in physical domain
-     * @return Tensor of DOF values (dof_t type)
+     * @return Tensor of DOF values
      */
     inline auto operator()(const auto& cell_center, double cell_size) const
     {
-        return basis.project_to_reference_basis(
+        using Basis_t = typename GlobalConfigType::Basis_t;
+
+        return Basis_t::project_to_reference_basis(
             [&](auto node_coords)
             {
                 // node_coords is in [0,1] reference space
                 // Shift to [-0.5, 0.5] then scale by cell_size
                 auto shifted = node_coords;
-                for (unsigned int d = 0; d < 2; ++d)
-                {
+                for (unsigned int d = 0; d < Dim::value; ++d)
                     shifted[d] -= 0.5;
-                }
+
                 const auto& global_pos =
                     amr::global::reference_to_global(cell_center, shifted, cell_size);
                 return eq.get_2D_initial_values(global_pos, 0.0);
@@ -86,9 +85,9 @@ struct InitialDOFInterpolator
 /**
  * @brief Deduction guide for InitialDOFInterpolator
  */
-template <typename EquationType, typename BasisType>
-InitialDOFInterpolator(const EquationType&, const BasisType&)
-    -> InitialDOFInterpolator<EquationType, BasisType>;
+template <typename GlobalConfigType, typename EquationType>
+InitialDOFInterpolator(const EquationType&)
+    -> InitialDOFInterpolator<GlobalConfigType, EquationType>;
 
 } // namespace amr::equations
 

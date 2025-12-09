@@ -22,19 +22,19 @@
  *   # Output appears in: vtk_output/dg_tree_advanced_*.vtk
  */
 
-#include "containers/static_layout.hpp"
-#include "containers/static_shape.hpp"
-#include "containers/static_vector.hpp"
-#include "dg_helpers/basis.hpp"
-#include "dg_helpers/equations.hpp"
-#include "dg_helpers/equations/advection.hpp"
-#include "dg_helpers/globals.hpp"
+#include "advection.hpp"
+#include "basis.hpp"
+#include "equations.hpp"
 #include "generated_config.hpp"
-#include "morton/morton_id.hpp"
+#include "globals.hpp"
+#include "morton_id.hpp"
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
 #include "ndtree/print_dg_tree_advanced.hpp"
+#include "static_layout.hpp"
+#include "static_shape.hpp"
+#include "static_vector.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iomanip>

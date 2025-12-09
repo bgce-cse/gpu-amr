@@ -273,19 +273,9 @@ if(EXISTS ${CONFIG_YAML})
         "/// Time integration scheme: \"SSPRK2\", \"SSPRK3\", etc.\n"
         "constexpr std::string_view TimeIntegrator = \"${TIMEINT_VALUE}\";\n\n"
         "// ===================================================================\n"
-        "// Factory function to create the configured equation instance\n"
-        "// ===================================================================\n\n"
-        "/**\n"
-        " * @brief Create the equation instance configured in config.yaml\n"
-        " * @return Shared pointer to the configured equation object\n"
-        " */\n"
-        "inline auto make_configured_equation() {\n"
-        "    if constexpr (Equation == \"advection\") {\n"
-        "        return std::make_shared<amr::equations::Advection2D<DOFs, Order, Dim, double>>(1.0);\n"
-        "    } else if constexpr (Equation == \"euler\") {\n"
-        "        return std::make_shared<amr::equations::Euler<Order, Dim, double>>(1.4);\n"
-        "    }\n"
-        "}\n\n"
+        "// Factory function disabled to avoid unnecessary instantiation\n"
+        "// ===================================================================\n"
+        "// Note: make_configured_equation() removed as tests use direct instantiation\n\n"
         "} // namespace amr::config\n"
     )
     
@@ -335,6 +325,19 @@ endforeach()
 add_custom_target(generated_config_header
     DEPENDS ${GENERATED_CONFIG_HPP}
 )
+
+# ============================================================================
+# Compile-time functionality test target
+# ============================================================================
+
+# Comprehensive test: basis, globals, equations with generated config
+add_executable(test_compile_time_config test_compile_time_config.cpp)
+target_include_directories(test_compile_time_config PUBLIC ../include ../lib ${CMAKE_BINARY_DIR})
+target_compile_options(test_compile_time_config PRIVATE ${CXX_FLAGS})
+target_link_options(test_compile_time_config PRIVATE ${LINK_FLAGS})
+target_link_libraries(test_compile_time_config PRIVATE TBB::tbb ${VTK_LIBRARIES})
+target_include_directories(test_compile_time_config PRIVATE ${VTK_INCLUDE_DIRS})
+add_dependencies(test_compile_time_config generated_config_header)
 
 # Build messages
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")

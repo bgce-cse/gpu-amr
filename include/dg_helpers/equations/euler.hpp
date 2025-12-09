@@ -1,112 +1,295 @@
 #ifndef EULER_HPP
 #define EULER_HPP
 
-#include "equation_impl.hpp"
-#include "containers/static_vector.hpp"
 #include "containers/static_tensor.hpp"
+#include "containers/static_vector.hpp"
+#include "equation_impl.hpp"
 #include <cmath>
 
-namespace amr::equations {
+namespace amr::equations
+{
 
-template<unsigned int Order, unsigned int Dim, typename Scalar = double>
-class Euler : public EquationBaseTypes<EquationImpl<Dim + 2, Order, Dim, Scalar>> {
+// Forward declaration for dimension-specific initial conditions
+template <std::size_t Dim, typename Scalar>
+struct EulerInitialCondition;
 
-    using base_t = EquationBaseTypes<EquationImpl<Dim + 2, Order, Dim, Scalar>>;
-    using typename base_t::dof_t;
-    using typename base_t::flux_t;
-    using typename base_t::dof_value_t;
+/**
+ * @brief Compressible Euler equations using CRTP pattern.
+ *
+ * Conservative variables: [rho*u_1, ..., rho*u_Dim, rho, E]
+ * where E is total energy per unit volume.
+ *
+ * @tparam Order DG polynomial order
+ * @tparam Dim Spatial dimension
+ * @tparam Scalar Floating-point type
+ */
+template <unsigned int Order, unsigned int Dim, typename Scalar = double>
+struct Euler :
+    EquationBase<
+        Euler<Order, Dim, Scalar>,
+        Dim + 2, // NumDOFs: momentum (Dim) + density (1) + energy (1)
+        Order,
+        Dim,
+        Scalar>
+{
+    static constexpr unsigned int MOMENTUM_START = 0;
+    static constexpr unsigned int DENSITY_IDX    = Dim;
+    static constexpr unsigned int ENERGY_IDX     = Dim + 1;
+    static constexpr Scalar       DEFAULT_GAMMA  = 1.4;
 
-private:
     Scalar gamma_; // Heat capacity ratio
 
-public:
-    explicit Euler(Scalar gamma = 1.4) : gamma_(gamma) {}
+    // Constructors
+    constexpr Euler()
+        : gamma_(DEFAULT_GAMMA)
+    {
+    }
 
-    void set_gamma(Scalar g) noexcept { gamma_ = g; }
-    Scalar get_gamma() const noexcept { return gamma_; }
+    explicit constexpr Euler(Scalar gamma)
+        : gamma_(gamma)
+    {
+    }
 
-    // --- Thermodynamics ---
-    Scalar evaluate_pressure(const dof_value_t& U) const {
-        const Scalar rho = U[Dim];
-        const Scalar E   = U[Dim + 1];
+    // Accessors
+    constexpr void set_gamma(Scalar g) noexcept
+    {
+        gamma_ = g;
+    }
+
+    constexpr Scalar get_gamma() const noexcept
+    {
+        return gamma_;
+    }
+
+    // --- Thermodynamic primitives ---
+
+    /**
+     * @brief Compute pressure from conservative variables.
+     */
+    constexpr Scalar compute_pressure(const typename Euler::dof_value_t& U) const
+    {
+        const Scalar rho = U[DENSITY_IDX];
+        const Scalar E   = U[ENERGY_IDX];
 
         Scalar kinetic = 0.0;
         for (unsigned int d = 0; d < Dim; ++d)
-            kinetic += 0.5 * (U[d] * U[d]) / rho;
+        {
+            const Scalar mom = U[MOMENTUM_START + d];
+            kinetic += 0.5 * mom * mom / rho;
+        }
 
         return (gamma_ - 1.0) * (E - kinetic);
     }
 
-    Scalar evaluate_energy(const amr::containers::static_vector<Scalar, Dim>& rhou,
-                           Scalar rho, Scalar p) const {
+    /**
+     * @brief Compute total energy from primitives.
+     */
+    constexpr Scalar compute_energy(
+        const amr::containers::static_vector<Scalar, Dim>& momentum,
+        Scalar                                             rho,
+        Scalar                                             p
+    ) const
+    {
         Scalar kinetic = 0.0;
         for (unsigned int d = 0; d < Dim; ++d)
-            kinetic += 0.5 * (rhou[d] * rhou[d]) / rho;
+            kinetic += 0.5 * momentum[d] * momentum[d] / rho;
+
         return p / (gamma_ - 1.0) + kinetic;
     }
 
-    // --- Flux evaluation ---
-    void evaluate_flux(const dof_t& celldofs, flux_t& cellflux) const override {
-        auto idx = typename dof_t::multi_index_t{};
-        while (true) {
-            const dof_value_t& U = celldofs[idx];
-            const Scalar rho = U[Dim];
-            const Scalar E   = U[Dim + 1];
-            const Scalar p   = evaluate_pressure(U);
+    /**
+     * @brief Compute velocity vector from conservative variables.
+     */
+    constexpr amr::containers::static_vector<Scalar, Dim>
+        compute_velocity(const typename Euler::dof_value_t& U) const
+    {
+        const Scalar                                rho = U[DENSITY_IDX];
+        amr::containers::static_vector<Scalar, Dim> velocity;
 
-            // Velocity components
-            amr::containers::static_vector<Scalar, Dim> u;
-            for (unsigned int d = 0; d < Dim; ++d)
-                u[d] = U[d] / rho;
+        for (unsigned int d = 0; d < Dim; ++d)
+            velocity[d] = U[MOMENTUM_START + d] / rho;
 
-            // Fluxes for each direction
-            for (unsigned int i = 0; i < Dim; ++i) {
-                for (unsigned int j = 0; j < Dim; ++j) {
-                    cellflux[i][idx][j] = U[j] * u[i];  // rho u_j u_i
-                    if (i == j) cellflux[i][idx][j] += p; // + p δ_ij
+        return velocity;
+    }
+
+    // --- Required interface for EquationBase ---
+
+    /**
+     * @brief Evaluate flux tensor F(U) in all spatial directions.
+     */
+    static constexpr auto evaluate_flux(const typename Euler::dof_t& celldofs)
+    {
+        typename Euler::flux_t cellflux{};
+
+        auto idx = typename Euler::dof_t::multi_index_t{};
+        do
+        {
+            const auto&  U   = celldofs[idx];
+            const Scalar rho = U[DENSITY_IDX];
+            const Scalar E   = U[ENERGY_IDX];
+
+            // Need instance for thermodynamic calculations
+            // Note: This is a limitation of making methods static
+            // Consider making gamma a template parameter if performance is critical
+            Euler        eq; // Uses default gamma
+            const Scalar p        = eq.compute_pressure(U);
+            const auto   velocity = eq.compute_velocity(U);
+
+            // Compute flux in each spatial direction
+            for (unsigned int dir = 0; dir < Dim; ++dir)
+            {
+                const Scalar u_dir = velocity[dir];
+
+                // Momentum fluxes: rho * u_i * u_dir + p * delta_{i,dir}
+                for (unsigned int i = 0; i < Dim; ++i)
+                {
+                    cellflux[dir][idx][MOMENTUM_START + i] =
+                        U[MOMENTUM_START + i] * u_dir;
+                    if (i == dir) cellflux[dir][idx][MOMENTUM_START + i] += p;
                 }
 
-                // Density flux
-                cellflux[i][idx][Dim] = rho * u[i];
-                // Energy flux
-                cellflux[i][idx][Dim + 1] = u[i] * (E + p);
+                // Density flux: rho * u_dir
+                cellflux[dir][idx][DENSITY_IDX] = rho * u_dir;
+
+                // Energy flux: (E + p) * u_dir
+                cellflux[dir][idx][ENERGY_IDX] = (E + p) * u_dir;
             }
+        } while (idx.increment());
 
-            if (!idx.increment()) break;
-        }
+        return cellflux;
     }
 
-    // --- Eigenvalue ---
-    Scalar max_eigenvalue(const dof_t& celldofs, unsigned int normalidx) const override {
-        auto idx = typename dof_t::multi_index_t{};
-        const dof_value_t& U = celldofs[idx];
+    /**
+     * @brief Compute maximum eigenvalue (wave speed) in given direction.
+     */
+    static constexpr Scalar
+        max_eigenvalue(const typename Euler::dof_t& celldofs, unsigned int normalidx)
+    {
+        // Evaluate at first quadrature point (can be extended to search all points)
+        auto        idx = typename Euler::dof_t::multi_index_t{};
+        const auto& U   = celldofs[idx];
 
-        const Scalar rho = U[Dim];
-        const Scalar p   = evaluate_pressure(U);
-        const Scalar c   = std::sqrt(gamma_ * p / rho);
-        const Scalar un  = U[normalidx] / rho;
+        Euler        eq; // Uses default gamma
+        const Scalar rho = U[DENSITY_IDX];
+        const Scalar p   = eq.compute_pressure(U);
+        const Scalar c   = std::sqrt(eq.gamma_ * p / rho);      // Sound speed
+        const Scalar u_n = U[MOMENTUM_START + normalidx] / rho; // Normal velocity
 
-        return std::abs(un) + c;
+        return std::abs(u_n) + c; // Maximum eigenvalue
     }
 
-    // --- Example initial condition (Gaussian wave) ---
-    dof_value_t get_2D_initial_values(
+    /**
+     * @brief Get initial condition at given position and time.
+     */
+    static constexpr typename Euler::dof_value_t get_initial_values(
         const amr::containers::static_vector<Scalar, Dim>& position,
-        Scalar /* t */
-    ) const override {
-        dof_value_t U{};
-        Scalar p = std::exp(-100.0 * (position[0] - 0.5) * (position[0] - 0.5)) + 1.0;
-        Scalar rho = 1.0;
-        
-        // Extract momentum components from U for energy calculation
-        amr::containers::static_vector<Scalar, Dim> rhou;
-        for (unsigned int d = 0; d < Dim; ++d) {
-            U[d] = 0.0;
-            rhou[d] = 0.0;
-        }
-        
-        U[Dim] = rho;
-        U[Dim + 1] = evaluate_energy(rhou, rho, p);
+        Scalar                                             t = 0.0
+    )
+    {
+        return EulerInitialCondition<Dim, Scalar>::compute(position, t);
+    }
+};
+
+// --- Dimension-specific initial conditions ---
+
+/**
+ * @brief 1D Euler initial condition: Gaussian pressure pulse.
+ */
+template <typename Scalar>
+struct EulerInitialCondition<1, Scalar>
+{
+    static constexpr auto compute(
+        const amr::containers::static_vector<Scalar, 1>& position,
+        [[maybe_unused]] Scalar                          t
+    )
+    {
+        constexpr unsigned int                          NumDOFs = 3; // [rho*u, rho, E]
+        amr::containers::static_vector<Scalar, NumDOFs> U{};
+
+        // Gaussian pressure perturbation
+        const Scalar x   = position[0];
+        const Scalar p   = std::exp(-100.0 * (x - 0.5) * (x - 0.5)) + 1.0;
+        const Scalar rho = 1.0;
+
+        U[0] = 0.0; // momentum (rho*u)
+        U[1] = rho; // density
+
+        // Compute energy (assuming zero velocity)
+        Euler<0, 1, Scalar>                       eq;
+        amr::containers::static_vector<Scalar, 1> momentum{ 0.0 };
+        U[2] = eq.compute_energy(momentum, rho, p);
+
+        return U;
+    }
+};
+
+/**
+ * @brief 2D Euler initial condition: Gaussian pressure pulse.
+ */
+template <typename Scalar>
+struct EulerInitialCondition<2, Scalar>
+{
+    static constexpr auto compute(
+        const amr::containers::static_vector<Scalar, 2>& position,
+        [[maybe_unused]] Scalar                          t
+    )
+    {
+        constexpr unsigned int NumDOFs = 4; // [rho*u, rho*v, rho, E]
+        amr::containers::static_vector<Scalar, NumDOFs> U{};
+
+        // Gaussian pressure perturbation centered at (0.5, 0.5)
+        const Scalar x   = position[0];
+        const Scalar y   = position[1];
+        const Scalar r2  = (x - 0.5) * (x - 0.5) + (y - 0.5) * (y - 0.5);
+        const Scalar p   = std::exp(-100.0 * r2) + 1.0;
+        const Scalar rho = 1.0;
+
+        U[0] = 0.0; // x-momentum
+        U[1] = 0.0; // y-momentum
+        U[2] = rho; // density
+
+        // Compute energy
+        Euler<0, 2, Scalar>                       eq;
+        amr::containers::static_vector<Scalar, 2> momentum{ 0.0, 0.0 };
+        U[3] = eq.compute_energy(momentum, rho, p);
+
+        return U;
+    }
+};
+
+/**
+ * @brief 3D Euler initial condition: Gaussian pressure pulse.
+ */
+template <typename Scalar>
+struct EulerInitialCondition<3, Scalar>
+{
+    static constexpr auto compute(
+        const amr::containers::static_vector<Scalar, 3>& position,
+        [[maybe_unused]] Scalar                          t
+    )
+    {
+        constexpr unsigned int NumDOFs = 5; // [rho*u, rho*v, rho*w, rho, E]
+        amr::containers::static_vector<Scalar, NumDOFs> U{};
+
+        // Gaussian pressure perturbation centered at (0.5, 0.5, 0.5)
+        const Scalar x = position[0];
+        const Scalar y = position[1];
+        const Scalar z = position[2];
+        const Scalar r2 =
+            (x - 0.5) * (x - 0.5) + (y - 0.5) * (y - 0.5) + (z - 0.5) * (z - 0.5);
+        const Scalar p   = std::exp(-100.0 * r2) + 1.0;
+        const Scalar rho = 1.0;
+
+        U[0] = 0.0; // x-momentum
+        U[1] = 0.0; // y-momentum
+        U[2] = 0.0; // z-momentum
+        U[3] = rho; // density
+
+        // Compute energy
+        Euler<0, 3, Scalar>                       eq;
+        amr::containers::static_vector<Scalar, 3> momentum{ 0.0, 0.0, 0.0 };
+        U[4] = eq.compute_energy(momentum, rho, p);
+
         return U;
     }
 };
