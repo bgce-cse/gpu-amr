@@ -77,20 +77,15 @@ private:
         constexpr auto& precomputed_points  = amr::global::QuadData<Order>::points;
         constexpr auto& precomputed_weights = amr::global::QuadData<Order>::weights;
 
-        for (unsigned int i = 0; i < Order; ++i)
-        {
-            _quadpoints_1d[i]  = precomputed_points[i];
-            _quadweights_1d[i] = precomputed_weights[i];
-        }
-
         // Map from [-1, 1] to [start, end]
         const double half_length = (end - start) / 2.0;
         const double midpoint    = (start + end) / 2.0;
 
         for (unsigned int i = 0; i < Order; ++i)
         {
-            _quadpoints_1d[i] = midpoint + half_length * _quadpoints_1d[i];
-            _quadweights_1d[i] *= half_length;
+            _quadpoints_1d[i] = midpoint + half_length * precomputed_points[i];
+            ;
+            _quadweights_1d[i] = precomputed_weights[i] * half_length;
         }
     }
 };

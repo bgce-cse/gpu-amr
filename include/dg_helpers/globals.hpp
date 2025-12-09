@@ -2,6 +2,7 @@
 #define GLOBAL_HPP
 
 #include "basis.hpp"
+#include "containers/container_algorithms.hpp"
 #include "containers/container_operations.hpp"
 #include <array>
 
@@ -17,65 +18,79 @@ struct QuadData;
 template <>
 struct QuadData<1>
 {
-    static constexpr std::array<double, 1> points  = { 0.0 };
-    static constexpr std::array<double, 1> weights = { 2.0 };
+    static constexpr amr::containers::static_vector<double, 1> points  = { 0.0 };
+    static constexpr amr::containers::static_vector<double, 1> weights = { 2.0 };
 };
 
 template <>
 struct QuadData<2>
 {
-    static constexpr std::array<double, 2> points  = { -0.5773502691896257,
-                                                       0.5773502691896257 };
-    static constexpr std::array<double, 2> weights = { 1.0, 1.0 };
+    static constexpr amr::containers::static_vector<double, 2> points = {
+        -0.5773502691896257,
+        0.5773502691896257
+    };
+    static constexpr amr::containers::static_vector<double, 2> weights = { 1.0, 1.0 };
 };
 
 template <>
 struct QuadData<3>
 {
-    static constexpr std::array<double, 3> points  = { -0.7745966692414834,
-                                                       0.0,
-                                                       0.7745966692414834 };
-    static constexpr std::array<double, 3> weights = { 0.5555555555555556,
-                                                       0.8888888888888888,
-                                                       0.5555555555555556 };
+    static constexpr amr::containers::static_vector<double, 3> points = {
+        -0.7745966692414834,
+        0.0,
+        0.7745966692414834
+    };
+    static constexpr amr::containers::static_vector<double, 3> weights = {
+        0.5555555555555556,
+        0.8888888888888888,
+        0.5555555555555556
+    };
 };
 
 template <>
 struct QuadData<4>
 {
-    static constexpr std::array<double, 4> points  = { -0.8611363115940526,
-                                                       -0.3399810435848563,
-                                                       0.3399810435848563,
-                                                       0.8611363115940526 };
-    static constexpr std::array<double, 4> weights = { 0.3478548451374538,
-                                                       0.6521451548625461,
-                                                       0.6521451548625461,
-                                                       0.3478548451374538 };
+    static constexpr amr::containers::static_vector<double, 4> points = {
+        -0.8611363115940526,
+        -0.3399810435848563,
+        0.3399810435848563,
+        0.8611363115940526
+    };
+    static constexpr amr::containers::static_vector<double, 4> weights = {
+        0.3478548451374538,
+        0.6521451548625461,
+        0.6521451548625461,
+        0.3478548451374538
+    };
 };
 
 template <>
 struct QuadData<5>
 {
-    static constexpr std::array<double, 5> points  = { -0.9061798459386640,
-                                                       -0.5384693101056831,
-                                                       0.0,
-                                                       0.5384693101056831,
-                                                       0.9061798459386640 };
-    static constexpr std::array<double, 5> weights = { 0.2369268850561891,
-                                                       0.4786286704993665,
-                                                       0.5688888888888889,
-                                                       0.4786286704993665,
-                                                       0.2369268850561891 };
+    static constexpr amr::containers::static_vector<double, 5> points = {
+        -0.9061798459386640,
+        -0.5384693101056831,
+        0.0,
+        0.5384693101056831,
+        0.9061798459386640
+    };
+    static constexpr amr::containers::static_vector<double, 5> weights = {
+        0.2369268850561891,
+        0.4786286704993665,
+        0.5688888888888889,
+        0.4786286704993665,
+        0.2369268850561891
+    };
 };
 
 template <>
 struct QuadData<6>
 {
-    static constexpr std::array<double, 6> points = {
+    static constexpr amr::containers::static_vector<double, 6> points = {
         -0.9324695142031521, -0.6612093864662645, -0.2386191860831969,
         0.2386191860831969,  0.6612093864662645,  0.9324695142031521
     };
-    static constexpr std::array<double, 6> weights = {
+    static constexpr amr::containers::static_vector<double, 6> weights = {
         0.1713244923791704, 0.3607615730481386, 0.4679139345726910,
         0.4679139345726910, 0.3607615730481386, 0.1713244923791704
     };
@@ -84,11 +99,11 @@ struct QuadData<6>
 template <>
 struct QuadData<7>
 {
-    static constexpr std::array<double, 7> points = {
+    static constexpr amr::containers::static_vector<double, 7> points = {
         -0.9491079123427585, -0.7415311855993945, -0.4058451513773972, 0.0,
         0.4058451513773972,  0.7415311855993945,  0.9491079123427585
     };
-    static constexpr std::array<double, 7> weights = {
+    static constexpr amr::containers::static_vector<double, 7> weights = {
         0.1294849661688697, 0.2797053914892766, 0.3818300505051189, 0.4179591836734694,
         0.3818300505051189, 0.2797053914892766, 0.1294849661688697
     };
@@ -97,12 +112,12 @@ struct QuadData<7>
 template <>
 struct QuadData<8>
 {
-    static constexpr std::array<double, 8> points = {
+    static constexpr amr::containers::static_vector<double, 8> points = {
         -0.9602898564975363, -0.7966664774136267, -0.5255324099163290,
         -0.1834346424956498, 0.1834346424956498,  0.5255324099163290,
         0.7966664774136267,  0.9602898564975363
     };
-    static constexpr std::array<double, 8> weights = {
+    static constexpr amr::containers::static_vector<double, 8> weights = {
         0.1012285362903763, 0.2223810344533745, 0.3137066458778873, 0.3626837833783620,
         0.3626837833783620, 0.3137066458778873, 0.2223810344533745, 0.1012285362903763
     };
@@ -118,7 +133,8 @@ struct QuadData<8>
 template <unsigned int Order, unsigned int Dim>
 struct FaceKernels
 {
-    std::array<amr::containers::static_vector<double, Order>, 2> kernels;
+    static const int DIRECTION_TYPES = 2;
+    std::array<amr::containers::static_vector<double, Order>, DIRECTION_TYPES> kernels;
 
     /**
      * @brief Construct and precompute face kernels at compile time.
@@ -343,22 +359,134 @@ inline amr::containers::static_vector<double, Dim> compute_cell_center(
     return cell_center;
 }
 
-// template <typename TensorType, QuadData<Dim> QuadDataType>
-// struct MassTensor
-// {
-// apply_mass_matrix(const TensorType& input) const -> TensorType
-//     {
-//         TensorType result;
-//         using multi_index_t = typename TensorType::multi_index_t;
-//         multi_index_t idx{};
-//         // Apply mass matrix using quadrature points and weights
-//         do{
+template <std::size_t Order, std::size_t Dim>
+struct MassTensors
+{
+    using WeightVectorType = std::decay_t<
+        decltype(std::declval<amr::Basis::Basis<Order, Dim>>().quadweights())>;
+    using TensorType = decltype(amr::containers::algorithms::tensor::tensor_power<Dim>(
+        std::declval<WeightVectorType&>()
+    ));
 
-//         }
-//         return result;
-//     }
-// };
+    const TensorType mass_tensor;
+    const TensorType inv_mass_tensor;
+
+    template <typename BasisType>
+    constexpr MassTensors(const BasisType& basis)
+        : mass_tensor{ amr::containers::algorithms::tensor::tensor_power<Dim>(
+              WeightVectorType(basis.quadweights())
+          ) }
+        , inv_mass_tensor{ amr::containers::algorithms::tensor::tensor_power<Dim>(
+              make_inverted_weights(WeightVectorType(basis.quadweights()))
+          ) }
+    {
+    }
+
+private:
+    template <typename WeightType>
+    static constexpr auto make_inverted_weights(const WeightType& w)
+    {
+        auto result = w;
+        for (auto& x : result)
+            x = 1.0 / (x);
+        return result;
+    }
+};
+
+/**
+ * @brief Global configuration and precomputed data structure
+ *
+ * Aggregates all global state, precomputed data, and helper functions
+ * needed for DG discretization and AMR operations.
+ *
+ * @tparam Order Polynomial order for DG basis
+ * @tparam Dim Spatial dimension
+ * @tparam PatchSize Number of cells per patch dimension
+ * @tparam HaloWidth Width of halo region
+ */
+template <
+    std::size_t  Order,
+    unsigned int Dim,
+    std::size_t  PatchSize,
+    std::size_t  HaloWidth>
+struct GlobalConfig
+{
+    // Static compile-time data
+    static constexpr const QuadData<Order>& quad_data = QuadData<Order>::instance();
+
+    // Runtime members (initialized after basis construction)
+    amr::Basis::Basis<Order, Dim> basis;
+    FaceKernels<Order, Dim>       face_kernels;
+    MassTensors<Order, Dim>       volume_mass_tensors;
+    MassTensors<Order, Dim>       mass_tensors;
+    MassTensors<Order, Dim - 1>   surface_mass_tensors;
+
+    /**
+     * @brief Initialize global configuration at runtime
+     */
+    GlobalConfig()
+        : basis()
+        , face_kernels(basis)
+        , volume_mass_tensors(basis)
+        , mass_tensors(basis)
+        , surface_mass_tensors(basis)
+    {
+    }
+
+    // Helper function wrappers
+    template <typename CenterType, typename RefType, typename SizeType>
+    inline auto ref_to_global(
+        const CenterType& cell_center,
+        const RefType&    ref_coords,
+        const SizeType&   cell_size
+    ) const
+    {
+        return reference_to_global(cell_center, ref_coords, cell_size);
+    }
+
+    template <typename CenterType, typename GlobalType, typename SizeType>
+    inline auto global_to_ref(
+        const CenterType& cell_center,
+        const GlobalType& global_coords,
+        const SizeType&   cell_size
+    ) const
+    {
+        return global_to_reference(cell_center, global_coords, cell_size);
+    }
+
+    template <typename SizeType>
+    inline auto cell_volume(const SizeType& cell_size) const
+    {
+        return volume(cell_size);
+    }
+
+    template <typename SizeType>
+    inline auto cell_area(const SizeType& cell_size) const
+    {
+        return area(cell_size);
+    }
+
+    inline auto lin_to_local_coords(std::size_t linear_idx) const
+    {
+        return linear_to_local_coords<Dim, PatchSize, HaloWidth>(linear_idx);
+    }
+
+    inline auto rm_halo(
+        const amr::containers::static_vector<std::size_t, Dim>& coords_with_halo
+    ) const
+    {
+        return remove_halo<Dim, HaloWidth>(coords_with_halo);
+    }
+
+    template <typename PatchIndexType>
+    inline auto compute_center(
+        const PatchIndexType&                                   patch_id,
+        const amr::containers::static_vector<std::size_t, Dim>& local_indices
+    ) const
+    {
+        return compute_cell_center<PatchSize, HaloWidth, Dim>(patch_id, local_indices);
+    }
+};
 
 } // namespace amr::global
-
 #endif // GLOBAL_HPP

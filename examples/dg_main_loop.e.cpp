@@ -131,28 +131,39 @@ int main()
     std::cout << "  Order=" << Order << ", Dim=" << Dim << ", DOFs=" << DOFs << "\n";
     std::cout << "  Equation=" << Equation << "\n\n";
 
-    // Initialize basis and equation
-    Basis<Order, Dim> basis(0.0, GridSize);
-    auto              eq      = make_configured_equation();
-    auto              kernels = amr::global::FaceKernels<Order, Dim>(basis);
-
-    // Create interpolator for initial DOF values
-    auto interpolator = amr::equations::InitialDOFInterpolator(*eq, basis);
-
-    // Setup tree mesh
+    // Initialize global configuration
     constexpr std::size_t PatchSize = GridElements;
     constexpr std::size_t HaloWidth = 1;
     constexpr std::size_t MaxDepth  = 1;
+
+    auto global_config = amr::global::GlobalConfig<Order, Dim, PatchSize, HaloWidth>();
+    std::cout << "Global Config initialized:\n";
+    std::cout << "  Basis quadweights: " << global_config.basis.quadweights() << "\n";
+    std::cout << "  Mass tensor shape: " << global_config.mass_tensors.mass_tensor
+              << "\n";
+    std::cout << "  Inv mass tensor shape: " << global_config.mass_tensors.inv_mass_tensor
+              << "\n";
+    std::cout << "  Surface mass tensor shape: "
+              << global_config.surface_mass_tensors.mass_tensor << "\n";
+
+    // Initialize basis and equation (now available from global config)
+    auto eq = make_configured_equation();
+
+    // Create interpolator for initial DOF values
+    auto interpolator = amr::equations::InitialDOFInterpolator(*eq, global_config.basis);
+
+    // Setup tree mesh
     // Time-stepping loop
     double time     = 0.0;
-    double dt       = 0.1; // TODO: CFL condition based on max eigenvalue
+    double dt       = 0.01; // TODO: CFL condition based on max eigenvalue
     int    timestep = 0;
 
     using shape_t        = static_shape<PatchSize, PatchSize>;
     using layout_t       = static_layout<shape_t>;
     using patch_index_t  = amr::ndt::morton::morton_id<MaxDepth, Dim>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, HaloWidth>;
-    using tree_t = amr::ndt::tree::ndtree<MarkerCell, patch_index_t, patch_layout_t>;
+    using tree_t    = amr::ndt::tree::ndtree<MarkerCell, patch_index_t, patch_layout_t>;
+    using Evaluator = amr::rhs::RHSEvaluator<Order, Dim, PatchSize, HaloWidth, DOFs>;
 
     tree_t tree(10000);
 
@@ -248,16 +259,18 @@ int main()
                                              const patch_container_t& current_dofs,
                                              double                   t)
                 {
-                    amr::rhs::evaluate_rhs<Order, Dim, PatchSize, HaloWidth, DOFs>(
+                    Evaluator::evaluate(
                         *eq,
-                        basis,
+                        global_config.basis,
                         current_dofs,      // whole patch
                         flux_patch.data(), // whole flux patch
                         patch_update,      // whole RHS patch
                         center_patch.data(),
-                        kernels,
+                        global_config.face_kernels,
                         t,
-                        patch_layout_t{} // patch layout instance
+                        patch_layout_t{},
+                        global_config,
+                        0.01 // volume
                     );
                 };
 

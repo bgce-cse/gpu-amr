@@ -63,7 +63,7 @@ constexpr auto tensor_product(T1 const& t1, T2 const& t2) noexcept -> utils::typ
         t2
     );
     */
-    using index_t          = typename ret_t::index_t;
+    using index_t              = typename ret_t::index_t;
     constexpr auto outter_size = static_cast<index_t>(T1::shape_t::elements());
     constexpr auto inner_size  = static_cast<index_t>(T2::shape_t::elements());
     for (auto i = index_t{}; i != outter_size; ++i)
@@ -299,7 +299,7 @@ constexpr auto contract(Tensor const& tensor, Vec const& vec) noexcept
 }
 
 template <std::size_t N, typename TensorType>
-auto tensor_power(TensorType const& tensor)
+constexpr auto tensor_power(TensorType const& tensor)
 {
     static_assert(N >= 1, "Tensor power must be at least 1");
     if constexpr (N == 1)
@@ -313,7 +313,7 @@ auto tensor_dot(TensorA const& Ta, TensorB const& Tb)
 {
     // Element-wise product of two tensors with the same shape
     static_assert(
-        std::is_same_v<typename TensorA::shape_t, typename TensorB::shape_t>,
+        TensorA::rank() == TensorB::rank(),
         "tensor_dot requires tensors with the same shape"
     );
 

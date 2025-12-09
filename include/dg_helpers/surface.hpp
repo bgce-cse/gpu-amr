@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../examples/build/generated_config.hpp"
 #include "containers/container_algorithms.hpp"
 #include "containers/static_vector.hpp"
+#include "generated_config.hpp"
 #include "globals.hpp"
 #include <cassert>
 #include <tuple>
@@ -54,11 +54,11 @@ double rusanov(
     numericalflux      = (sign * (flux_face + flux_face_neigh) * 0.5 +
                      (dofs_face - dofs_face_neigh) * (0.5 * maxeigenval)) *
                     surface;
-    std::cout << "sign: " << sign << " numerical flux: " << numericalflux << "\n"
-              << "dofs_face: " << dofs_face << " flux_face: " << flux_face << "\n"
-              << "dofs_neigh: " << dofs_face_neigh
-              << " flux_face_neigh: " << flux_face_neigh << "\n"
-              << "surface: " << surface << " maxeigenval: " << maxeigenval << "\n";
+    // std::cout << "sign: " << sign << " numerical flux: " << numericalflux << "\n"
+    //           << "dofs_face: " << dofs_face << " flux_face: " << flux_face << "\n"
+    //           << "dofs_neigh: " << dofs_face_neigh
+    //           << " flux_face_neigh: " << flux_face_neigh << "\n"
+    //           << "surface: " << surface << " maxeigenval: " << maxeigenval << "\n";
     return maxeigenval;
 }
 
@@ -114,13 +114,10 @@ auto evaluate_face_integral(
     std::size_t         direction,
     int                 sign,
     int                 sign_idx,
-    double              surface
+    double              surface,
+    const auto&         globals
 )
 {
-    using value_t       = typename Tensor::value_type;
-    using face_result_t = amr::containers::utils::types::tensor::
-        hypercube_t<value_t, amr::config::Order, amr::config::Dim>;
-
     Tensor numericalflux{};
     maxeigenval = rusanov(
         eq,
@@ -133,7 +130,7 @@ auto evaluate_face_integral(
         sign,
         numericalflux
     );
-    // std::cout << "  numerical flux before weights: " << numericalflux << "\n";
+
     auto kernel_vec = kernels[sign_idx];
 
     // Apply quadrature weights along non-face dimensions
@@ -142,7 +139,7 @@ auto evaluate_face_integral(
     if constexpr (amr::config::Dim == 2)
     {
         // In 2D, we have one non-face dimension (d=0)
-        const auto& weights_array = amr::global::QuadData<amr::config::Order>::weights;
+        const auto& weights_array = globals.basis.quadweights();
         amr::containers::static_vector<double, amr::config::Order> weights_vec;
         for (unsigned int i = 0; i < static_cast<unsigned int>(amr::config::Order); ++i)
         {
@@ -155,7 +152,7 @@ auto evaluate_face_integral(
     else if constexpr (amr::config::Dim == 3)
     {
         // In 3D, we have two non-face dimensions (d=0, d=1)
-        const auto& weights_array = amr::global::QuadData<amr::config::Order>::weights;
+        const auto& weights_array = globals.basis.quadweights();
         amr::containers::static_vector<double, amr::config::Order> weights_vec;
         for (unsigned int i = 0; i < static_cast<unsigned int>(amr::config::Order); ++i)
         {
@@ -168,8 +165,12 @@ auto evaluate_face_integral(
             numericalflux, weights_vec
         );
     }
-
-    return outer_product<face_result_t>(kernel_vec, numericalflux);
+    return amr::containers::algorithms::tensor::tensor_product(
+        kernel_vec,
+        amr::containers::algorithms::tensor::tensor_dot(
+            numericalflux, globals.surface_mass_tensors.mass_tensor
+        )
+    );
 }
 
 } // namespace amr::surface
