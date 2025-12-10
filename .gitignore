@@ -57,10 +57,6 @@ perf.script
 # Editors
 ##### VisualStudioCode
 .vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
 *.code-workspace
 
 ##### Vim
@@ -74,7 +70,6 @@ perf.script
 
 # Languages
 ##### C++
->>>>>>> feature/building_blocks
 # Prerequisites
 *.d
 
@@ -107,8 +102,6 @@ perf.script
 *.exe
 *.out
 *.app
-<<<<<<< HEAD
-=======
 
 # C/C++ binary extension file
 *.bin

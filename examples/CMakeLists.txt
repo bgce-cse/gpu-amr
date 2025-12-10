@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 3.25)
 
 project(GPU_AMR VERSION 0.1)
 
@@ -13,6 +13,9 @@ set(CMAKE_BUILD_PARALLEL_LEVEL 8)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
+
+# Constexpr exceeding limit
+add_compile_options(-fconstexpr-ops-limit=100000000)
 
 set(CXX_WARNINGS
 	-fbounds-check
@@ -45,7 +48,7 @@ set(CXX_WARNINGS
 
 set(CXX_DIAGNOSTICS
 	-fconcepts-diagnostics-depth=3
-	-fdiagnostics-color=always
+	-fdiagnostics-color=auto
 	-fdiagnostics-path-format=inline-events
 	-fdiagnostics-show-caret
 	-fdiagnostics-show-template-tree
@@ -147,7 +150,7 @@ file(GLOB EXAMPLE_FILES "${EXAMPLES_DIR}/*.e.cpp")
 foreach(EXAMPLE_FILE ${EXAMPLE_FILES})
     get_filename_component(TARGET_NAME ${EXAMPLE_FILE} NAME_WE)
     add_executable(${TARGET_NAME} ${EXAMPLE_FILE})
-    target_include_directories(${TARGET_NAME} PUBLIC ../include)
+    target_include_directories(${TARGET_NAME} PUBLIC ../include ../lib)
     target_compile_options(${TARGET_NAME} PRIVATE ${CXX_FLAGS})
     target_link_options(${TARGET_NAME} PRIVATE ${LINK_FLAGS})
     target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb)

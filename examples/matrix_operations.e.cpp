@@ -11,6 +11,7 @@
 
 int main()
 {
+    using namespace amr::containers;
     constexpr auto N   = 5;
     using F            = double;
     using matrix_N_N_t = amr::containers::static_matrix<F, N, N>;
@@ -23,9 +24,9 @@ int main()
     matrix_N_N_t b;
     matrix_5_2_t c;
 
-    amr::containers::fill(a, F{ 2 });
-    amr::containers::fill(b, []() { return rng::randfloat<F>(); });
-    amr::containers::fill(c, []() { return rng::randfloat<F>(); });
+    manipulators::fill(a, F{ 2 });
+    manipulators::fill(b, []() { return rng::randfloat<F>(); });
+    manipulators::fill(c, []() { return rng::randfloat<F>(); });
 
     std::cout << "a:\t" << a << '\n';
     std::cout << "b:\t" << b << '\n';

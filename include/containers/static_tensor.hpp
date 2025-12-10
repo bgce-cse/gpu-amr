@@ -1,164 +1,153 @@
 #ifndef AMR_INCLUDED_STATIC_TENSOR
 #define AMR_INCLUDED_STATIC_TENSOR
 
-#include "multi_index.hpp"
-#include "utility/compile_time_utility.hpp"
-#include "utility/utility_concepts.hpp"
+#include "container_concepts.hpp"
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
-#include <functional>
 #include <iomanip>
-#include <numeric>
 #include <optional>
-#include <string>
+#include <ranges>
+#include <string_view>
 #include <type_traits>
-#include <utility>
-
-#ifndef NDEBUG
-#    define AMR_CONTAINERS_CHECKBOUNDS
-#endif
 
 namespace amr::containers
 {
 
-template <typename T, std::integral auto N, std::integral auto... Ns>
-    requires utility::concepts::are_same<decltype(N), decltype(Ns)...> && (N > 0) &&
-             ((Ns > 0) && ...)
+template <typename T, concepts::StaticLayout Layout>
 class static_tensor
 {
 public:
-    using value_type = std::remove_cv_t<T>;
-    // TODO: This can be dangerous, maybe hardcode a type once we know what we
-    // need
-    using size_type       = std::common_type_t<decltype(N), decltype(Ns)...>;
-    using index_t         = size_type;
-    using rank_t          = size_type;
+    using value_type      = std::remove_cv_t<T>;
+    using layout_t        = Layout;
+    using shape_t         = typename layout_t::shape_t;
+    using size_type       = typename layout_t::size_type;
+    using size_pack_t       = typename layout_t::size_pack_t;
+    using index_t         = typename layout_t::index_t;
+    using rank_t          = typename layout_t::rank_t;
+    using multi_index_t   = typename layout_t::multi_index_t;
     using const_iterator  = value_type const*;
     using iterator        = value_type*;
     using const_reference = value_type const&;
     using reference       = value_type&;
-    using multi_index_t   = index::static_multi_index<index_t, N, Ns...>;
 
-    inline static constexpr rank_t                        s_rank = sizeof...(Ns) + 1;
-    inline static constexpr std::array<size_type, s_rank> s_sizes =
-        multi_index_t::s_sizes;
-    inline static constexpr auto s_strides = []
-    {
-        std::array<size_type, s_rank> strides{};
-        strides[s_rank - 1] = size_type{ 1 };
-        for (rank_t d = s_rank - 1; d-- > 0;)
-        {
-            strides[d] = strides[d + 1] * s_sizes[d + 1];
-        }
-        return strides;
-    }();
-    inline static constexpr size_type s_flat_size = (N * ... * Ns);
-
+private:
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::is_standard_layout_v<T>);
-    static_assert(s_rank > 0);
 
 public:
     [[nodiscard]]
-    constexpr static auto flat_size() noexcept -> size_type
+    static constexpr auto flat_size() noexcept -> size_type
     {
-        return s_flat_size;
+        return layout_t::flat_size();
     }
 
     [[nodiscard]]
-    constexpr static auto rank() noexcept -> rank_t
+    static constexpr auto elements() noexcept -> size_type
     {
-        return s_rank;
+        return layout_t::elements();
     }
 
     [[nodiscard]]
-    constexpr static auto size(index_t const i) noexcept -> size_type
+    static constexpr auto rank() noexcept -> rank_t
     {
-        assert(i < s_rank);
-        return s_sizes[i];
+        return layout_t::rank();
     }
 
     [[nodiscard]]
-    constexpr static auto stride(index_t const i) noexcept -> size_type
+    static constexpr auto sizes() noexcept -> auto const&
     {
-        assert(i < s_rank);
-        return s_strides[i];
+        return layout_t::sizes();
     }
 
     [[nodiscard]]
-    constexpr static auto linear_index(index_t const (&idxs)[s_rank]) noexcept -> index_t
+    static constexpr auto size(index_t const i) noexcept -> size_type
     {
-#ifdef AMR_CONTAINERS_CHECKBOUNDS
-        assert_in_bounds(idxs);
-#endif
-        auto linear_idx = std::transform_reduce(
-            std::cbegin(idxs), std::cend(idxs), std::cbegin(s_strides), index_t{}
-        );
-        assert(linear_idx < flat_size());
-        if constexpr (std::is_signed_v<index_t>)
-        {
-            assert(linear_idx >= 0);
-        }
-        return linear_idx;
+        assert(i < rank());
+        return layout_t::size(i);
     }
 
     [[nodiscard]]
-    constexpr static auto linear_index(multi_index_t const& multi_idx) noexcept -> index_t
+    static constexpr auto strides() noexcept -> auto const&
     {
-        auto linear_idx = std::transform_reduce(
-            std::cbegin(multi_idx),
-            std::cend(multi_idx),
-            std::cbegin(s_strides),
-            index_t{}
-        );
-        assert(linear_idx < flat_size());
-        if constexpr (std::is_signed_v<index_t>)
-        {
-            assert(linear_idx >= 0);
-        }
-        return linear_idx;
+        return layout_t::strides();
+    }
+
+    [[nodiscard]]
+    static constexpr auto stride(index_t const i) noexcept -> size_type
+    {
+        assert(i < rank());
+        return layout_t::stride(i);
+    }
+
+    template <std::integral... I>
+        requires(sizeof...(I) == rank())
+    [[nodiscard]]
+    static constexpr auto linear_index(I&&... idxs) noexcept -> index_t
+    {
+        return layout_t::linear_index(std::forward<decltype(idxs)>(idxs)...);
+    }
+
+    [[nodiscard]]
+    static constexpr auto
+        linear_index(std::ranges::contiguous_range auto const& idxs) noexcept -> index_t
+        
+    {
+        // assert(std::ranges::size(idxs) == rank());
+        return layout_t::linear_index(idxs);
     }
 
 public:
     [[nodiscard]]
-    constexpr static auto zero() noexcept -> static_tensor
+    static constexpr auto zero() noexcept -> static_tensor
     {
         return static_tensor{};
     }
 
 public:
-    template <class... I>
-        requires(sizeof...(I) == rank()) && (std::integral<std::remove_cvref_t<I>> && ...)
     [[nodiscard]]
-    constexpr auto operator[](I&&... idxs) const noexcept -> const_reference
-    {
-        index_t indices[s_rank] = { static_cast<index_t>(idxs)... };
-        return data_[linear_index(indices)];
-    }
-
-    template <class... I>
-        requires(sizeof...(I) == rank()) && (std::integral<std::remove_cvref_t<I>> && ...)
-    [[nodiscard]]
-    constexpr auto operator[](I&&... idxs) noexcept -> reference
-    {
-        return const_cast<reference>(
-            std::as_const(*this).operator[](std::forward<decltype(idxs)>(idxs)...)
-        );
-    }
-
-    [[nodiscard]]
-    constexpr auto operator[](multi_index_t const& multi_idx) const noexcept
+    constexpr auto
+        operator[](std::ranges::contiguous_range auto const& idxs) const noexcept
         -> const_reference
+        // requires(std::ranges::size(idxs) == rank() && std::is_same_v<std::ranges::range_value_t<decltype(idxs)>, index_t>) #TODO: @Miguel
     {
-        return data_[linear_index(multi_idx)];
+        return data_[linear_index(idxs)];
     }
 
     [[nodiscard]]
-    constexpr auto operator[](multi_index_t const& multi_idx) noexcept -> reference
+    constexpr auto operator[](std::ranges::contiguous_range auto const& idxs) noexcept
+        -> reference
     {
-        return const_cast<reference>(std::as_const(*this).operator[](multi_idx));
+        return const_cast<reference>(std::as_const(*this).operator[](idxs));
+    }
+
+    template <typename... I>
+        requires(sizeof...(I) == rank()) && (std::integral<std::remove_cvref_t<I>> && ...)
+    [[nodiscard]]
+    constexpr auto operator[](I const&... idxs) const noexcept -> const_reference
+    {
+        return data_[linear_index(static_cast<index_t>(idxs)...)];
+    }
+
+    template <typename... I>
+        requires(sizeof...(I) == rank()) && (std::integral<std::remove_cvref_t<I>> && ...)
+    [[nodiscard]]
+    constexpr auto operator[](I const&... idxs) noexcept -> reference
+    {
+        return const_cast<reference>(std::as_const(*this).operator[](idxs...));
+    }
+
+    [[nodiscard]]
+    constexpr auto operator[](index_t const linear_idx) const noexcept -> const_reference
+    {
+        return data_[linear_idx];
+    }
+
+    [[nodiscard]]
+    constexpr auto operator[](index_t const linear_idx) noexcept -> reference
+    {
+        return const_cast<reference>(std::as_const(*this).operator[](linear_idx));
     }
 
     [[nodiscard]]
@@ -198,34 +187,19 @@ public:
     }
 
 private:
-#ifdef AMR_CONTAINERS_CHECKBOUNDS
-    static auto assert_in_bounds(index_t const (&idxs)[s_rank]) noexcept -> void
-    {
-        for (auto d = rank_t{}; d != s_rank; ++d)
-        {
-            assert(idxs[d] < s_sizes[d]);
-            if constexpr (std::is_signed_v<index_t>)
-            {
-                assert(idxs[d] >= 0);
-            }
-        }
-    }
-#endif
-
-private:
     // TODO: Alignment?
-    value_type data_[s_flat_size];
+    value_type data_[flat_size()];
 };
 
-template <typename T, std::integral auto N, std::integral auto... Ns>
-auto operator<<(std::ostream& os, static_tensor<T, N, Ns...> const& t) noexcept
+template <typename T, concepts::StaticLayout Layout>
+auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
     -> std::ostream&
 {
     using tensor_t                 = std::remove_cvref_t<decltype(t)>;
-    static constexpr auto rank     = tensor_t::s_rank;
+    static constexpr auto rank     = tensor_t::rank();
     static constexpr auto newlines = []
     {
-        static constexpr auto pool = []
+        static constexpr auto pool = [] constexpr -> auto
         {
             std::array<char, rank> arr{};
             for (auto& e : arr)
@@ -243,7 +217,7 @@ auto operator<<(std::ostream& os, static_tensor<T, N, Ns...> const& t) noexcept
     }();
     static constexpr auto prefixes = []
     {
-        static constexpr auto pool = []
+        static constexpr auto pool = [] constexpr -> auto
         {
             std::array<char, rank * 2> arr{};
             for (std::size_t d = 0; d != rank; ++d)
@@ -262,7 +236,7 @@ auto operator<<(std::ostream& os, static_tensor<T, N, Ns...> const& t) noexcept
     }();
     static constexpr auto postfix = []
     {
-        static constexpr auto pool = []
+        static constexpr auto pool = [] constexpr -> auto
         {
             std::array<char, rank> arr{};
             for (auto& e : arr)
@@ -285,7 +259,7 @@ auto operator<<(std::ostream& os, static_tensor<T, N, Ns...> const& t) noexcept
     if constexpr (std::is_arithmetic_v<T>)
     {
         // TODO: Improve. Max is not necessarily the most restrictive value
-        width = std::clamp((int)std::ceil(std::log10(std::ranges::max(t))), 1, 7);
+        width = std::clamp((int)std::ceil(std::log10(std::ranges::max(t))), 1, 7) + 1;
     }
 
     os << prefixes[rank - 1];

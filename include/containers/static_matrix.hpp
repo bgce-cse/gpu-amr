@@ -1,24 +1,19 @@
 #ifndef AMR_INCLUDED_STATIC_MATRIX
 #define AMR_INCLUDED_STATIC_MATRIX
 
-#include <algorithm>
+#include "static_layout.hpp"
+#include "static_shape.hpp"
 #include <array>
 #include <cassert>
-#include <cmath>
 #include <concepts>
-#include <cstring>
-#include <functional>
 #include <iomanip>
 #include <iostream>
-#include <numeric>
-#include <utility>
 #include <type_traits>
+#include <utility>
 
 #ifndef NDEBUG
 #    define AMR_CONTAINERS_CHECKBOUNDS
 #endif
-
-#define LU_DETERTMINANT_TOL 1e-7
 
 namespace amr::containers
 {
@@ -29,41 +24,64 @@ class static_matrix
 {
 public:
     using value_type      = std::remove_cv_t<T>;
-    using size_type       = std::common_type_t<decltype(M), decltype(N)>;
+    using shape_t         = static_shape<M, N>;
+    using layout_t        = static_layout<shape_t>;
+    using size_type       = typename layout_t::size_type;
+    using size_pack_t       = typename layout_t::size_pack_t;
+    using index_t         = typename layout_t::index_t;
+    using rank_t          = typename layout_t::rank_t;
     using const_iterator  = value_type const*;
     using iterator        = value_type*;
     using const_reference = value_type const&;
     using reference       = value_type&;
 
-    inline static constexpr auto      s_size_y = M;
-    inline static constexpr auto      s_size_x = N;
-    inline static constexpr size_type s_flat_size{ N * M };
-
+private:
     static_assert(std::is_trivially_copyable_v<T>);
     static_assert(std::is_standard_layout_v<T>);
 
+public:
     [[nodiscard]]
     constexpr static auto flat_size() noexcept -> size_type
     {
-        return s_flat_size;
+        return layout_t::flat_size();
     }
 
     [[nodiscard]]
-    constexpr static auto size_x() noexcept -> size_type
+    constexpr static auto elements() noexcept -> size_type
     {
-        return s_size_x;
+        return layout_t::elements();
     }
 
     [[nodiscard]]
-    constexpr static auto size_y() noexcept -> size_type
+    constexpr static auto rank() noexcept -> rank_t
     {
-        return s_size_y;
+        return layout_t::rank();
+    }
+
+    [[nodiscard]]
+    constexpr static auto size(index_t const i) noexcept -> size_type
+    {
+        assert(i < rank());
+        return layout_t::size(i);
+    }
+
+    [[nodiscard]]
+    constexpr static auto strides() noexcept -> auto const&
+    {
+        return layout_t::strides;
+    }
+
+    [[nodiscard]]
+    constexpr static auto stride(index_t const i) noexcept -> size_type
+    {
+        assert(i < rank());
+        return layout_t::stride(i);
     }
 
     [[nodiscard]]
     constexpr auto operator[](const size_type j, const size_type i) noexcept -> reference
     {
-        return const_cast<reference>(std::as_const(*this).operator[](i,j));
+        return const_cast<reference>(std::as_const(*this).operator[](i, j));
     }
 
     [[nodiscard]]
@@ -116,8 +134,8 @@ public:
     constexpr auto assert_in_bounds(size_type const j, size_type const i) const noexcept
         -> void
     {
-        assert(i < s_size_x);
-        assert(j < s_size_y);
+        assert(j < size(0));
+        assert(i < size(1));
         if constexpr (std::is_signed_v<size_type>)
         {
             assert(i >= size_type{});
@@ -130,7 +148,7 @@ public:
 
 private:
     // TODO: Alignment, maybe padding
-    value_type data_[s_flat_size];
+    value_type data_[flat_size()];
 };
 
 template <typename T, std::integral auto N, std::integral auto M>
@@ -151,10 +169,10 @@ std::ostream& operator<<(std::ostream& os, static_matrix<T, N, M> const& mat)
         os << std::setprecision(4);
     }
     os << "[";
-    for (size_type j = 0; j != matrix_t::size_y(); ++j)
+    for (size_type j = 0; j != matrix_t::size(0); ++j)
     {
         os << "\n [ ";
-        for (size_type i = 0; i != matrix_t::size_x(); ++i)
+        for (size_type i = 0; i != matrix_t::size(1); ++i)
         {
             os << mat[j, i] << ' ';
         }

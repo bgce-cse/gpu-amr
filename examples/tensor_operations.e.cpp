@@ -1,4 +1,7 @@
 #include "containers/container_algorithms.hpp"
+#include "containers/container_manipulations.hpp"
+#include "containers/static_layout.hpp"
+#include "containers/static_shape.hpp"
 #include "containers/static_tensor.hpp"
 #include "containers/static_vector.hpp"
 #include "utility/random.hpp"
@@ -8,39 +11,42 @@
 
 int main()
 {
-    constexpr auto N = 5;
+    using namespace amr::containers;
+    constexpr auto N = 3;
+    constexpr auto M = 2;
     using F          = int;
-    using tensor_t   = amr::containers::static_tensor<F, N, 3, 4, 2, 3>;
-
-    std::cout << tensor_t::flat_size() << '\n';
-    for (int i = 0; i != tensor_t::rank(); ++i)
+    using tensor5_t   = static_tensor<F, static_layout<static_shape<N, 3, 4, 2, 3>>>;
+    using tensor2_t   = static_tensor<F, static_layout<static_shape<N, N, N>>>;
+    using tensor3_t   = static_tensor<F, static_layout<static_shape<M, M>>>;
+    std::cout << tensor5_t::elements() << '\n';
+    for (int i = 0; i != tensor5_t::rank(); ++i)
     {
-        std::cout << tensor_t::size(i) << ", ";
+        std::cout << tensor5_t::size(i) << ", ";
     }
     std::cout << '\n';
-    for (int i = 0; i != tensor_t::rank(); ++i)
+    for (int i = 0; i != tensor5_t::rank(); ++i)
     {
         std::cout << "i: " << i << '\n';
-        std::cout << "size: " << tensor_t::size(i) << '\n';
-        std::cout << "stride: " << tensor_t::stride(i) << '\n';
+        std::cout << "size: " << tensor5_t::size(i) << '\n';
+        std::cout << "stride: " << tensor5_t::stride(i) << '\n';
     }
-    tensor_t t{};
+    tensor5_t t{};
     F        check{};
     std::iota(std::begin(t), std::end(t), check);
-    for (int i = 0; i != N; ++i)
-        for (int j = 0; j != 3; ++j)
-            for (int k = 0; k != 4; ++k)
-                for (int l = 0; l != 2; ++l)
-                    for (int m = 0; m != 3; ++m)
-                    {
-                        std::cout << t[i, j, k, l, m] << '\n';
-                        assert((t[i, j, k, l, m] == check++));
-                    }
+    amr::containers::manipulators::apply(
+        t,
+        [&check](auto const& a, auto... idxs)
+        {
+            const auto& e = a[idxs...];
+            std::cout << e << '\n';
+            assert((e == check++));
+        }
+    );
 
-    auto idx = typename tensor_t::multi_index_t{};
+    auto idx = typename tensor5_t::multi_index_t{};
     do
     {
-        std::cout << idx << " -> " << tensor_t::linear_index(idx) << '\n';
+        std::cout << idx << " -> " << tensor5_t::linear_index(idx) << '\n';
     } while (idx.increment());
     std::cout << idx << '\n';
 
@@ -61,6 +67,16 @@ int main()
             break;
         }
     }
+
+    tensor2_t t2{};
+    tensor3_t t3{};
+    std::iota(std::begin(t2), std::end(t2), 0);
+    std::iota(std::begin(t3), std::end(t3), 0);
+    std::cout << "Tensor product: \n";
+    std::cout << "Rank 2 tensor\n" << t2 << '\n';
+    std::cout << "Rank 3 tensor\n" << t3 << '\n';
+    const auto tprod = amr::containers::algorithms::tensor::tensor_product(t2, t3);
+    std::cout << tprod << '\n';
 
     return EXIT_SUCCESS;
 }

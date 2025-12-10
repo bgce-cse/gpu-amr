@@ -1,3 +1,8 @@
+-I./include/
+-I./include/allocators/
+-I./include/containers/
+-I./include/ndtree/ndtree/
 -I./include/utility
+-I./include/morton
 
 -std=c++2b
