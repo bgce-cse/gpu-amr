@@ -328,7 +328,7 @@ public:
             }
             else
             {
-                static auto visitor = [&](auto const& neighbor) -> neighbor_variant_t
+                auto visitor = [&](auto const& neighbor) -> neighbor_variant_t
                 {
                     using T = std::decay_t<decltype(neighbor)>;
 
