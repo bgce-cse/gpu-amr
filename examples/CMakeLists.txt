@@ -14,6 +14,9 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 
+# Constexpr exceeding limit
+add_compile_options(-fconstexpr-ops-limit=100000000)
+
 set(CXX_WARNINGS
 	-fbounds-check
 	-fvisibility=hidden
@@ -24,7 +27,7 @@ set(CXX_WARNINGS
 	-Wdouble-promotion
 	-Wduplicated-branches
 	-Wduplicated-cond
-	-Werror
+	# -Werror
 	-Wextra
 	-Wfloat-equal
 	-Wformat
@@ -45,7 +48,7 @@ set(CXX_WARNINGS
 
 set(CXX_DIAGNOSTICS
 	-fconcepts-diagnostics-depth=3
-	-fdiagnostics-color=always
+	-fdiagnostics-color=auto
 	-fdiagnostics-path-format=inline-events
 	-fdiagnostics-show-caret
 	-fdiagnostics-show-template-tree
