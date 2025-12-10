@@ -594,7 +594,7 @@ public:
                                               coarser>)
                         {
                             auto coarser_neighbor_id = neighbor_data.id;
-
+                            
                             auto it = std::find(
                                 m_to_refine.begin(),
                                 m_to_refine.end(),
@@ -610,6 +610,10 @@ public:
                 );
             }
         }
+
+        std::ranges::sort(m_to_refine, [](const auto& a, const auto& b) {
+        return patch_index_t::level(a) > patch_index_t::level(b);
+    });
 
         std::vector<patch_index_t> blocks_to_remove{};
         for (auto i = 0uz; i != m_to_coarsen.size(); ++i)
@@ -851,6 +855,10 @@ public:
             {
                 for (linear_index_t k = 0; k != patch_size; k++)
                 {
+                    if (utils::patches::is_halo_cell<patch_layout_t>(k))
+                {
+                    continue;
+                }
                     ((b[to][k] = static_cast<unwrap_value_t<decltype(b)>>(0)), ...);
                 }
             },
@@ -863,6 +871,10 @@ public:
             const auto child_patch_index = start_from + patch_idx;
             for (linear_index_t linear_idx = 0; linear_idx != patch_size; ++linear_idx)
             {
+                if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
+                {
+                    continue;
+                }
                 const auto to_linear_idx =
                     s_fragmentation_patch_maps[patch_idx][linear_idx];
 
@@ -881,6 +893,10 @@ public:
             {
                 for (linear_index_t k = 0; k != patch_size; k++)
                 {
+                    if (utils::patches::is_halo_cell<patch_layout_t>(k))
+                {
+                    continue;
+                }
                     ((b[to][k] /= static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)),
                      ...);
                 }
