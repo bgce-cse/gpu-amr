@@ -138,13 +138,16 @@ int main() {
         std::cout << "Step " << step << ", t=" << t << ", dt=" << dt << std::endl;
         
         solver.time_step(dt);
+        solver.get_tree().halo_exchange_update();
         
         if (step % 5 == 0)
         {
             solver.get_tree().reconstruct_tree(acousticWaveCriterion);
             solver.get_tree().halo_exchange_update();
+            
         }
-
+        
+        
         t += dt;
         
         // Print only when we've passed the next print time
