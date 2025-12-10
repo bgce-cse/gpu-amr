@@ -137,17 +137,15 @@ public:
 
     static constexpr morton_id child_of(morton_id parent_id, offset_t off)
     {
-        auto [coords, level] = decode(parent_id.id());
-        assert(level < s_depth && "Cell already at max level");
-        auto sibling = offset(parent_id.id() + 1, off);
-
-        return sibling;
+        assert(
+            std::get<1>(decode(parent_id.id())) < s_depth && "Cell already at max level"
+        );
+        return offset(parent_id.id() + 1, off);
     }
 
     static constexpr auto level(morton_id id)
     {
-        auto [_, level] = decode(id.id());
-        return level;
+        return std::get<1>(decode(id.id()));
     }
 
     static constexpr std::optional<morton_id> neighbor_at(morton_id morton, direction dir)

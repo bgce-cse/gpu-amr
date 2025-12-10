@@ -159,14 +159,15 @@ public:
 
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
         patch_neighbors_t root_neighbors;
-        for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel(); d.advance())
+        for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
+             d.advance())
         {
             neighbor_patch_index_variant_t periodic_neighbor;
-            periodic_neighbor.data = typename neighbor_patch_index_variant_t::same{ patch_index_t::root() };
+            periodic_neighbor.data =
+                typename neighbor_patch_index_variant_t::same{ patch_index_t::root() };
             root_neighbors[d.index()] = periodic_neighbor;
         }
         append(patch_index_t::root(), root_neighbors);
-
     }
 
     ~ndtree() noexcept
@@ -594,7 +595,7 @@ public:
                                               coarser>)
                         {
                             auto coarser_neighbor_id = neighbor_data.id;
-                            
+
                             auto it = std::find(
                                 m_to_refine.begin(),
                                 m_to_refine.end(),
@@ -611,9 +612,11 @@ public:
             }
         }
 
-        std::ranges::sort(m_to_refine, [](const auto& a, const auto& b) {
-        return patch_index_t::level(a) > patch_index_t::level(b);
-    });
+        std::ranges::sort(
+            m_to_refine,
+            [](const auto& a, const auto& b)
+            { return patch_index_t::level(a) > patch_index_t::level(b); }
+        );
 
         std::vector<patch_index_t> blocks_to_remove{};
         for (auto i = 0uz; i != m_to_coarsen.size(); ++i)
@@ -700,7 +703,11 @@ public:
     auto get_linear_index_at(patch_index_t const node_id) const noexcept -> linear_index_t
     {
         const auto it = m_index_map.find(node_id);
-        assert(it != m_index_map.end());
+        assert(it != nullptr && it != m_index_map.end());
+        if (it == nullptr)
+        {
+            utility::error_handling::assert_unreachable();
+        }
         return it->second;
     }
 
@@ -856,9 +863,9 @@ public:
                 for (linear_index_t k = 0; k != patch_size; k++)
                 {
                     if (utils::patches::is_halo_cell<patch_layout_t>(k))
-                {
-                    continue;
-                }
+                    {
+                        continue;
+                    }
                     ((b[to][k] = static_cast<unwrap_value_t<decltype(b)>>(0)), ...);
                 }
             },
@@ -894,9 +901,9 @@ public:
                 for (linear_index_t k = 0; k != patch_size; k++)
                 {
                     if (utils::patches::is_halo_cell<patch_layout_t>(k))
-                {
-                    continue;
-                }
+                    {
+                        continue;
+                    }
                     ((b[to][k] /= static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)),
                      ...);
                 }
