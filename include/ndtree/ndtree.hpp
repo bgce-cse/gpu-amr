@@ -594,7 +594,7 @@ public:
                                               coarser>)
                         {
                             auto coarser_neighbor_id = neighbor_data.id;
-
+                            
                             auto it = std::find(
                                 m_to_refine.begin(),
                                 m_to_refine.end(),
@@ -610,6 +610,10 @@ public:
                 );
             }
         }
+
+        std::ranges::sort(m_to_refine, [](const auto& a, const auto& b) {
+        return patch_index_t::level(a) > patch_index_t::level(b);
+    });
 
         std::vector<patch_index_t> blocks_to_remove{};
         for (auto i = 0uz; i != m_to_coarsen.size(); ++i)
