@@ -23,11 +23,11 @@ struct EulerInitialCondition;
  * @tparam Dim Spatial dimension
  * @tparam Scalar Floating-point type
  */
-template <unsigned int Order, unsigned int Dim, typename Scalar = double>
+template <std::size_t Order, std::size_t Dim, typename Scalar = double>
 struct Euler :
     EquationBase<
         Euler<Order, Dim, Scalar>,
-        Dim + 2, // NumDOFs: momentum (Dim) + density (1) + energy (1)
+        Dim + 2, // NumDOF: momentum (Dim) + density (1) + energy (1)
         Order,
         Dim,
         Scalar>
@@ -72,7 +72,7 @@ struct Euler :
         const Scalar E   = U[ENERGY_IDX];
 
         Scalar kinetic = 0.0;
-        for (unsigned int d = 0; d < Dim; ++d)
+        for (std::size_t d = 0; d < Dim; ++d)
         {
             const Scalar mom = U[MOMENTUM_START + d];
             kinetic += 0.5 * mom * mom / rho;
@@ -91,7 +91,7 @@ struct Euler :
     ) const
     {
         Scalar kinetic = 0.0;
-        for (unsigned int d = 0; d < Dim; ++d)
+        for (std::size_t d = 0; d < Dim; ++d)
             kinetic += 0.5 * momentum[d] * momentum[d] / rho;
 
         return p / (gamma_ - 1.0) + kinetic;
@@ -106,7 +106,7 @@ struct Euler :
         const Scalar                                rho = U[DENSITY_IDX];
         amr::containers::static_vector<Scalar, Dim> velocity;
 
-        for (unsigned int d = 0; d < Dim; ++d)
+        for (std::size_t d = 0; d < Dim; ++d)
             velocity[d] = U[MOMENTUM_START + d] / rho;
 
         return velocity;
@@ -136,12 +136,12 @@ struct Euler :
             const auto   velocity = eq.compute_velocity(U);
 
             // Compute flux in each spatial direction
-            for (unsigned int dir = 0; dir < Dim; ++dir)
+            for (std::size_t dir = 0; dir < Dim; ++dir)
             {
                 const Scalar u_dir = velocity[dir];
 
                 // Momentum fluxes: rho * u_i * u_dir + p * delta_{i,dir}
-                for (unsigned int i = 0; i < Dim; ++i)
+                for (std::size_t i = 0; i < Dim; ++i)
                 {
                     cellflux[dir][idx][MOMENTUM_START + i] =
                         U[MOMENTUM_START + i] * u_dir;
@@ -203,8 +203,8 @@ struct EulerInitialCondition<1, Scalar>
         [[maybe_unused]] Scalar                          t
     )
     {
-        constexpr unsigned int                          NumDOFs = 3; // [rho*u, rho, E]
-        amr::containers::static_vector<Scalar, NumDOFs> U{};
+        constexpr unsigned int                         NumDOF = 3; // [rho*u, rho, E]
+        amr::containers::static_vector<Scalar, NumDOF> U{};
 
         // Gaussian pressure perturbation
         const Scalar x   = position[0];
@@ -234,8 +234,8 @@ struct EulerInitialCondition<2, Scalar>
         [[maybe_unused]] Scalar                          t
     )
     {
-        constexpr unsigned int NumDOFs = 4; // [rho*u, rho*v, rho, E]
-        amr::containers::static_vector<Scalar, NumDOFs> U{};
+        constexpr unsigned int NumDOF = 4; // [rho*u, rho*v, rho, E]
+        amr::containers::static_vector<Scalar, NumDOF> U{};
 
         // Gaussian pressure perturbation centered at (0.5, 0.5)
         const Scalar x   = position[0];
@@ -268,8 +268,8 @@ struct EulerInitialCondition<3, Scalar>
         [[maybe_unused]] Scalar                          t
     )
     {
-        constexpr unsigned int NumDOFs = 5; // [rho*u, rho*v, rho*w, rho, E]
-        amr::containers::static_vector<Scalar, NumDOFs> U{};
+        constexpr unsigned int NumDOF = 5; // [rho*u, rho*v, rho*w, rho, E]
+        amr::containers::static_vector<Scalar, NumDOF> U{};
 
         // Gaussian pressure perturbation centered at (0.5, 0.5, 0.5)
         const Scalar x = position[0];

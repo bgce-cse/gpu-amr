@@ -81,6 +81,7 @@ set(RELEASE_CXX_FLAGS
 	-O3
 )
 
+
 set(REL_DEB_INFO_CXX_FLAGS
 	-fno-math-errno
 	-fno-trapping-math
@@ -227,57 +228,52 @@ if(EXISTS ${CONFIG_YAML})
         message(WARNING "timeintegrator not found in config.yaml, using default: SSPRK2")
     endif()
     
-    # Generate C++ header with all configuration parameters
-    file(WRITE "${GENERATED_CONFIG_HPP}"
-        "#pragma once\n\n"
-        "/**\n"
-        " * @file generated_config.hpp\n"
-        " * @brief Auto-generated configuration constants from config.yaml\n"
-        " * @warning Do not edit manually! Regenerated at build time.\n"
-        " */\n\n"
-        "#include <string_view>\n"
-        "#include <memory>\n"
-        "#include \"dg_helpers/equations/advection.hpp\"\n"
-        "#include \"dg_helpers/equations/euler.hpp\"\n\n"
-        "namespace amr::config {\n\n"
-        "// ===================================================================\n"
-        "// Compile-time DG configuration parameters\n"
-        "// ===================================================================\n\n"
-        "/// Polynomial order for DG basis functions\n"
-        "constexpr unsigned int Order = ${ORDER_VALUE};\n\n"
-        "/// Spatial dimension (2 for 2D, 3 for 3D)\n"
-        "constexpr unsigned int Dim = ${DIM_VALUE};\n\n"
-        "/// Number of degrees of freedom per cell\n"
-        "constexpr unsigned int DOFs = ${DOFS_VALUE};\n\n"
-        "// ===================================================================\n"
-        "// Equation and scenario configuration\n"
-        "// ===================================================================\n\n"
-        "/// Equation type name\n"
-        "constexpr std::string_view Equation = \"${EQUATION_VALUE}\";\n\n"
-        "/// Scenario name\n"
-        "constexpr std::string_view Scenario = \"${SCENARIO_VALUE}\";\n\n"
-        "// ===================================================================\n"
-        "// Simulation parameters\n"
-        "// ===================================================================\n\n"
-        "/// Total simulation end time\n"
-        "constexpr double EndTime = ${END_TIME_VALUE};\n\n"
-        "/// Number of grid elements per dimension\n"
-        "constexpr unsigned int GridElements = ${GRID_ELEMENTS_VALUE};\n\n"
-        "/// Physical grid size (domain: [0, GridSize]^Dim)\n"
-        "constexpr double GridSize = ${GRID_SIZE_VALUE};\n\n"
-        "// ===================================================================\n"
-        "// Solver parameters\n"
-        "// ===================================================================\n\n"
-        "/// CFL (Courant-Friedrichs-Lewy) number for time stepping\n"
-        "constexpr double CourantNumber = ${COURANT_VALUE};\n\n"
-        "/// Time integration scheme: \"SSPRK2\", \"SSPRK3\", etc.\n"
-        "constexpr std::string_view TimeIntegrator = \"${TIMEINT_VALUE}\";\n\n"
-        "// ===================================================================\n"
-        "// Factory function disabled to avoid unnecessary instantiation\n"
-        "// ===================================================================\n"
-        "// Note: make_configured_equation() removed as tests use direct instantiation\n\n"
-        "} // namespace amr::config\n"
-    )
+   # Determine enum value string
+if(EQUATION_VALUE STREQUAL "advection")
+    set(EQUATION_ENUM "EquationType::Advection")
+elseif(EQUATION_VALUE STREQUAL "euler")
+    set(EQUATION_ENUM "EquationType::Euler")
+else()
+    message(FATAL_ERROR "Unknown equation: ${EQUATION_VALUE}")
+endif()
+
+# Generate header
+file(WRITE "${GENERATED_CONFIG_HPP}"
+"#pragma once\n\n"
+"/**\n"
+" * @file generated_config.hpp\n"
+" * @brief Auto-generated configuration constants from config.yaml\n"
+" * @warning Do not edit manually! Regenerated at build time.\n"
+" */\n\n"
+"#include \"containers/static_shape.hpp\"\n"
+"#include <string_view>\n"
+"#include <cstddef>\n\n"
+"namespace amr::config {\n\n"
+"// Canonical size type: std::size_t\n"
+"constexpr std::size_t Order = ${ORDER_VALUE};\n"
+"constexpr std::size_t Dim = ${DIM_VALUE};\n"
+"constexpr std::size_t DOFs = ${DOFS_VALUE};\n\n"
+"// Type aliases for container shapes\n"
+"using DimShape = amr::containers::static_shape<Dim>;\n"
+"using OrderShape = amr::containers::static_shape<Order>;\n"
+"using DOFsShape = amr::containers::static_shape<DOFs>;\n\n"
+"constexpr std::string_view Equation = \"${EQUATION_VALUE}\";\n"
+"constexpr std::string_view Scenario = \"${SCENARIO_VALUE}\";\n\n"
+"enum class EquationType { Advection, Euler };\n"
+"inline constexpr EquationType equation = ${EQUATION_ENUM};\n\n"
+"constexpr double EndTime = ${END_TIME_VALUE};\n"
+"constexpr unsigned int GridElements = ${GRID_ELEMENTS_VALUE};\n"
+"using GridShape = amr::containers::static_shape<GridElements>;\n"
+"constexpr std::size_t PatchSize = 10;\n"
+"using PatchShape = amr::containers::static_shape<PatchSize>;\n"
+"constexpr unsigned int HaloWidth = 1;\n"
+"constexpr unsigned int MaxDepth = 1;\n"
+"constexpr double GridSize = ${GRID_SIZE_VALUE};\n\n"
+"constexpr double CourantNumber = ${COURANT_VALUE};\n"
+"constexpr std::string_view TimeIntegrator = \"${TIMEINT_VALUE}\";\n\n"
+"} // namespace amr::config\n"
+)
+
     
     message(STATUS "Generated config header: ${GENERATED_CONFIG_HPP}")
     message(STATUS "  === Compile-time DG Configuration ===")

@@ -10,10 +10,10 @@ namespace amr::global
   Type aliases for readability
 ======================================================================*/
 
-template <unsigned int Dim>
+template <std::size_t Dim>
 using idx_vector = amr::containers::static_vector<std::size_t, Dim>;
 
-template <unsigned int Dim>
+template <std::size_t Dim>
 using coord_vector = amr::containers::static_vector<double, Dim>;
 
 /*======================================================================
@@ -72,7 +72,7 @@ constexpr auto area(const SizeType& cell_size)
   Linear index <-> Local coordinates
 ======================================================================*/
 
-template <unsigned int Dim, std::size_t PatchSize, std::size_t HaloWidth>
+template <std::size_t Dim, std::size_t PatchSize, std::size_t HaloWidth>
 constexpr auto linear_to_local_coords(std::size_t linear_idx)
 {
     constexpr std::size_t stride = PatchSize + 2 * HaloWidth;
@@ -93,7 +93,7 @@ constexpr auto linear_to_local_coords(std::size_t linear_idx)
     else
     {
         std::size_t rem = linear_idx;
-        for (unsigned int d = 0; d < Dim; ++d)
+        for (std::size_t d = 0; d < Dim; ++d)
         {
             coords[d] = rem % stride;
             rem /= stride;
@@ -102,11 +102,11 @@ constexpr auto linear_to_local_coords(std::size_t linear_idx)
     return coords;
 }
 
-template <unsigned int Dim, std::size_t HaloWidth>
+template <std::size_t Dim, std::size_t HaloWidth>
 constexpr auto remove_halo(const idx_vector<Dim>& coords_with_halo)
 {
     idx_vector<Dim> coords{};
-    for (unsigned int d = 0; d < Dim; ++d)
+    for (std::size_t d = 0; d < Dim; ++d)
         coords[d] = coords_with_halo[d] - HaloWidth;
     return coords;
 }
@@ -116,9 +116,9 @@ constexpr auto remove_halo(const idx_vector<Dim>& coords_with_halo)
 ======================================================================*/
 
 template <
-    std::size_t  PatchSize,
-    std::size_t  HaloWidth,
-    unsigned int Dim,
+    std::size_t PatchSize,
+    std::size_t HaloWidth,
+    std::size_t Dim,
     typename PatchIndexType>
 constexpr auto compute_cell_center(
     const PatchIndexType&  patch_id,
@@ -131,7 +131,7 @@ constexpr auto compute_cell_center(
     double cell_size         = patch_size_factor / static_cast<double>(PatchSize);
 
     coord_vector<Dim> cell_center{};
-    for (unsigned int d = 0; d < Dim; ++d)
+    for (std::size_t d = 0; d < Dim; ++d)
         cell_center[d] = (static_cast<double>(patch_coords[d]) * PatchSize +
                           static_cast<double>(local_indices[d]) + 0.5) *
                          cell_size;

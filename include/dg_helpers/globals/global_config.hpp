@@ -3,11 +3,12 @@
 
 #include "coordinates.hpp"
 #include "dg_helpers/basis/basis.hpp"
-#include "dg_helpers/equations/advection.hpp"
-#include "dg_helpers/equations/equation_impl.hpp"
-#include "dg_helpers/equations/euler.hpp"
+#include "dg_helpers/equations/equations.hpp"
+#include "dg_patches.hpp"
+#include "generated_config.hpp"
 #include "globals.hpp"
 #include "kernels.hpp"
+#include "quadrature.hpp"
 
 namespace amr::global
 {
@@ -23,12 +24,19 @@ namespace amr::global
  * @tparam HaloWidth Width of halo region
  */
 template <
-    std::size_t  Order,
-    unsigned int Dim,
-    std::size_t  PatchSize,
-    std::size_t  HaloWidth>
+    std::integral auto        Order,
+    std::integral auto        Dim,
+    std::integral auto        NumDOF,
+    std::integral auto        PatchSize,
+    std::integral auto        HaloWidth,
+    amr::config::EquationType EqTypeValue>
 struct GlobalConfig
 {
+    // -------------------------------------------------------------------
+    // Equation type
+    // -------------------------------------------------------------------
+    static constexpr amr::config::EquationType equation_type = EqTypeValue;
+
     // -------------------------------------------------------------------
     // Compile-time quadrature data
     // -------------------------------------------------------------------
@@ -43,6 +51,9 @@ struct GlobalConfig
     using FaceKernels        = amr::global::FaceKernels<Order, Dim>;
     using MassTensors        = amr::global::MassTensors<Order, Dim>;
     using SurfaceMassTensors = amr::global::MassTensors<Order, Dim - 1>;
+    using EqType =
+        typename amr::equations::EquationTraits<EqTypeValue, NumDOF, Order, Dim>;
+    using EquationImpl = typename EqType::type;
 
     // Precomputed tensors (compile-time)
     static constexpr auto volume_mass      = MassTensors::mass_tensor;
@@ -83,24 +94,36 @@ struct GlobalConfig
         return area(size);
     }
 
-    static constexpr auto lin_to_local(std::size_t linear_idx)
+    static constexpr auto lin_to_local(auto linear_idx)
     {
         return linear_to_local_coords<Dim, PatchSize, HaloWidth>(linear_idx);
     }
 
     static constexpr auto
-        rm_halo(const amr::containers::static_vector<std::size_t, Dim>& coords_with_halo)
+        rm_halo(const amr::containers::static_vector<unsigned int, Dim>& coords_with_halo)
     {
         return remove_halo<Dim, HaloWidth>(coords_with_halo);
     }
 
     template <typename PatchIndexType>
     static constexpr auto compute_center(
-        const PatchIndexType&                                   patch_id,
-        const amr::containers::static_vector<std::size_t, Dim>& local_idx
+        const PatchIndexType&                                    patch_id,
+        const amr::containers::static_vector<unsigned int, Dim>& local_idx
     )
     {
         return compute_cell_center<PatchSize, HaloWidth, Dim>(patch_id, local_idx);
+    }
+
+    static auto interpolate_initial_dofs(const auto& cell_center, double cell_size)
+    {
+        return Basis::project_to_reference_basis(
+            [&](auto node_coords)
+            {
+                auto shifted    = node_coords - 0.5;
+                auto global_pos = reference_to_global(cell_center, shifted, cell_size);
+                return EquationImpl::get_initial_values(global_pos, 0.0);
+            }
+        );
     }
 };
 

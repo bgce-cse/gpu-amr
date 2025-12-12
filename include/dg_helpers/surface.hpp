@@ -3,7 +3,7 @@
 #include "containers/container_algorithms.hpp"
 #include "containers/static_vector.hpp"
 #include "generated_config.hpp"
-#include "globals.hpp"
+#include "globals/globals.hpp"
 #include <cassert>
 #include <tuple>
 
@@ -54,11 +54,11 @@ double rusanov(
     numericalflux      = (sign * (flux_face + flux_face_neigh) * 0.5 +
                      (dofs_face - dofs_face_neigh) * (0.5 * maxeigenval)) *
                     surface;
-    // std::cout << "sign: " << sign << " numerical flux: " << numericalflux << "\n"
-    //           << "dofs_face: " << dofs_face << " flux_face: " << flux_face << "\n"
-    //           << "dofs_neigh: " << dofs_face_neigh
-    //           << " flux_face_neigh: " << flux_face_neigh << "\n"
-    //           << "surface: " << surface << " maxeigenval: " << maxeigenval << "\n";
+    std::cout << "sign: " << sign << " numerical flux: " << numericalflux << "\n"
+              << "dofs_face: " << dofs_face << " flux_face: " << flux_face << "\n"
+              << "dofs_neigh: " << dofs_face_neigh
+              << " flux_face_neigh: " << flux_face_neigh << "\n"
+              << "surface: " << surface << " maxeigenval: " << maxeigenval << "\n";
     return maxeigenval;
 }
 
@@ -141,7 +141,7 @@ auto evaluate_face_integral(
         // In 2D, we have one non-face dimension (d=0)
         const auto& weights_array = globals.basis.quadweights();
         amr::containers::static_vector<double, amr::config::Order> weights_vec;
-        for (unsigned int i = 0; i < static_cast<unsigned int>(amr::config::Order); ++i)
+        for (auto i = 0u; i < amr::config::Order; ++i)
         {
             weights_vec[i] = weights_array[i];
         }
@@ -154,7 +154,7 @@ auto evaluate_face_integral(
         // In 3D, we have two non-face dimensions (d=0, d=1)
         const auto& weights_array = globals.basis.quadweights();
         amr::containers::static_vector<double, amr::config::Order> weights_vec;
-        for (unsigned int i = 0; i < static_cast<unsigned int>(amr::config::Order); ++i)
+        for (auto i = 0u; i < amr::config::Order; ++i)
         {
             weights_vec[i] = weights_array[i];
         }
@@ -165,11 +165,14 @@ auto evaluate_face_integral(
             numericalflux, weights_vec
         );
     }
-    return amr::containers::algorithms::tensor::tensor_product(
-        kernel_vec,
-        amr::containers::algorithms::tensor::tensor_dot(
-            numericalflux, globals.surface_mass_tensors.mass_tensor
-        )
+    // Combine kernel weighting with the weighted numerical flux
+    // kernel_vec is 1D, tensor_dot result is already weighted
+    auto weighted_flux = amr::containers::algorithms::tensor::tensor_dot(
+        numericalflux, globals.surface_mass_tensors.mass_tensor
+    );
+    // Apply kernel weighting to each component
+    return amr::containers::algorithms::tensor::template einsum_apply<0>(
+        weighted_flux, kernel_vec
     );
 }
 

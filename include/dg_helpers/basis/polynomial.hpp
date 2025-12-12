@@ -15,15 +15,12 @@ using vector = amr::containers::static_vector<double, N>;
  * @brief Tensor-product Lagrange basis with Gauss-Legendre quadrature.
  * Fully compile-time available.
  */
-template <unsigned int Order, unsigned int Dim, double Start = 0.0, double End = 1.0>
+template <auto Order, auto Dim, double Start = 0.0, double End = 1.0>
 struct Basis
 {
     using GaussLegendre_t = GaussLegendre<Order, Start, End>;
     using Lagrange_t      = Lagrange<Order>;
     using vector_t        = vector<Dim>;
-
-    static constexpr unsigned int order      = Order;
-    static constexpr unsigned int dimensions = Dim;
 
     static constexpr const auto& quadpoints  = GaussLegendre_t::points;
     static constexpr const auto& quadweights = GaussLegendre_t::weights;
@@ -48,7 +45,7 @@ struct Basis
         do
         {
             double prod = 1.0;
-            for (unsigned int j = 0; j < Dim; ++j)
+            for (std::size_t j = 0; j < Dim; ++j)
                 prod *= Lagrange_t::evaluate(quadpoints, idx[j], position[j]);
             sum += coeffs[idx] * prod;
         } while (idx.increment());
@@ -59,7 +56,7 @@ struct Basis
     // Project a function onto the reference tensor-product Lagrange basis
     template <typename Func>
     [[nodiscard]]
-    static constexpr auto project_to_reference_basis(Func&& fun)
+    static auto project_to_reference_basis(Func&& fun)
     {
         using return_t = decltype(fun(vector_t{}));
         using tensor_t = typename amr::containers::utils::types::tensor::
@@ -75,6 +72,7 @@ struct Basis
             for (unsigned int d = 0; d < Dim; ++d)
                 position[d] = quadpoints[idx[d]];
             coeffs[idx] = fun(position);
+
         } while (idx.increment());
 
         return coeffs;

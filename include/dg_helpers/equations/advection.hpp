@@ -8,29 +8,19 @@ namespace amr::equations
 {
 
 // Forward declaration for dimension-specific initial conditions
-template <std::size_t NumDOFs, std::size_t Dim, typename Scalar>
+template <std::size_t NumDOF, std::size_t Dim>
 struct AdvectionInitialCondition;
 
 /**
  * @brief Generic linear advection equation.
  */
-template <
-    std::size_t NumDOFs,
-    std::size_t Order,
-    std::size_t Dim,
-    double      Velocity = 1.0,
-    typename Scalar      = double>
+template <std::size_t NumDOF, std::size_t Order, std::size_t Dim, double Velocity = 1.0>
 struct Advection :
-    EquationBase<
-        Advection<NumDOFs, Order, Dim, Velocity, Scalar>,
-        NumDOFs,
-        Order,
-        Dim,
-        Scalar>
+    EquationBase<Advection<NumDOF, Order, Dim, Velocity>, NumDOF, Order, Dim, double>
 {
-    static constexpr Scalar velocity = Velocity;
+    static constexpr double velocity = Velocity;
 
-    static constexpr auto evaluate_flux(const typename Advection::dof_t& celldofs)
+    static constexpr auto evaluate_flux(typename Advection::dof_t celldofs)
     {
         typename Advection::flux_t flux{};
         for (std::size_t d = 0; d < Dim; ++d)
@@ -38,78 +28,76 @@ struct Advection :
         return flux;
     }
 
-    static constexpr Scalar max_eigenvalue(
-        [[maybe_unused]] const typename Advection::dof_t& celldofs,
-        [[maybe_unused]] std::size_t                      normalidx
+    static constexpr double max_eigenvalue(
+        [[maybe_unused]] typename Advection::dof_t celldofs,
+        [[maybe_unused]] std::size_t               normalidx
     )
     {
         return std::abs(velocity);
     }
 
-    static constexpr typename Advection::dof_value_t get_initial_values(
-        const amr::containers::static_vector<Scalar, Dim>& position,
-        Scalar                                             t = 0.0
-    )
+    static constexpr auto get_initial_values(const auto& position, double t = 0.0)
+        -> amr::containers::static_vector<double, NumDOF>
     {
-        return AdvectionInitialCondition<NumDOFs, Dim, Scalar>::compute(position, t);
+        // Explicitly return the correct type to avoid type deduction issues
+        return AdvectionInitialCondition<NumDOF, Dim>::compute(position, t);
     }
 };
 
 // Specialization for dimension-specific initial conditions
-template <std::size_t NumDOFs, typename Scalar>
-struct AdvectionInitialCondition<NumDOFs, 1, Scalar>
+template <std::size_t NumDOF>
+struct AdvectionInitialCondition<NumDOF, 1>
 {
-    static constexpr auto
-        compute(const amr::containers::static_vector<Scalar, 1>& position, Scalar t)
+    static constexpr auto compute(const auto& position, double t)
+        -> amr::containers::static_vector<double, NumDOF>
     {
-        amr::containers::static_vector<Scalar, NumDOFs> result{};
-        constexpr Scalar                                PI = 3.14159265358979323846;
+        amr::containers::static_vector<double, NumDOF> result{};
+        constexpr double                               PI = 3.14159265358979323846;
 
-        if constexpr (NumDOFs >= 1) result[0] = std::sin(2.0 * PI * (position[0] - t));
-        for (std::size_t i = 1; i < NumDOFs; ++i)
+        if constexpr (NumDOF >= 1) result[0] = std::sin(2.0 * PI * (position[0] - t));
+        for (std::size_t i = 1; i < NumDOF; ++i)
             result[i] = 1.0;
 
         return result;
     }
 };
 
-template <std::size_t NumDOFs, typename Scalar>
-struct AdvectionInitialCondition<NumDOFs, 2, Scalar>
+template <std::size_t NumDOF>
+struct AdvectionInitialCondition<NumDOF, 2>
 {
-    static constexpr auto
-        compute(const amr::containers::static_vector<Scalar, 2>& position, Scalar t)
+    static constexpr auto compute(const auto& position, double t)
+        -> amr::containers::static_vector<double, NumDOF>
     {
-        amr::containers::static_vector<Scalar, NumDOFs> result{};
-        constexpr Scalar                                PI = 3.14159265358979323846;
-        const Scalar                                    x  = position[0];
-        const Scalar                                    y  = position[1];
+        amr::containers::static_vector<double, NumDOF> result{};
+        constexpr double                               PI = 3.14159265358979323846;
+        const double                                   x  = position[0];
+        const double                                   y  = position[1];
 
-        if constexpr (NumDOFs >= 1) result[0] = std::sin(2.0 * PI * (x + y - 2.0 * t));
-        if constexpr (NumDOFs >= 2) result[1] = std::sin(2.0 * PI * (y - t));
-        for (std::size_t i = 2; i < NumDOFs; ++i)
+        if constexpr (NumDOF >= 1) result[0] = std::sin(2.0 * PI * (x + y - 2.0 * t));
+        if constexpr (NumDOF >= 2) result[1] = std::sin(2.0 * PI * (y - t));
+        for (std::size_t i = 2; i < NumDOF; ++i)
             result[i] = 1.0;
 
         return result;
     }
 };
 
-template <std::size_t NumDOFs, typename Scalar>
-struct AdvectionInitialCondition<NumDOFs, 3, Scalar>
+template <std::size_t NumDOF>
+struct AdvectionInitialCondition<NumDOF, 3>
 {
-    static constexpr auto
-        compute(const amr::containers::static_vector<Scalar, 3>& position, Scalar t)
+    static constexpr auto compute(const auto& position, double t)
+        -> amr::containers::static_vector<double, NumDOF>
     {
-        amr::containers::static_vector<Scalar, NumDOFs> result{};
-        constexpr Scalar                                PI = 3.14159265358979323846;
-        const Scalar                                    x  = position[0];
-        const Scalar                                    y  = position[1];
-        const Scalar                                    z  = position[2];
+        amr::containers::static_vector<double, NumDOF> result{};
+        constexpr double                               PI = 3.14159265358979323846;
+        const double                                   x  = position[0];
+        const double                                   y  = position[1];
+        const double                                   z  = position[2];
 
-        if constexpr (NumDOFs >= 1)
-            result[0] = std::sin(2.0 * PI * (x + y + z - 3.0 * t));
-        if constexpr (NumDOFs >= 2) result[1] = std::sin(2.0 * PI * (y - t));
-        if constexpr (NumDOFs >= 3) result[2] = std::sin(2.0 * PI * (z - t));
-        for (std::size_t i = 3; i < NumDOFs; ++i)
+        if constexpr (NumDOF >= 1) result[0] = std::sin(2.0 * PI * (x + y + z - 3.0 * t));
+        if constexpr (NumDOF >= 2) result[1] = std::sin(2.0 * PI * (y - t));
+        if constexpr (NumDOF >= 3) result[2] = std::sin(2.0 * PI * (z - t));
+        for (std::size_t i = 3; i < NumDOF; ++i)
             result[i] = 1.0;
 
         return result;

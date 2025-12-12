@@ -1,11 +1,11 @@
 #ifndef DG_HELPERS_RHS_HPP
 #define DG_HELPERS_RHS_HPP
 
-#include "basis.hpp"
+#include "basis/basis.hpp"
 #include "containers/container_manipulations.hpp"
 #include "containers/container_operations.hpp"
-#include "equations.hpp"
-#include "globals.hpp"
+#include "equations/equations.hpp"
+#include "globals/globals.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/neighbor.hpp"
 #include "surface.hpp"
@@ -76,11 +76,11 @@ auto dispatch_project_to_faces(
  * repeated allocation and computation across multiple RHS evaluations.
  */
 template <
-    std::size_t Order,
-    std::size_t Dim,
-    std::size_t PatchSize,
-    std::size_t HaloWidth,
-    std::size_t DOFs>
+    std::integral auto Order,
+    std::integral auto Dim,
+    std::integral auto PatchSize,
+    std::integral auto HaloWidth,
+    std::integral auto DOFs>
 struct RHSEvaluator
 {
     // Static compile-time constants
@@ -131,18 +131,20 @@ struct RHSEvaluator
         using padded_layout_t = typename PatchLayoutType::padded_layout_t;
         using flux_vector_t   = std::decay_t<decltype(flux_patch[0])>;
         using size_type       = typename flux_vector_t::size_type;
+        using size_t          = typename PatchLayoutType::size_type;
 
         // Loop over each cell in the patch (including halos)
-        for (std::size_t linear_idx = 0; linear_idx < patch_layout_t.flat_size();
-             ++linear_idx)
+        for (size_t linear_idx = 0; linear_idx < patch_layout_t.flat_size(); ++linear_idx)
         {
-            if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutType>(linear_idx))
+            auto idx = static_cast<int>(linear_idx);
+
+            if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutType>(idx))
             {
                 continue;
             }
 
             // Compute flux for current cell
-            eq.evaluate_flux(dof_patch[linear_idx], flux_patch[linear_idx]);
+            flux_patch[idx] = eq.evaluate_flux(dof_patch[idx]);
 
             // ========== DIRECTION SYSTEM EXPLANATION ==========
             // The tree uses a NATURAL DIRECTION ORDERING based on the layout strides:
@@ -172,11 +174,11 @@ struct RHSEvaluator
             {
                 // Convert current linear index to multi-index using padded_layout_t
                 auto current_coords = padded_layout_t::multi_index(
-                    static_cast<typename padded_layout_t::index_t>(linear_idx)
+                    static_cast<typename padded_layout_t::index_t>(idx)
                 );
 
                 // Natural neighbor in dimension d
-                auto dim_idx  = d.dimension();
+                auto dim_idx  = static_cast<int>(d.dimension());
                 bool is_neg   = direction_t::is_negative(d);
                 int  sign     = is_neg ? -1 : 1;
                 int  sign_idx = is_neg ? 0 : 1;
@@ -208,8 +210,8 @@ struct RHSEvaluator
 
                 auto cell_data = dispatch_project_to_faces<Dim>(
                     kernels,
-                    dof_patch[linear_idx],
-                    flux_patch[linear_idx][actual_dim_sz],
+                    dof_patch[idx],
+                    flux_patch[idx][actual_dim_sz],
                     sign_idx,
                     actual_dim
                 );
@@ -238,11 +240,14 @@ struct RHSEvaluator
                     0.1, // edge surface
                     globals
                 );
-
-                patch_update[linear_idx] = patch_update[linear_idx] - face_du;
+                static_assert(
+                    patch_update[idx].flat_size() == dof_patch[idx].flat_size(),
+                    "Patch update and DOF patch size mismatch"
+                );
+                patch_update[idx] = patch_update[idx] - face_du;
             }
-            patch_update[linear_idx] = amr::containers::algorithms::tensor::tensor_dot(
-                patch_update[linear_idx],
+            patch_update[idx] = amr::containers::algorithms::tensor::tensor_dot(
+                patch_update[idx],
                 globals.mass_tensors.inv_mass_tensor *
                     100 // inverse of the volume, fix it or die
             );
@@ -254,11 +259,11 @@ struct RHSEvaluator
 
 // Legacy interface for backward compatibility
 template <
-    std::size_t Order,
-    std::size_t Dim,
-    std::size_t PatchSize,
-    std::size_t HaloWidth,
-    std::size_t DOFs,
+    std::integral auto Order,
+    std::integral auto Dim,
+    std::integral auto PatchSize,
+    std::integral auto HaloWidth,
+    std::integral auto DOFs,
     typename EquationType,
     typename BasisType,
     typename DOFTensorType,

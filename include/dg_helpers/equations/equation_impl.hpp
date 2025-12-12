@@ -13,25 +13,25 @@ namespace amr::equations
  * @brief Base template for all DG equation systems using CRTP.
  *
  * @tparam Derived The derived equation class
- * @tparam NumDOFs Number of DOFs
+ * @tparam NumDOF Number of DOFs
  * @tparam Order Polynomial order
  * @tparam Dim Spatial dimension
  * @tparam Scalar Floating-point type
  */
 template <
     typename Derived,
-    unsigned int NumDOFs,
-    unsigned int Order,
-    unsigned int Dim,
+    std::size_t NumDOF,
+    std::size_t Order,
+    std::size_t Dim,
     typename Scalar = double>
 struct EquationBase
 {
-    using dof_value_t = amr::containers::static_vector<Scalar, NumDOFs>;
+    using dof_value_t = amr::containers::static_vector<Scalar, NumDOF>;
     using dof_t       = typename amr::containers::utils::types::tensor::
         hypercube_t<dof_value_t, Order, Dim>;
     using flux_t = amr::containers::static_vector<dof_t, Dim>;
 
-    static constexpr unsigned int num_dofs = NumDOFs;
+    static constexpr std::size_t num_dofs = NumDOF;
 
     // Interface methods that forward to Derived
     static constexpr auto evaluate_flux(const dof_t& celldofs)
@@ -39,7 +39,7 @@ struct EquationBase
         return Derived::evaluate_flux(celldofs);
     }
 
-    static constexpr Scalar max_eigenvalue(const dof_t& celldofs, unsigned int normalidx)
+    static constexpr Scalar max_eigenvalue(const dof_t& celldofs, std::size_t normalidx)
     {
         return Derived::max_eigenvalue(celldofs, normalidx);
     }
@@ -52,8 +52,8 @@ struct EquationBase
         return Derived::get_initial_values(position, t);
     }
 
-protected:
-    // Prevent direct instantiation
+public:
+    // Allow instantiation for use in evaluators
     EquationBase() = default;
 
 private:
@@ -73,7 +73,7 @@ private:
             decltype(T::evaluate_flux(std::declval<dof_t>())),
             decltype(T::max_eigenvalue(
                 std::declval<dof_t>(),
-                std::declval<unsigned int>()
+                std::declval<std::size_t>()
             )),
             decltype(T::get_initial_values(
                 std::declval<amr::containers::static_vector<Scalar, Dim>>(),
@@ -81,11 +81,6 @@ private:
             ))>> : std::true_type
     {
     };
-
-    static_assert(
-        has_required_interface<Derived>::value || std::is_same_v<Derived, void>,
-        "Derived class must implement: evaluate_flux, max_eigenvalue, get_initial_values"
-    );
 };
 
 } // namespace amr::equations

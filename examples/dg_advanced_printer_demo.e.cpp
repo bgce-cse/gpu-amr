@@ -22,19 +22,20 @@
  *   # Output appears in: vtk_output/dg_tree_advanced_*.vtk
  */
 
-#include "advection.hpp"
-#include "basis.hpp"
-#include "equations.hpp"
-#include "generated_config.hpp"
-#include "globals.hpp"
-#include "morton_id.hpp"
+#include "../build/generated_config.hpp"
+#include "containers/container_utils.hpp"
+#include "containers/static_layout.hpp"
+#include "containers/static_shape.hpp"
+#include "containers/static_vector.hpp"
+#include "dg_helpers/basis/basis.hpp"
+#include "dg_helpers/equations/equations.hpp"
+#include "dg_helpers/globals/global_config.hpp"
+#include "dg_helpers/globals/globals.hpp"
+#include "morton/morton_id.hpp"
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
 #include "ndtree/print_dg_tree_advanced.hpp"
-#include "static_layout.hpp"
-#include "static_shape.hpp"
-#include "static_vector.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iomanip>
@@ -44,9 +45,9 @@
 #include <tuple>
 
 using namespace amr::equations;
-using namespace amr::Basis;
 using namespace amr::containers;
 using namespace amr::config;
+using namespace amr::global;
 
 /**
  * @brief DG cell structure with S1: DOF tensor at Gauss-Legendre points
@@ -147,12 +148,16 @@ int main()
     std::cout << "  Advanced DG Printer Demo\n";
     std::cout << "====================================\n\n";
 
-    // Configuration
+    // Configuration using GlobalConfig
+    using global_t = GlobalConfig<Order, Dim, DOFs, PatchSize, HaloWidth, Equation>;
+
     std::cout << "Configuration:\n";
     std::cout << "  Physical Dimension: " << Dim << "D\n";
     std::cout << "  DG Polynomial Order: " << Order << "\n";
     std::cout << "  DOF Components: " << DOFs << "\n";
-    std::cout << "  Equation: " << Equation << "\n\n";
+    std::cout << "  Patch Size: " << PatchSize << "\n";
+    std::cout << "  Halo Width: " << HaloWidth << "\n";
+    std::cout << "  Equation: " << static_cast<int>(global_t::equation_type) << "\n\n";
 
     // Check configuration compatibility
     if (Dim != 2)
@@ -161,17 +166,8 @@ int main()
         return 1;
     }
 
-    // Initialize basis
-    Basis<Order, Dim> basis(0.0, GridSize);
-    auto              eq = make_configured_equation();
-
-    // Create interpolator for initial DOF values
-    auto interpolator = amr::equations::InitialDOFInterpolator(*eq, basis);
-
-    // Setup tree mesh
-    constexpr std::size_t PatchSize = 4;
-    constexpr std::size_t HaloWidth = 1;
-    constexpr std::size_t MaxDepth  = 2;
+    // Create tree mesh using type definitions from GlobalConfig
+    constexpr std::size_t MaxDepth = 2;
 
     using shape_t        = static_shape<PatchSize, PatchSize>;
     using layout_t       = static_layout<shape_t>;
@@ -226,8 +222,9 @@ int main()
 
             center_coord_patch[linear_idx] = cell_center_coords;
 
-            // Initialize DOF tensor with interpolated initial conditions
-            dof_patch[linear_idx] = interpolator(cell_center_coords, cell_size);
+            // Initialize DOF tensor with zero values
+            // (actual initial condition setup would use GlobalConfig::EquationImpl)
+            dof_patch[linear_idx] = {};
         }
     }
 

@@ -2,6 +2,7 @@
 #define AMR_GLOBAL_QUADRATURE_HPP
 
 #include "containers/container_algorithms.hpp"
+#include <cstddef>
 
 namespace amr::global
 {
@@ -9,7 +10,7 @@ namespace amr::global
 /**
  * @brief Pre-computed Gauss-Legendre quadrature data on [-1, 1]
  */
-template <unsigned int Order>
+template <std::size_t Order>
 struct QuadData;
 
 template <>

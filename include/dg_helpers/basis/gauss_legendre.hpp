@@ -15,7 +15,7 @@ using vector = amr::containers::static_vector<double, N>;
  * @brief Precomputed 1D Gauss-Legendre quadrature on interval [start, end].
  * Fully compile-time available.
  */
-template <unsigned int Order, double Start = -1.0, double End = 1.0>
+template <auto Order, double Start = -1.0, double End = 1.0>
 struct GaussLegendre
 {
     static constexpr vector<Order> points = []()
