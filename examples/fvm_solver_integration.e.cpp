@@ -29,7 +29,7 @@ int main() {
     using layout_t        = amr::containers::static_layout<shape_t>;
     //using index_t         = typename layout_t::index_t;
 
-    using patch_index_t  = amr::ndt::morton::morton_id<7u, 2u>;
+    using patch_index_t  = amr::ndt::morton::morton_id<8u, 2u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
     using tree_t         = amr::ndt::tree::ndtree<amr::cell::EulerCell2D, patch_index_t, patch_layout_t>;
 
@@ -38,9 +38,11 @@ int main() {
     amr::ndt::print::example_patch_print<Halo, M, N> printer2("euler_tree");
 
 
-    double tmax = 500; // Example tmax, adjust as needed
+    double tmax = 400; // Example tmax, adjust as needed
     double print_frequency = 10.0; // Print every 10 seconds
     const std::string output_prefix = "solver_integration_test_refine";
+
+    int inital_refinement = 3;
 
 
     // Instantiate the AMR solver.
@@ -53,9 +55,9 @@ int main() {
 
     auto acousticWaveCriterion = [&](const patch_index_t& idx) {
         // Define Thresholds and Limits
-        constexpr double REFINE_RHO_THRESHOLD = 0.55;
-        constexpr double COARSEN_RHO_THRESHOLD = 0.47;
-        constexpr int MAX_LEVEL = 5;
+        constexpr double REFINE_RHO_THRESHOLD = 0.53;
+        constexpr double COARSEN_RHO_THRESHOLD = 0.49;
+        constexpr int MAX_LEVEL = 6;
         constexpr int MIN_LEVEL = 1;
         
         int level = idx.level();
@@ -116,8 +118,12 @@ int main() {
     };
 
     std::cout << "Initializing solver..." << std::endl;
-    solver.get_tree().reconstruct_tree(refineAll);
-    solver.get_tree().halo_exchange_update();
+    for (int i = 0; i < inital_refinement; i++)
+    {
+        solver.get_tree().reconstruct_tree(refineAll);
+        solver.get_tree().halo_exchange_update();
+    }
+    
     solver.initialize(acousticPulseIC);
     solver.get_tree().halo_exchange_update();
 
