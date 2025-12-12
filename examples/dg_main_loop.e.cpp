@@ -9,7 +9,7 @@
 #include "dg_helpers/globals/globals.hpp"
 #include "dg_helpers/rhs.hpp"
 #include "dg_helpers/surface.hpp"
-#include "dg_helpers/time.hpp"
+#include "dg_helpers/time_integration/time_integration.hpp"
 #include "morton/morton_id.hpp"
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
@@ -135,19 +135,13 @@ int main()
               << ", DOFs=" << amr::config::DOFs << "\n";
     std::cout << "  Equation=" << amr::config::Equation << "\n\n";
 
-    using global_t = GlobalConfig<
-        amr::config::Order,
-        amr::config::Dim,
-        amr::config::DOFs,
-        amr::config::PatchSize,
-        amr::config::HaloWidth,
-        amr::config::equation>;
+    using global_t = GlobalConfig<amr::config::GlobalConfigPolicy>;
 
     // Setup tree mesh
     // Time-stepping loop
-    // double time     = 0.0;
-    // double dt       = 0.01; // TODO: CFL condition based on max eigenvalue
-    // int    timestep = 0;
+    double time     = 0.0;
+    double dt       = 0.01; // TODO: CFL condition based on max eigenvalue
+    int    timestep = 0;
     using shape_t =
         static_shape<amr::config::PatchSize, amr::config::PatchSize>; // PatchSize literal
     using layout_t      = static_layout<shape_t>;
@@ -156,18 +150,20 @@ int main()
         static_cast<unsigned int>(amr::config::Dim)>; // Morton 2D with depth 1
     using patch_layout_t =
         amr::ndt::patches::patch_layout<layout_t, 1>; // HaloWidth literal
-    using tree_t = amr::ndt::tree::ndtree<MarkerCell, patch_index_t, patch_layout_t>;
-    // using Evaluator = amr::rhs::RHSEvaluator<
-    //     amr::config::Order,
-    //     amr::config::Dim,
-    //     amr::config::PatchSize,
-    //     amr::config::HaloWidth,
-    //     amr::config::DOFs>;
+    using tree_t    = amr::ndt::tree::ndtree<MarkerCell, patch_index_t, patch_layout_t>;
+    using Evaluator = amr::rhs::RHSEvaluator<
+        amr::config::Order,
+        amr::config::Dim,
+        amr::config::PatchSize,
+        amr::config::HaloWidth,
+        amr::config::DOFs>;
 
     tree_t tree(10000);
 
     using patch_container_t = decltype(tree.template get_patch<S1>(0).data());
-    auto integrator         = make_configured_time_integrator<patch_container_t>();
+    using IntegratorTraits  = amr::time_integration::
+        TimeIntegratorTraits<amr::config::time_integrator, patch_container_t>;
+    typename IntegratorTraits::type integrator;
 
     for (std::size_t idx = 0; idx < tree.size(); ++idx)
     {
@@ -205,130 +201,134 @@ int main()
             dof_patch[linear_idx] =
                 global_t::interpolate_initial_dofs(cell_center, cell_size);
 
+            std::cout << "initial dof_patch:\n"
+                      << global_t::interpolate_initial_dofs(cell_center, cell_size)
+                      << "\n\n";
+
             flux_patch[linear_idx] =
                 global_t::EquationImpl::evaluate_flux(dof_patch[linear_idx]);
             size_patch[linear_idx] = { cell_size, cell_size };
         }
     }
 
-    // try
-    // {
-    //     // std::cout << "\n====================================\n";
-    //     // std::cout << "  Initializing DG Tree Printer (Advanced)\n";
-    //     // std::cout << "====================================\n\n";
-    //     // ndt::print::dg_tree_printer_advanced<Dim, Order, PatchSize, HaloWidth, DOFs>
-    //     //     printer("dg_tree");
-    //     // std::cout << "DG tree printer created successfully\n";
-    //     // std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
-    //     // printer.template print<S1>(tree, time_extension);
-    //     // std::cout << "DG tree printer completed\n";
+    try
+    {
+        // std::cout << "\n====================================\n";
+        // std::cout << "  Initializing DG Tree Printer (Advanced)\n";
+        // std::cout << "====================================\n\n";
+        // ndt::print::dg_tree_printer_advanced<Dim, Order, PatchSize, HaloWidth, DOFs>
+        //     printer("dg_tree");
+        // std::cout << "DG tree printer created successfully\n";
+        // std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
+        // printer.template print<S1>(tree, time_extension);
+        // std::cout << "DG tree printer completed\n";
 
-    //     // // Print debug info for DOF inspection
-    //     // // advanced_printer.template print_debug_info<S1>(tree);
+        // // Print debug info for DOF inspection
+        // // advanced_printer.template print_debug_info<S1>(tree);
 
-    //     // std::vector<std::string> vtk_files;
-    //     // std::vector<double>      times;
+        // std::vector<std::string> vtk_files;
+        // std::vector<double>      times;
 
-    //     std::cout << "\n====================================\n";
-    //     std::cout << "  Starting Time Integration\n";
-    //     std::cout << "====================================\n\n";
+        std::cout << "\n====================================\n";
+        std::cout << "  Starting Time Integration\n";
+        std::cout << "====================================\n\n";
 
-    //     while (time < EndTime)
-    //     {
-    //         // Initialize halo cells with periodic boundary conditions
-    //         tree.halo_exchange_update();
-    //         // Apply time integrator to each patch in the tree
-    //         for (std::size_t idx = 0; idx < tree.size(); ++idx)
-    //         {
-    //             auto& dof_patch    = tree.template get_patch<S1>(idx);
-    //             auto& flux_patch   = tree.template get_patch<S2>(idx);
-    //             auto& center_patch = tree.template get_patch<S3>(idx);
+        while (time < amr::config::EndTime)
+        {
+            // Initialize halo cells with periodic boundary conditions
+            tree.halo_exchange_update();
+            // Apply time integrator to each patch in the tree
+            for (std::size_t idx = 0; idx < tree.size(); ++idx)
+            {
+                auto& dof_patch    = tree.template get_patch<S1>(idx);
+                auto& flux_patch   = tree.template get_patch<S2>(idx);
+                auto& center_patch = tree.template get_patch<S3>(idx);
 
-    //             // std::cout << "patch value " << dof_patch.data() << ": ";
+                // std::cout << "patch value " << dof_patch.data() << ": ";
 
-    //             auto residual_callback = [&](patch_container_t&       patch_update,
-    //                                          const patch_container_t& current_dofs,
-    //                                          double                   t)
-    //             {
-    //                 // Create equation instance for the evaluator
-    //                 typename global_t::EquationImpl eq{};
+                auto residual_callback = [&](patch_container_t&       patch_update,
+                                             const patch_container_t& current_dofs,
+                                             double                   t)
+                {
+                    // Create equation instance for the evaluator
+                    typename global_t::EquationImpl eq{};
 
-    //                 // Create a globals object that provides access to basis and tensor
-    //                 // data
-    //                 struct BasisWrapper
-    //                 {
-    //                     auto quadweights() const
-    //                     {
-    //                         return global_t::quad_weights;
-    //                     }
-    //                     auto quadpoints() const
-    //                     {
-    //                         return global_t::quad_points;
-    //                     }
-    //                 };
+                    // Create a globals object that provides access to basis and tensor
+                    // data
+                    struct BasisWrapper
+                    {
+                        auto quadweights() const
+                        {
+                            return global_t::quad_weights;
+                        }
+                        auto quadpoints() const
+                        {
+                            return global_t::quad_points;
+                        }
+                    };
 
-    //                 struct Globals
-    //                 {
-    //                     BasisWrapper                          basis{};
-    //                     typename global_t::MassTensors        mass_tensors{};
-    //                     typename global_t::SurfaceMassTensors surface_mass_tensors{};
-    //                 } globals;
+                    struct Globals
+                    {
+                        BasisWrapper                          basis{};
+                        typename global_t::MassTensors        mass_tensors{};
+                        typename global_t::SurfaceMassTensors surface_mass_tensors{};
+                    } globals;
 
-    //                 std::cout << "global values" << globals.basis.quadpoints()
-    //                           << " quadweights " << globals.basis.quadweights() <<
-    //                           "\n";
-    //                 Evaluator::evaluate(
-    //                     eq,
-    //                     global_t::Basis{},
-    //                     const_cast<patch_container_t&>(current_dofs),
-    //                     flux_patch.data(),
-    //                     patch_update,
-    //                     center_patch.data(),
-    //                     global_t::face_kernels,
-    //                     t,
-    //                     patch_layout_t{},
-    //                     globals,
-    //                     0.01
-    //                 );
-    //             };
+                    // std::cout << "global values" << globals.basis.quadpoints()
+                    //           << " quadweights " << globals.basis.quadweights() <<
+                    //           "\n";
+                    Evaluator::evaluate(
+                        eq,
+                        global_t::Basis{},
+                        const_cast<patch_container_t&>(current_dofs),
+                        flux_patch.data(),
+                        patch_update,
+                        center_patch.data(),
+                        global_t::face_kernels,
+                        t,
+                        patch_layout_t{},
+                        globals,
+                        0.01
+                    );
+                };
 
-    //             integrator->step(residual_callback, dof_patch.data(), time, dt);
-    //         }
+                integrator.step(residual_callback, dof_patch.data(), time, dt);
+            }
 
-    //         // Update halo cells with periodic boundary conditions
-    //         tree.halo_exchange_update();
-    //         if (timestep % 5 == 4)
-    //         {
-    //             // // Print the VTU file
-    //             // time_extension = "_t" + std::to_string(timestep) + ".vtk";
-    //             // printer.template print<S1>(tree, time_extension);
+            // Update halo cells with periodic boundary conditions
+            tree.halo_exchange_update();
+            if (timestep % 5 == 4)
+            {
+                // // Print the VTU file
+                // time_extension = "_t" + std::to_string(timestep) + ".vtk";
+                // printer.template print<S1>(tree, time_extension);
 
-    //             // // Store the filename and time
-    //             // vtk_files.push_back(
-    //             //     "dg_tree_Order" + std::to_string(Order) + time_extension
-    //             // );
-    //             // times.push_back(time);
-    //             std::cout << timestep << "timestep\n";
-    //         }
+                // // Store the filename and time
+                // vtk_files.push_back(
+                //     "dg_tree_Order" + std::to_string(Order) + time_extension
+                // );
+                // times.push_back(time);
+                std::cout << timestep << "timestep\n";
+            }
 
-    //         // Advance time
-    //         time += dt;
-    //         ++timestep;
-    //     }
+            // Advance time
+            time += dt;
+            ++timestep;
+        }
 
-    //     // TODO: Generate PVD file for time series visualization
-    //     // ndt::print::dg_tree_printer<Dim, Order, PatchSize, HaloWidth, DOFs> printer(
-    //     //     "dg_tree_timestep"
-    //     // );
-    //     // printer.generate_pvd_file(
-    //     //     "vtk_output/dg_tree_advanced_simulation.pvd", vtk_files, times
-    //     // );
-    //     // std::cout << "PVD file generated successfully\n";
-    // }
-    // catch (const std::exception& e)
-    // {
-    //     std::cerr << "Exception caught: " << e.what() << "\n";
-    // }
+        // TODO: Generate PVD file for time series visualization
+        // ndt::print::dg_tree_printer<Dim, Order, PatchSize, HaloWidth, DOFs> printer(
+        //     "dg_tree_timestep"
+        // );
+        // printer.generate_pvd_file(
+        //     "vtk_output/dg_tree_advanced_simulation.pvd", vtk_files, times
+        // );
+        // std::cout << "PVD file generated successfully\n";
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Exception caught: " << e.what() << "\n";
+    }
 
     return 0;
 }

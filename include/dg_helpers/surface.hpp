@@ -54,11 +54,11 @@ double rusanov(
     numericalflux      = (sign * (flux_face + flux_face_neigh) * 0.5 +
                      (dofs_face - dofs_face_neigh) * (0.5 * maxeigenval)) *
                     surface;
-    std::cout << "sign: " << sign << " numerical flux: " << numericalflux << "\n"
-              << "dofs_face: " << dofs_face << " flux_face: " << flux_face << "\n"
-              << "dofs_neigh: " << dofs_face_neigh
-              << " flux_face_neigh: " << flux_face_neigh << "\n"
-              << "surface: " << surface << " maxeigenval: " << maxeigenval << "\n";
+    // std::cout << "sign: " << sign << " numerical flux: " << numericalflux << "\n"
+    //           << "dofs_face: " << dofs_face << " flux_face: " << flux_face << "\n"
+    //           << "dofs_neigh: " << dofs_face_neigh
+    //           << " flux_face_neigh: " << flux_face_neigh << "\n"
+    //           << "surface: " << surface << " maxeigenval: " << maxeigenval << "\n";
     return maxeigenval;
 }
 
@@ -170,10 +170,11 @@ auto evaluate_face_integral(
     auto weighted_flux = amr::containers::algorithms::tensor::tensor_dot(
         numericalflux, globals.surface_mass_tensors.mass_tensor
     );
+    // std::cout << "weighted_flux before kernel weighting:\n " << weighted_flux <<
+    // "\n\n";
+
     // Apply kernel weighting to each component
-    return amr::containers::algorithms::tensor::template einsum_apply<0>(
-        weighted_flux, kernel_vec
-    );
+    return amr::containers::algorithms::tensor::tensor_product(weighted_flux, kernel_vec);
 }
 
 } // namespace amr::surface

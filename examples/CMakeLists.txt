@@ -228,13 +228,24 @@ if(EXISTS ${CONFIG_YAML})
         message(WARNING "timeintegrator not found in config.yaml, using default: SSPRK2")
     endif()
     
-   # Determine enum value string
+   # Determine enum value strings
 if(EQUATION_VALUE STREQUAL "advection")
     set(EQUATION_ENUM "EquationType::Advection")
 elseif(EQUATION_VALUE STREQUAL "euler")
     set(EQUATION_ENUM "EquationType::Euler")
 else()
     message(FATAL_ERROR "Unknown equation: ${EQUATION_VALUE}")
+endif()
+
+# Determine time integrator enum value
+if(TIMEINT_VALUE STREQUAL "Euler" OR TIMEINT_VALUE STREQUAL "SSPRK1")
+    set(TIMEINT_ENUM "TimeIntegratorType::Euler")
+elseif(TIMEINT_VALUE STREQUAL "SSPRK2")
+    set(TIMEINT_ENUM "TimeIntegratorType::SSPRK2")
+elseif(TIMEINT_VALUE STREQUAL "SSPRK3")
+    set(TIMEINT_ENUM "TimeIntegratorType::SSPRK3")
+else()
+    message(FATAL_ERROR "Unknown time integrator: ${TIMEINT_VALUE}")
 endif()
 
 # Generate header
@@ -261,6 +272,8 @@ file(WRITE "${GENERATED_CONFIG_HPP}"
 "constexpr std::string_view Scenario = \"${SCENARIO_VALUE}\";\n\n"
 "enum class EquationType { Advection, Euler };\n"
 "inline constexpr EquationType equation = ${EQUATION_ENUM};\n\n"
+"enum class TimeIntegratorType { Euler, SSPRK2, SSPRK3 };\n"
+"inline constexpr TimeIntegratorType time_integrator = ${TIMEINT_ENUM};\n\n"
 "constexpr double EndTime = ${END_TIME_VALUE};\n"
 "constexpr unsigned int GridElements = ${GRID_ELEMENTS_VALUE};\n"
 "using GridShape = amr::containers::static_shape<GridElements>;\n"
@@ -271,6 +284,16 @@ file(WRITE "${GENERATED_CONFIG_HPP}"
 "constexpr double GridSize = ${GRID_SIZE_VALUE};\n\n"
 "constexpr double CourantNumber = ${COURANT_VALUE};\n"
 "constexpr std::string_view TimeIntegrator = \"${TIMEINT_VALUE}\";\n\n"
+"struct GlobalConfigPolicy\n"
+"{\n"
+"    static constexpr std::size_t Order = ${ORDER_VALUE};\n"
+"    static constexpr std::size_t Dim = ${DIM_VALUE};\n"
+"    static constexpr std::size_t DOFs = ${DOFS_VALUE};\n"
+"    static constexpr std::size_t PatchSize = 10;\n"
+"    static constexpr std::size_t HaloWidth = 1;\n"
+"    static constexpr EquationType equation = ${EQUATION_ENUM};\n"
+"    static constexpr TimeIntegratorType integrator = ${TIMEINT_ENUM};\n"
+"};\n\n"
 "} // namespace amr::config\n"
 )
 

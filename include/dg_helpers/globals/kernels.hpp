@@ -12,7 +12,7 @@ namespace amr::global
 /**
  * @brief Precomputed face kernels at coordinates 0 and 1 (fully compile-time)
  */
-template <std::size_t Order, std::size_t Dim>
+template <std::integral auto Order, std::integral auto Dim>
 struct FaceKernels
 {
     static constexpr auto kernels = []()
@@ -33,7 +33,7 @@ struct FaceKernels
 /**
  * @brief Mass tensors (volume and surface) fully compile-time
  */
-template <std::size_t Order, std::size_t Dim>
+template <std::integral auto Order, std::integral auto Dim>
 struct MassTensors
 {
     static constexpr auto mass_tensor = []()

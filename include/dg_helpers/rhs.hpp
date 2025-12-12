@@ -226,7 +226,8 @@ struct RHSEvaluator
 
                 [[maybe_unused]]
                 double curr_eigenval = 1.0;
-                auto   face_du       = amr::surface::evaluate_face_integral(
+                [[maybe_unused]]
+                auto face_du = amr::surface::evaluate_face_integral(
                     curr_eigenval,
                     eq,
                     kernels,
@@ -240,11 +241,10 @@ struct RHSEvaluator
                     0.1, // edge surface
                     globals
                 );
-                static_assert(
-                    patch_update[idx].flat_size() == dof_patch[idx].flat_size(),
-                    "Patch update and DOF patch size mismatch"
-                );
+
                 patch_update[idx] = patch_update[idx] - face_du;
+                // std::cout << "face_du:\n " << face_du << "\n\n";
+                // std::cout << "before patch_update\n" << patch_update[idx] << "\n\n";
             }
             patch_update[idx] = amr::containers::algorithms::tensor::tensor_dot(
                 patch_update[idx],

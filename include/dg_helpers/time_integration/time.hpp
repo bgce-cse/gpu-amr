@@ -62,11 +62,11 @@ public:
             elem = {};
 
         residual(patch_update, patch_dofs, time);
-        // std::cout << "Before ExplicitEuler step at time " << time
-        //           << ", patch data: " << patch_dofs << "\n";
-        // std::cout << "  patch update: " << patch_update << "\n";
-        // std::cout << "  dt: " << dt << "\n";
-        patch_dofs = patch_dofs + (patch_update * dt);
+        // std::cout << "patch_update before ExplicitEuler step at time:\n "
+        //           << patch_update[13] << "\n\n";
+        patch_dofs =
+            patch_dofs +
+            (patch_update * dt); // todo vedere se aggionare per patch o per dominio
         // std::cout << "After ExplicitEuler step at time " << time + dt
         //           << ", patch data: " << patch_dofs << "\n";
     }
@@ -149,33 +149,5 @@ public:
         patch_dofs = patch_dofs * (1.0 / 3.0) + (stage2 + stage3 * dt) * (2.0 / 3.0);
     }
 };
-
-/**
- * @brief Factory function to create a patch-based integrator from config.
- */
-template <typename PatchContainerT>
-inline std::shared_ptr<Integrator<PatchContainerT>>
-    make_time_integrator(std::string_view integrator_name)
-{
-    if (integrator_name == "Euler" || integrator_name == "SSPRK1")
-        return std::make_shared<ExplicitEuler<PatchContainerT>>();
-    else if (integrator_name == "SSPRK2")
-        return std::make_shared<SSPRK2<PatchContainerT>>();
-    else if (integrator_name == "SSPRK3")
-        return std::make_shared<SSPRK3<PatchContainerT>>();
-    else
-        throw std::invalid_argument(
-            std::string("Unknown time integrator: ") + std::string(integrator_name)
-        );
-}
-
-/**
- * @brief Convenience factory using config.
- */
-template <typename PatchContainerT>
-inline auto make_configured_time_integrator()
-{
-    return make_time_integrator<PatchContainerT>(amr::config::TimeIntegrator);
-}
 
 } // namespace amr::time_integration

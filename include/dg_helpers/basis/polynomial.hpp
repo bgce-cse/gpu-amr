@@ -15,7 +15,11 @@ using vector = amr::containers::static_vector<double, N>;
  * @brief Tensor-product Lagrange basis with Gauss-Legendre quadrature.
  * Fully compile-time available.
  */
-template <auto Order, auto Dim, double Start = 0.0, double End = 1.0>
+template <
+    std::integral auto Order,
+    std::integral auto Dim,
+    double             Start = 0.0,
+    double             End   = 1.0>
 struct Basis
 {
     using GaussLegendre_t = GaussLegendre<Order, Start, End>;

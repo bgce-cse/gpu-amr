@@ -4,82 +4,77 @@
 #include "coordinates.hpp"
 #include "dg_helpers/basis/basis.hpp"
 #include "dg_helpers/equations/equations.hpp"
+#include "dg_helpers/time_integration/time_integration.hpp"
 #include "dg_patches.hpp"
 #include "generated_config.hpp"
 #include "globals.hpp"
 #include "kernels.hpp"
 #include "quadrature.hpp"
+#include <type_traits>
 
 namespace amr::global
 {
 
-/**
- * @brief Compile-time global configuration for DG methods
- *
- * Provides access to basis, quadrature, kernels, and coordinate utilities.
- *
- * @tparam Order     Polynomial order for DG basis
- * @tparam Dim       Spatial dimension
- * @tparam PatchSize Number of cells per patch dimension
- * @tparam HaloWidth Width of halo region
- */
-template <
-    std::integral auto        Order,
-    std::integral auto        Dim,
-    std::integral auto        NumDOF,
-    std::integral auto        PatchSize,
-    std::integral auto        HaloWidth,
-    amr::config::EquationType EqTypeValue>
-struct GlobalConfig
+template <typename Policy>
+struct QuadratureMixin
 {
-    // -------------------------------------------------------------------
-    // Equation type
-    // -------------------------------------------------------------------
-    static constexpr amr::config::EquationType equation_type = EqTypeValue;
+    static constexpr auto& quad_points  = QuadData<Policy::Order>::points;
+    static constexpr auto& quad_weights = QuadData<Policy::Order>::weights;
+};
 
-    // -------------------------------------------------------------------
-    // Compile-time quadrature data
-    // -------------------------------------------------------------------
-    static constexpr const auto& quad_points  = QuadData<Order>::points;
-    static constexpr const auto& quad_weights = QuadData<Order>::weights;
+template <typename Policy>
+struct BasisMixin
+{
+    using Basis    = amr::basis::Basis<Policy::Order, Policy::Dim>;
+    using Lagrange = typename Basis::Lagrange_t;
+};
 
-    // -------------------------------------------------------------------
-    // Basis and kernels
-    // -------------------------------------------------------------------
-    using Basis              = amr::basis::Basis<Order, Dim>;
-    using Lagrange           = typename Basis::Lagrange_t;
-    using FaceKernels        = amr::global::FaceKernels<Order, Dim>;
-    using MassTensors        = amr::global::MassTensors<Order, Dim>;
-    using SurfaceMassTensors = amr::global::MassTensors<Order, Dim - 1>;
-    using EqType =
-        typename amr::equations::EquationTraits<EqTypeValue, NumDOF, Order, Dim>;
-    using EquationImpl = typename EqType::type;
+template <typename Policy>
+struct EquationMixin
+{
+    static constexpr auto equation_type = Policy::equation;
 
-    // Precomputed tensors (compile-time)
-    static constexpr auto volume_mass      = MassTensors::mass_tensor;
-    static constexpr auto inv_volume_mass  = MassTensors::inv_mass_tensor;
-    static constexpr auto surface_mass     = SurfaceMassTensors::mass_tensor;
-    static constexpr auto inv_surface_mass = SurfaceMassTensors::inv_mass_tensor;
-    static constexpr auto face_kernels     = FaceKernels::kernels;
+    using EqTraits = typename amr::equations::
+        EquationTraits<equation_type, Policy::DOFs, Policy::Order, Policy::Dim>;
 
-    // -------------------------------------------------------------------
-    // Coordinate helpers (fully constexpr)
-    // -------------------------------------------------------------------
-    template <typename CenterType, typename RefType, typename SizeType>
-    static constexpr auto
-        ref_to_global(const CenterType& center, const RefType& ref, const SizeType& size)
+    using EquationImpl = typename EqTraits::type;
+};
+
+template <typename Policy>
+struct IntegratorMixin
+{
+    // Note: IntegratorType depends on the actual patch container type,
+    // which is only known at runtime in main(). Store the enum for later use.
+    static constexpr auto integrator_type = Policy::integrator;
+};
+
+template <typename Policy>
+struct TensorMixin
+{
+    using MassTensors        = amr::global::MassTensors<Policy::Order, Policy::Dim>;
+    using SurfaceMassTensors = amr::global::MassTensors<Policy::Order, Policy::Dim - 1>;
+    using FaceKernels        = amr::global::FaceKernels<Policy::Order, Policy::Dim>;
+
+    static constexpr auto& volume_mass      = MassTensors::mass_tensor;
+    static constexpr auto& inv_volume_mass  = MassTensors::inv_mass_tensor;
+    static constexpr auto& surface_mass     = SurfaceMassTensors::mass_tensor;
+    static constexpr auto& inv_surface_mass = SurfaceMassTensors::inv_mass_tensor;
+    static constexpr auto& face_kernels     = FaceKernels::kernels;
+};
+
+template <typename Policy>
+struct CoordinateMixin
+{
+    template <typename Center, typename Ref, typename Size>
+    static constexpr auto ref_to_global(const Center& c, const Ref& r, const Size& s)
     {
-        return reference_to_global(center, ref, size);
+        return reference_to_global(c, r, s);
     }
 
-    template <typename CenterType, typename GlobalType, typename SizeType>
-    static constexpr auto global_to_ref(
-        const CenterType& center,
-        const GlobalType& global,
-        const SizeType&   size
-    )
+    template <typename Center, typename Global, typename Size>
+    static constexpr auto global_to_ref(const Center& c, const Global& g, const Size& s)
     {
-        return global_to_reference(center, global, size);
+        return global_to_reference(c, g, s);
     }
 
     template <typename SizeType>
@@ -94,37 +89,76 @@ struct GlobalConfig
         return area(size);
     }
 
-    static constexpr auto lin_to_local(auto linear_idx)
+    static constexpr auto lin_to_local(const auto& idx)
     {
-        return linear_to_local_coords<Dim, PatchSize, HaloWidth>(linear_idx);
+        return linear_to_local_coords<Policy::Dim, Policy::PatchSize, Policy::HaloWidth>(
+            idx
+        );
     }
 
-    static constexpr auto
-        rm_halo(const amr::containers::static_vector<unsigned int, Dim>& coords_with_halo)
+    static constexpr auto rm_halo(const auto& coords)
     {
-        return remove_halo<Dim, HaloWidth>(coords_with_halo);
+        return remove_halo<Policy::Dim, Policy::HaloWidth>(coords);
     }
 
     template <typename PatchIndexType>
-    static constexpr auto compute_center(
-        const PatchIndexType&                                    patch_id,
-        const amr::containers::static_vector<unsigned int, Dim>& local_idx
-    )
+    static constexpr auto
+        compute_center(const PatchIndexType& patch_id, const auto& local)
     {
-        return compute_cell_center<PatchSize, HaloWidth, Dim>(patch_id, local_idx);
+        return compute_cell_center<Policy::PatchSize, Policy::HaloWidth, Policy::Dim>(
+            patch_id, local
+        );
     }
+};
 
-    static auto interpolate_initial_dofs(const auto& cell_center, double cell_size)
+template <typename Policy>
+struct InitMixin
+{
+private:
+    using Basis  = amr::basis::Basis<Policy::Order, Policy::Dim>;
+    using EqImpl = typename amr::equations::
+        EquationTraits<Policy::equation, Policy::DOFs, Policy::Order, Policy::Dim>::type;
+
+public:
+    static constexpr auto interpolate_initial_dofs(const auto& center, const auto& size)
     {
         return Basis::project_to_reference_basis(
             [&](auto node_coords)
             {
                 auto shifted    = node_coords - 0.5;
-                auto global_pos = reference_to_global(cell_center, shifted, cell_size);
-                return EquationImpl::get_initial_values(global_pos, 0.0);
+                auto global_pos = reference_to_global(center, shifted, size);
+                return EqImpl::get_initial_values(global_pos, 0.0);
             }
         );
     }
+};
+
+template <typename Policy>
+struct GlobalConfig :
+    QuadratureMixin<Policy>,
+    BasisMixin<Policy>,
+    EquationMixin<Policy>,
+    IntegratorMixin<Policy>,
+    TensorMixin<Policy>,
+    CoordinateMixin<Policy>,
+    InitMixin<Policy>
+{
+    // Bring in types from mixins for easier access
+    using Basis              = typename BasisMixin<Policy>::Basis;
+    using Lagrange           = typename BasisMixin<Policy>::Lagrange;
+    using EquationImpl       = typename EquationMixin<Policy>::EquationImpl;
+    using MassTensors        = typename TensorMixin<Policy>::MassTensors;
+    using SurfaceMassTensors = typename TensorMixin<Policy>::SurfaceMassTensors;
+    using FaceKernels        = typename TensorMixin<Policy>::FaceKernels;
+
+    // Bring in static data members
+    using QuadratureMixin<Policy>::quad_points;
+    using QuadratureMixin<Policy>::quad_weights;
+    using TensorMixin<Policy>::volume_mass;
+    using TensorMixin<Policy>::inv_volume_mass;
+    using TensorMixin<Policy>::surface_mass;
+    using TensorMixin<Policy>::inv_surface_mass;
+    using TensorMixin<Policy>::face_kernels;
 };
 
 } // namespace amr::global
