@@ -141,6 +141,23 @@ target_include_directories(project_options INTERFACE
     ${PROJECT_SOURCE_DIR}/../lib
 )
 
+add_library(project_benchmarks INTERFACE)
+
+target_compile_options(project_benchmarks INTERFACE
+    -fconstexpr-ops-limit=100000000
+    ${PROJECT_WARNINGS}
+    ${PROJECT_DIAGNOSTICS}
+    ${PROJECT_RELEASE_FLAGS}
+)
+
+target_link_options(project_benchmarks INTERFACE
+)
+
+target_include_directories(project_benchmarks INTERFACE
+    ${PROJECT_SOURCE_DIR}/../include
+    ${PROJECT_SOURCE_DIR}/../lib
+)
+
 # ----------------------------
 # Output directory
 # ----------------------------
@@ -159,13 +176,25 @@ file(GLOB EXAMPLE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/*.e.cpp
 )
 
-message(STATUS "Example sources detected: ${EXAMPLE_SOURCES}")
-
 foreach(src ${EXAMPLE_SOURCES})
     get_filename_component(name ${src} NAME_WE)
     add_executable(${name} ${src})
 
     target_link_libraries(${name} PRIVATE project_options TBB::tbb)
+endforeach()
+
+# ----------------------------
+# Benchmark executables
+# ----------------------------
+file(GLOB BENCH_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.b.cpp
+)
+
+foreach(src ${BENCH_SOURCES})
+    get_filename_component(name ${src} NAME_WE)
+    add_executable(${name} ${src})
+
+    target_link_libraries(${name} PRIVATE project_benchmarks TBB::tbb)
 endforeach()
 
 # ----------------------------
