@@ -1,8 +1,8 @@
-#include "ndtree/ndtree.hpp"
-#include "ndtree/patch.hpp"
 #include "containers/static_vector.hpp"
 #include "morton/morton_id.hpp"
 #include "ndtree/ndhierarchy.hpp"
+#include "ndtree/ndtree.hpp"
+#include "ndtree/patch.hpp"
 // #include "ndtree/structured_print.hpp"
 #include "ndtree/print_tree_a.hpp"
 #include "utility/random.hpp"
@@ -61,7 +61,7 @@ auto operator<<(std::ostream& os, cell const& c) -> std::ostream&
 {
     return os << "S1: " << std::get<S1>(c.data_tuple()).value
               << ", S2: " << std::get<S2>(c.data_tuple()).value;
-}
+};
 
 int main()
 {
@@ -73,7 +73,7 @@ int main()
     using rngf = typename utility::random::srandom;
     rngf::seed<typename S1::type>();
 
-    using Patch_Type = PatchIndexer<4,4>;
+    using Patch_Type    = PatchIndexer<4, 4>;
     using index_t       = amr::ndt::morton::morton_id<7u, 2u>;
     using tree_t        = amr::ndt::tree::ndtree<cell, index_t, Patch_Type>;
     const auto capacity = 100;

@@ -5,6 +5,7 @@
 #include "containers/container_manipulations.hpp"
 #include "containers/container_operations.hpp"
 #include "equations/equations.hpp"
+#include "globals/global_config.hpp"
 #include "globals/globals.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/neighbor.hpp"
@@ -17,57 +18,6 @@ namespace amr::rhs
 {
 
 // Helper function to dispatch to the correct compile-time direction
-template <
-    std::size_t Dim,
-    typename KernelsType,
-    typename DOFType,
-    typename FluxType,
-    typename SignType,
-    std::size_t... Is>
-auto dispatch_project_impl(
-    std::index_sequence<Is...>,
-    const KernelsType& kernels,
-    const DOFType&     dof,
-    const FluxType&    flux,
-    SignType           sign,
-    std::size_t        runtime_dim
-)
-{
-    // Use a compile-time unrolled if-else chain
-    std::decay_t<decltype(amr::surface::project_to_faces<KernelsType, 0>(
-        kernels, dof, flux, sign
-    ))>
-        result;
-
-    bool found = false;
-    ((Is == runtime_dim ? (result = amr::surface::project_to_faces<KernelsType, Is>(
-                               kernels, dof, flux, sign
-                           ),
-                           found = true)
-                        : false) ||
-     ...);
-
-    return result;
-}
-
-template <
-    std::size_t Dim,
-    typename KernelsType,
-    typename DOFType,
-    typename FluxType,
-    typename SignType>
-auto dispatch_project_to_faces(
-    const KernelsType& kernels,
-    const DOFType&     dof,
-    const FluxType&    flux,
-    SignType           sign,
-    std::size_t        runtime_dim
-)
-{
-    return dispatch_project_impl<Dim>(
-        std::make_index_sequence<Dim>{}, kernels, dof, flux, sign, runtime_dim
-    );
-}
 
 /**
  * @brief RHS Evaluator for DG discretization
@@ -75,59 +25,74 @@ auto dispatch_project_to_faces(
  * Statically caches mass tensors and compile-time constants to avoid
  * repeated allocation and computation across multiple RHS evaluations.
  */
-template <
-    std::integral auto Order,
-    std::integral auto Dim,
-    std::integral auto PatchSize,
-    std::integral auto HaloWidth,
-    std::integral auto DOFs>
+template <typename global_t, typename Policy>
 struct RHSEvaluator
 {
-    // Static compile-time constants
-    static constexpr std::size_t order      = Order;
-    static constexpr std::size_t dim        = Dim;
-    static constexpr std::size_t patch_size = PatchSize;
-    static constexpr std::size_t halo_width = HaloWidth;
-    static constexpr std::size_t dofs       = DOFs;
+    using eq        = typename global_t::EquationImpl;
+    using surface_t = amr::surface::Surface<global_t, Policy>;
 
-    /**
-     * @brief Evaluate the RHS of the DG discretization
-     *
-     * Computes du/dt = -∇·F(u) for the entire patch.
-     *
-     * @param eq Equation instance (provides flux computation)
-     * @param basis DG basis (provides quadrature points and weights)
-     * @param dof_patch Current DOF values for entire patch (with halo)
-     * @param flux_patch Storage for computed fluxes (with halo)
-     * @param patch_update Output: RHS values for entire patch (interior only)
-     * @param cell_center Global coordinates of cell center
-     * @param kernels Pre-computed face kernels for efficiency
-     * @param dt Time step
-     * @param patch_layout_t Patch layout information
-     */
     template <
-        typename EquationType,
-        typename BasisType,
+        std::size_t Dim,
+        typename DOFType,
+        typename FluxType,
+        typename SignType,
+        std::size_t... Is>
+    static auto dispatch_project_impl(
+        std::index_sequence<Is...>,
+        const DOFType&  dof,
+        const FluxType& flux,
+        SignType        sign,
+        std::size_t     runtime_dim
+    )
+    {
+        // Use a compile-time unrolled if-else chain
+        // Note: project_to_faces requires <KernelsType, Direction, Tensor>
+        // We instantiate with void as KernelsType (unused), Direction as Is, Tensor as
+        // DOFType
+        std::decay_t<
+            decltype(surface_t::template project_to_faces<0, DOFType>(dof, flux, sign))>
+            result;
+
+        bool found = false;
+        ((Is == runtime_dim
+              ? (result =
+                     surface_t::template project_to_faces<Is, DOFType>(dof, flux, sign),
+                 found = true)
+              : false) ||
+         ...);
+
+        return result;
+    }
+
+    template <std::size_t Dim, typename DOFType, typename FluxType, typename SignType>
+    static auto dispatch_project_to_faces(
+        const DOFType&  dof,
+        const FluxType& flux,
+        SignType        sign,
+        std::size_t     runtime_dim
+    )
+    {
+        return dispatch_project_impl<Dim>(
+            std::make_index_sequence<Dim>{}, dof, flux, sign, runtime_dim
+        );
+    }
+
+    template <
         typename DOFTensorType,
         typename FluxVectorType,
-        typename KernelsType,
         typename PatchLayoutType,
         typename CenterType>
     inline static void evaluate(
-        const EquationType&               eq,
-        [[maybe_unused]] const BasisType& basis,
-        DOFTensorType&                    dof_patch,
-        FluxVectorType&                   flux_patch,
-        DOFTensorType&                    patch_update,
-        [[maybe_unused]] CenterType&      cell_center,
-        const KernelsType&                kernels,
-        [[maybe_unused]] double&          dt,
-        const PatchLayoutType&            patch_layout_t,
-        [[maybe_unused]] const auto&      globals,
-        [[maybe_unused]] const double&    volume = 0.01
+        const DOFTensorType&               dof_patch,    // const: read-only
+        FluxVectorType&                    flux_patch,   // written inside
+        DOFTensorType&                     patch_update, // output
+        [[maybe_unused]] const CenterType& cell_center,  // read-only
+        [[maybe_unused]] double            dt,
+        const PatchLayoutType&             patch_layout_t,
+        [[maybe_unused]] const double      volume = 0.01
     )
     {
-        using direction_t     = amr::ndt::neighbors::direction<Dim>;
+        using direction_t     = amr::ndt::neighbors::direction<Policy::Dim>;
         using padded_layout_t = typename PatchLayoutType::padded_layout_t;
         using flux_vector_t   = std::decay_t<decltype(flux_patch[0])>;
         using size_type       = typename flux_vector_t::size_type;
@@ -142,34 +107,9 @@ struct RHSEvaluator
             {
                 continue;
             }
+            // compute flux from current DOFs
+            flux_patch[idx] = eq::evaluate_flux(dof_patch[idx]);
 
-            // Compute flux for current cell
-            flux_patch[idx] = eq.evaluate_flux(dof_patch[idx]);
-
-            // ========== DIRECTION SYSTEM EXPLANATION ==========
-            // The tree uses a NATURAL DIRECTION ORDERING based on the layout strides:
-            // static_layout uses ROW-MAJOR order where the LAST dimension varies fastest
-            // For 2D shape [size_0, size_1]: stride[0]=size_1, stride[1]=1
-            //
-            // This means direction dimensions map as follows:
-            //   - Direction dimension 0 → Layout dimension 0 → NORTH/SOUTH (Y-direction)
-            //   - Direction dimension 1 → Layout dimension 1 → EAST/WEST (X-direction)
-            //
-            // Direction iteration order and meaning (2D):
-            //   d.index() = 0  →  Dimension 0, NEGATIVE direction (SOUTH, -Y)
-            //   d.index() = 1  →  Dimension 0, POSITIVE direction (NORTH, +Y)
-            //   d.index() = 2  →  Dimension 1, NEGATIVE direction (WEST, -X)
-            //   d.index() = 3  →  Dimension 1, POSITIVE direction (EAST, +X)
-            //
-            // Key functions:
-            //   d.dimension() = d.index() / 2        → which dimension (0 or 1)
-            //   is_negative(d) = (d.index() % 2 == 0) → true if NEGATIVE (SOUTH or WEST)
-            //
-            // Since layout is [dim0][dim1] with dim1 fastest, NO SWAP is needed!
-            // layout_dim = dim_in_direction directly
-            // =====================================================
-
-            // Loop over neighbor directions
             for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
             {
                 // Convert current linear index to multi-index using padded_layout_t
@@ -196,106 +136,45 @@ struct RHSEvaluator
                     continue;
                 }
 
-                auto actual_dim    = Dim - dim_idx - 1;
+                auto actual_dim    = Policy::Dim - dim_idx - 1;
                 auto actual_dim_sz = static_cast<size_type>(actual_dim);
 
-                // Determine semantic direction (top/bottom for dim 0, left/right for dim
-                // 1)
-                // std::string_view direction =
-                //     (actual_dim == 1)   ? (is_neg ? "BOTTOM" : "TOP")
-                //     : (actual_dim == 0) ? (is_neg ? "LEFT" : "RIGHT")
-                //                         : "UNKNOWN";
-
-                // std::cout << "[EIGENVALUE] face=" << direction << ")\n";
-
-                auto cell_data = dispatch_project_to_faces<Dim>(
-                    kernels,
-                    dof_patch[idx],
-                    flux_patch[idx][actual_dim_sz],
-                    sign_idx,
-                    actual_dim
+                // project to face (caller supplies face_kernels via global_t)
+                auto cell_data = dispatch_project_to_faces<Policy::Dim>(
+                    dof_patch[idx], flux_patch[idx][actual_dim_sz], sign_idx, actual_dim
                 );
 
-                auto neighbor_data = dispatch_project_to_faces<Dim>(
-                    kernels,
+                auto neighbor_data = dispatch_project_to_faces<Policy::Dim>(
                     dof_patch[neighbor_linear_idx],
                     flux_patch[neighbor_linear_idx][actual_dim_sz],
                     !sign_idx,
                     actual_dim
                 );
 
-                [[maybe_unused]]
                 double curr_eigenval = 1.0;
-                [[maybe_unused]]
-                auto face_du = amr::surface::evaluate_face_integral(
+
+                auto face_du = surface_t::template evaluate_face_integral(
                     curr_eigenval,
-                    eq,
-                    kernels,
                     std::get<0>(cell_data),
                     std::get<0>(neighbor_data),
                     std::get<1>(cell_data),
-                    std::get<1>(neighbor_data), // merda pura
+                    std::get<1>(neighbor_data),
                     actual_dim,
                     sign,
                     sign_idx,
-                    0.1, // edge surface
-                    globals
+                    0.1
                 );
 
                 patch_update[idx] = patch_update[idx] - face_du;
-                // std::cout << "face_du:\n " << face_du << "\n\n";
-                // std::cout << "before patch_update\n" << patch_update[idx] << "\n\n";
             }
+
+            // apply inverse mass tensor (use globals passed in)
             patch_update[idx] = amr::containers::algorithms::tensor::tensor_dot(
-                patch_update[idx],
-                globals.mass_tensors.inv_mass_tensor *
-                    100 // inverse of the volume, fix it or die
+                patch_update[idx], global_t::inv_volume_mass * 100
             );
-            // std::cout << "index" << linear_idx << " patch update "
-            //           << patch_update[linear_idx] << "\n";
         }
     }
 };
-
-// Legacy interface for backward compatibility
-template <
-    std::integral auto Order,
-    std::integral auto Dim,
-    std::integral auto PatchSize,
-    std::integral auto HaloWidth,
-    std::integral auto DOFs,
-    typename EquationType,
-    typename BasisType,
-    typename DOFTensorType,
-    typename FluxVectorType,
-    typename KernelsType,
-    typename PatchLayoutType,
-    typename CenterType>
-inline void evaluate_rhs(
-    const EquationType&               eq,
-    [[maybe_unused]] const BasisType& basis,
-    DOFTensorType&                    dof_patch,
-    FluxVectorType&                   flux_patch,
-    DOFTensorType&                    patch_update,
-    [[maybe_unused]] CenterType&      cell_center,
-    const KernelsType&                kernels,
-    [[maybe_unused]] double&          dt,
-    const PatchLayoutType&            patch_layout_t
-)
-{
-    using Evaluator = RHSEvaluator<Order, Dim, PatchSize, HaloWidth, DOFs>;
-    Evaluator::evaluate(
-        eq,
-        basis,
-        dof_patch,
-        flux_patch,
-        patch_update,
-        cell_center,
-        kernels,
-        dt,
-        patch_layout_t
-    );
-}
 
 } // namespace amr::rhs
 

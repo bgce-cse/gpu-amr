@@ -167,6 +167,7 @@ if(EXISTS ${CONFIG_YAML})
     # Extract Dim and DOFs (root level)
     string(REGEX MATCH "Dim:[ ]*[0-9]+" DIM_LINE "${CONFIG_TEXT}")
     string(REGEX MATCH "DOFs:[ ]*[0-9]+" DOFS_LINE "${CONFIG_TEXT}")
+    string(REGEX MATCH "MaxDepth:[ ]*[0-9]+" MAXDEPTH_LINE "${CONFIG_TEXT}")
     
     # Parse simulation values
     string(REGEX REPLACE "end_time:[ ]*" "" END_TIME_VALUE "${END_TIME_LINE}")
@@ -185,6 +186,7 @@ if(EXISTS ${CONFIG_YAML})
     # Parse Dim and DOFs
     string(REGEX REPLACE "Dim:[ ]*" "" DIM_VALUE "${DIM_LINE}")
     string(REGEX REPLACE "DOFs:[ ]*" "" DOFS_VALUE "${DOFS_LINE}")
+    string(REGEX REPLACE "MaxDepth:[ ]*" "" MAXDEPTH_VALUE "${MAXDEPTH_LINE}")
     
     # Validate extracted values with defaults
     if(NOT ORDER_VALUE)
@@ -198,6 +200,10 @@ if(EXISTS ${CONFIG_YAML})
     if(NOT DOFS_VALUE)
         set(DOFS_VALUE 4)
         message(WARNING "DOFs not found in config.yaml, using default: 4")
+    endif()
+    if(NOT MAXDEPTH_VALUE)
+        set(MAXDEPTH_VALUE 1)
+        message(WARNING "MaxDepth not found in config.yaml, using default: 1")
     endif()
     if(NOT EQUATION_VALUE)
         set(EQUATION_VALUE "advection")
@@ -291,6 +297,7 @@ file(WRITE "${GENERATED_CONFIG_HPP}"
 "    static constexpr std::size_t DOFs = ${DOFS_VALUE};\n"
 "    static constexpr std::size_t PatchSize = 10;\n"
 "    static constexpr std::size_t HaloWidth = 1;\n"
+"    static constexpr unsigned int MaxDepth = ${MAXDEPTH_VALUE};\n"
 "    static constexpr EquationType equation = ${EQUATION_ENUM};\n"
 "    static constexpr TimeIntegratorType integrator = ${TIMEINT_ENUM};\n"
 "};\n\n"

@@ -10,6 +10,7 @@
 #include "dg_helpers/rhs.hpp"
 #include "dg_helpers/surface.hpp"
 #include "dg_helpers/time_integration/time_integration.hpp"
+#include "dg_helpers/tree_builder.hpp"
 #include "morton/morton_id.hpp"
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
@@ -30,90 +31,6 @@ using namespace amr::containers;
 using namespace amr::config;
 using namespace amr::global;
 using namespace amr::time_integration;
-
-// using NumDOF_t = amr::config::DOFsShape::size_type;
-// using Order_t  = amr::config::OrderShape::size_type;
-// using Dim_t    = amr::config::DimShape::size_type;
-// constexpr const NumDOF_t DOFs;
-
-struct S1
-{
-    using dof_value_t = static_vector<double, amr::config::DOFs>;
-    using type        = typename utils::types::tensor::
-        hypercube_t<dof_value_t, amr::config::Order, amr::config::Dim>;
-
-    static constexpr auto index() noexcept -> std::size_t
-    {
-        return 0;
-    }
-
-    type value;
-};
-
-struct S2
-{
-    using dof_value_t = static_vector<double, amr::config::DOFs>;
-    using dof_t       = typename utils::types::tensor::
-        hypercube_t<dof_value_t, amr::config::Order, amr::config::Dim>;
-    using type = static_vector<dof_t, amr::config::Dim>;
-
-    static constexpr auto index() noexcept -> std::size_t
-    {
-        return 1;
-    }
-
-    type value;
-};
-
-struct S3
-{
-    using type = static_vector<double, amr::config::Dim>;
-
-    static constexpr auto index() noexcept -> std::size_t
-    {
-        return 2;
-    }
-
-    type value;
-};
-
-struct S4
-{
-    using type = static_vector<double, amr::config::Dim>;
-
-    static constexpr auto index() noexcept -> std::size_t
-    {
-        return 3;
-    }
-
-    type value;
-}; // End of S4
-
-// Marker cell type for tree AMR with DG data (DOF tensor, flux, center)
-
-struct MarkerCell
-{
-    using deconstructed_types_map_t = std::tuple<S1, S2, S3, S4>;
-
-    MarkerCell() = default;
-
-    auto data_tuple() -> auto&
-    {
-        return m_data;
-    }
-
-    auto data_tuple() const -> auto const&
-    {
-        return m_data;
-    }
-
-    deconstructed_types_map_t m_data;
-};
-
-// auto operator<<(std::ostream& os, MarkerCell const&) -> std::ostream&
-// {
-//     return os << "S1(DOF), S2(Flux), S3(Center), S4(Size)";
-// }
 
 /**
  * @brief DG Solver with Adaptive Mesh Refinement
@@ -136,80 +53,27 @@ int main()
     std::cout << "  Equation=" << amr::config::Equation << "\n\n";
 
     using global_t = GlobalConfig<amr::config::GlobalConfigPolicy>;
+    using RHS      = amr::rhs::RHSEvaluator<global_t, amr::config::GlobalConfigPolicy>;
+    using dg_tree  = amr::dg_tree::TreeBuilder<global_t, amr::config::GlobalConfigPolicy>;
+    using S1       = dg_tree::S1;
+    using S2       = dg_tree::S2;
+    using S3       = dg_tree::S3;
+    // using S4      = dg_tree::S4;
+    dg_tree tree_builder;
+    auto&   tree = tree_builder.tree;
+
+    using patch_layout_t    = typename dg_tree::patch_layout_t;
+    using patch_container_t = amr::containers::
+        static_tensor<typename S1::type, typename patch_layout_t::padded_layout_t>;
+    using IntegratorTraits = amr::time_integration::
+        TimeIntegratorTraits<amr::config::time_integrator, patch_container_t>;
+    typename IntegratorTraits::type integrator;
 
     // Setup tree mesh
     // Time-stepping loop
     double time     = 0.0;
     double dt       = 0.01; // TODO: CFL condition based on max eigenvalue
     int    timestep = 0;
-    using shape_t =
-        static_shape<amr::config::PatchSize, amr::config::PatchSize>; // PatchSize literal
-    using layout_t      = static_layout<shape_t>;
-    using patch_index_t = amr::ndt::morton::morton_id<
-        amr::config::MaxDepth,
-        static_cast<unsigned int>(amr::config::Dim)>; // Morton 2D with depth 1
-    using patch_layout_t =
-        amr::ndt::patches::patch_layout<layout_t, 1>; // HaloWidth literal
-    using tree_t    = amr::ndt::tree::ndtree<MarkerCell, patch_index_t, patch_layout_t>;
-    using Evaluator = amr::rhs::RHSEvaluator<
-        amr::config::Order,
-        amr::config::Dim,
-        amr::config::PatchSize,
-        amr::config::HaloWidth,
-        amr::config::DOFs>;
-
-    tree_t tree(10000);
-
-    using patch_container_t = decltype(tree.template get_patch<S1>(0).data());
-    using IntegratorTraits  = amr::time_integration::
-        TimeIntegratorTraits<amr::config::time_integrator, patch_container_t>;
-    typename IntegratorTraits::type integrator;
-
-    for (std::size_t idx = 0; idx < tree.size(); ++idx)
-    {
-        auto& dof_patch          = tree.template get_patch<S1>(idx);
-        auto& flux_patch         = tree.template get_patch<S2>(idx);
-        auto& center_coord_patch = tree.template get_patch<S3>(idx);
-        auto& size_patch         = tree.template get_patch<S4>(idx);
-
-        auto patch_id                    = patch_index_t(idx);
-        auto [patch_coords, patch_level] = patch_index_t::decode(patch_id.id());
-        double patch_level_size          = 1.0 / static_cast<double>(1u << patch_level);
-        double cell_size = patch_level_size / static_cast<double>(amr::config::PatchSize);
-
-        for (patch_layout_t::index_t linear_idx = 0;
-             linear_idx != patch_layout_t::flat_size();
-             ++linear_idx)
-        {
-            if (amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
-                continue;
-
-            auto coords_with_halo = linear_to_local_coords<
-                amr::config::Dim,
-                amr::config::PatchSize,
-                amr::config::HaloWidth>(linear_idx);
-            auto local_indices =
-                remove_halo<amr::config::Dim, amr::config::HaloWidth>(coords_with_halo);
-
-            auto cell_center = compute_cell_center<
-                amr::config::PatchSize,
-                amr::config::HaloWidth,
-                amr::config::Dim>(patch_id, local_indices);
-
-            center_coord_patch[linear_idx] = cell_center;
-            // Initialize DOF tensor with projected initial conditions
-            dof_patch[linear_idx] =
-                global_t::interpolate_initial_dofs(cell_center, cell_size);
-
-            std::cout << "initial dof_patch:\n"
-                      << global_t::interpolate_initial_dofs(cell_center, cell_size)
-                      << "\n\n";
-
-            flux_patch[linear_idx] =
-                global_t::EquationImpl::evaluate_flux(dof_patch[linear_idx]);
-            size_patch[linear_idx] = { cell_size, cell_size };
-        }
-    }
 
     try
     {
@@ -244,50 +108,20 @@ int main()
                 auto& flux_patch   = tree.template get_patch<S2>(idx);
                 auto& center_patch = tree.template get_patch<S3>(idx);
 
-                // std::cout << "patch value " << dof_patch.data() << ": ";
-
                 auto residual_callback = [&](patch_container_t&       patch_update,
                                              const patch_container_t& current_dofs,
-                                             double                   t)
+                                             double /*t*/)
                 {
-                    // Create equation instance for the evaluator
-                    typename global_t::EquationImpl eq{};
-
-                    // Create a globals object that provides access to basis and tensor
-                    // data
-                    struct BasisWrapper
-                    {
-                        auto quadweights() const
-                        {
-                            return global_t::quad_weights;
-                        }
-                        auto quadpoints() const
-                        {
-                            return global_t::quad_points;
-                        }
-                    };
-
-                    struct Globals
-                    {
-                        BasisWrapper                          basis{};
-                        typename global_t::MassTensors        mass_tensors{};
-                        typename global_t::SurfaceMassTensors surface_mass_tensors{};
-                    } globals;
-
                     // std::cout << "global values" << globals.basis.quadpoints()
                     //           << " quadweights " << globals.basis.quadweights() <<
                     //           "\n";
-                    Evaluator::evaluate(
-                        eq,
-                        global_t::Basis{},
-                        const_cast<patch_container_t&>(current_dofs),
+                    RHS::evaluate(
+                        current_dofs,
                         flux_patch.data(),
                         patch_update,
                         center_patch.data(),
-                        global_t::face_kernels,
-                        t,
+                        dt,
                         patch_layout_t{},
-                        globals,
                         0.01
                     );
                 };
