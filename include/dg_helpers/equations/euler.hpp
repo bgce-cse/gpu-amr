@@ -181,12 +181,9 @@ struct Euler :
     /**
      * @brief Get initial condition at given position and time.
      */
-    static constexpr typename Euler::dof_value_t get_initial_values(
-        const amr::containers::static_vector<Scalar, Dim>& position,
-        Scalar                                             t = 0.0
-    )
+    static constexpr auto get_initial_values(const auto& position, double t = 0.0)
     {
-        return EulerInitialCondition<Dim, Scalar>::compute(position, t);
+        return EulerInitialCondition<Dim, double>::compute(position, t);
     }
 };
 
@@ -198,26 +195,24 @@ struct Euler :
 template <typename Scalar>
 struct EulerInitialCondition<1, Scalar>
 {
-    static constexpr auto compute(
-        const amr::containers::static_vector<Scalar, 1>& position,
-        [[maybe_unused]] Scalar                          t
-    )
+    static constexpr std::size_t NumDOF = 3; // 1D: [rho*u, rho, E]
+
+    static constexpr auto compute(const auto& position, [[maybe_unused]] Scalar t)
+        -> amr::containers::static_vector<Scalar, NumDOF>
     {
-        constexpr unsigned int                         NumDOF = 3; // [rho*u, rho, E]
         amr::containers::static_vector<Scalar, NumDOF> U{};
 
         // Gaussian pressure perturbation
-        const Scalar x   = position[0];
-        const Scalar p   = std::exp(-100.0 * (x - 0.5) * (x - 0.5)) + 1.0;
-        const Scalar rho = 1.0;
+        const Scalar x = position[0];
+        const Scalar p = std::exp(-100.0 * (x - 0.5) * (x - 0.5)) + 1.0;
 
-        U[0] = 0.0; // momentum (rho*u)
-        U[1] = rho; // density
+        // GaussianWave scenario: constant rho, varying pressure
+        constexpr double gamma = 1.4;
+        const Scalar     rho   = 1.0; // Constant density
 
-        // Compute energy (assuming zero velocity)
-        Euler<0, 1, Scalar>                       eq;
-        amr::containers::static_vector<Scalar, 1> momentum{ 0.0 };
-        U[2] = eq.compute_energy(momentum, rho, p);
+        U[0] = 0.0;               // momentum (rho*u) = 0
+        U[1] = rho;               // density
+        U[2] = p / (gamma - 1.0); // E = p / (gamma - 1) when velocity is 0
 
         return U;
     }
@@ -229,29 +224,27 @@ struct EulerInitialCondition<1, Scalar>
 template <typename Scalar>
 struct EulerInitialCondition<2, Scalar>
 {
-    static constexpr auto compute(
-        const amr::containers::static_vector<Scalar, 2>& position,
-        [[maybe_unused]] Scalar                          t
-    )
+    static constexpr std::size_t NumDOF = 4; // 2D: [rho*u, rho*v, rho, E]
+
+    static constexpr auto compute(const auto& position, [[maybe_unused]] Scalar t)
+        -> amr::containers::static_vector<Scalar, NumDOF>
     {
-        constexpr unsigned int NumDOF = 4; // [rho*u, rho*v, rho, E]
         amr::containers::static_vector<Scalar, NumDOF> U{};
 
         // Gaussian pressure perturbation centered at (0.5, 0.5)
-        const Scalar x   = position[0];
-        const Scalar y   = position[1];
-        const Scalar r2  = (x - 0.5) * (x - 0.5) + (y - 0.5) * (y - 0.5);
-        const Scalar p   = std::exp(-100.0 * r2) + 1.0;
-        const Scalar rho = 1.0;
+        const Scalar x  = position[0];
+        const Scalar y  = position[1];
+        const Scalar r2 = (x - 0.5) * (x - 0.5) + (y - 0.5) * (y - 0.5);
+        const Scalar p  = std::exp(-100.0 * r2) + 1.0;
 
-        U[0] = 0.0; // x-momentum
-        U[1] = 0.0; // y-momentum
-        U[2] = rho; // density
+        // GaussianWave scenario: constant rho, varying pressure
+        constexpr double gamma = 1.4;
+        const Scalar     rho   = 1.0; // Constant density
 
-        // Compute energy
-        Euler<0, 2, Scalar>                       eq;
-        amr::containers::static_vector<Scalar, 2> momentum{ 0.0, 0.0 };
-        U[3] = eq.compute_energy(momentum, rho, p);
+        U[0] = 0.0;               // x-momentum (rho*u) = 0
+        U[1] = 0.0;               // y-momentum (rho*v) = 0
+        U[2] = rho;               // density
+        U[3] = p / (gamma - 1.0); // E = p / (gamma - 1) when velocity is 0
 
         return U;
     }
@@ -263,12 +256,11 @@ struct EulerInitialCondition<2, Scalar>
 template <typename Scalar>
 struct EulerInitialCondition<3, Scalar>
 {
-    static constexpr auto compute(
-        const amr::containers::static_vector<Scalar, 3>& position,
-        [[maybe_unused]] Scalar                          t
-    )
+    static constexpr std::size_t NumDOF = 5; // 3D: [rho*u, rho*v, rho*w, rho, E]
+
+    static constexpr auto compute(const auto& position, [[maybe_unused]] Scalar t)
+        -> amr::containers::static_vector<Scalar, NumDOF>
     {
-        constexpr unsigned int NumDOF = 5; // [rho*u, rho*v, rho*w, rho, E]
         amr::containers::static_vector<Scalar, NumDOF> U{};
 
         // Gaussian pressure perturbation centered at (0.5, 0.5, 0.5)
@@ -277,18 +269,17 @@ struct EulerInitialCondition<3, Scalar>
         const Scalar z = position[2];
         const Scalar r2 =
             (x - 0.5) * (x - 0.5) + (y - 0.5) * (y - 0.5) + (z - 0.5) * (z - 0.5);
-        const Scalar p   = std::exp(-100.0 * r2) + 1.0;
-        const Scalar rho = 1.0;
+        const Scalar p = std::exp(-100.0 * r2) + 1.0;
 
-        U[0] = 0.0; // x-momentum
-        U[1] = 0.0; // y-momentum
-        U[2] = 0.0; // z-momentum
-        U[3] = rho; // density
+        // GaussianWave scenario: constant rho, varying pressure
+        constexpr double gamma = 1.4;
+        const Scalar     rho   = 1.0; // Constant density
 
-        // Compute energy
-        Euler<0, 3, Scalar>                       eq;
-        amr::containers::static_vector<Scalar, 3> momentum{ 0.0, 0.0, 0.0 };
-        U[4] = eq.compute_energy(momentum, rho, p);
+        U[0] = 0.0;               // x-momentum (rho*u) = 0
+        U[1] = 0.0;               // y-momentum (rho*v) = 0
+        U[2] = 0.0;               // z-momentum (rho*w) = 0
+        U[3] = rho;               // density
+        U[4] = p / (gamma - 1.0); // E = p / (gamma - 1) when velocity is 0
 
         return U;
     }

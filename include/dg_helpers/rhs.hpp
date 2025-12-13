@@ -10,6 +10,8 @@
 #include "ndtree/ndtree.hpp"
 #include "ndtree/neighbor.hpp"
 #include "surface.hpp"
+#include <algorithm>
+#include <cmath>
 #include <functional>
 #include <utility>
 #include <variant>
@@ -82,14 +84,15 @@ struct RHSEvaluator
         typename FluxVectorType,
         typename PatchLayoutType,
         typename CenterType>
-    inline static void evaluate(
+    inline static double evaluate(
         const DOFTensorType&               dof_patch,    // const: read-only
         FluxVectorType&                    flux_patch,   // written inside
         DOFTensorType&                     patch_update, // output
         [[maybe_unused]] const CenterType& cell_center,  // read-only
-        [[maybe_unused]] double            dt,
+        [[maybe_unused]] double const&     dt,
         const PatchLayoutType&             patch_layout_t,
-        [[maybe_unused]] const double      volume = 0.01
+        [[maybe_unused]] const double&     volume,
+        const double&                      surface
     )
     {
         using direction_t     = amr::ndt::neighbors::direction<Policy::Dim>;
@@ -97,6 +100,8 @@ struct RHSEvaluator
         using flux_vector_t   = std::decay_t<decltype(flux_patch[0])>;
         using size_type       = typename flux_vector_t::size_type;
         using size_t          = typename PatchLayoutType::size_type;
+
+        double maxeigenval = -std::numeric_limits<double>::infinity();
 
         // Loop over each cell in the patch (including halos)
         for (size_t linear_idx = 0; linear_idx < patch_layout_t.flat_size(); ++linear_idx)
@@ -147,11 +152,23 @@ struct RHSEvaluator
                 auto neighbor_data = dispatch_project_to_faces<Policy::Dim>(
                     dof_patch[neighbor_linear_idx],
                     flux_patch[neighbor_linear_idx][actual_dim_sz],
-                    !sign_idx,
+                    1 - sign_idx,
                     actual_dim
                 );
 
-                double curr_eigenval = 1.0;
+                // Compute maximum eigenvalue for Rusanov flux
+                // Use the maximum eigenvalue from the original DOF tensors at the cell
+                // center
+                double eigenval_curr = eq::max_eigenvalue(
+                    dof_patch[idx], static_cast<unsigned int>(actual_dim)
+                );
+                double eigenval_neigh = eq::max_eigenvalue(
+                    dof_patch[neighbor_linear_idx], static_cast<unsigned int>(actual_dim)
+                );
+                double curr_eigenval = std::max(eigenval_curr, eigenval_neigh);
+
+                // Track maximum eigenvalue across all faces
+                maxeigenval = std::max(maxeigenval, curr_eigenval);
 
                 auto face_du = surface_t::template evaluate_face_integral(
                     curr_eigenval,
@@ -162,17 +179,25 @@ struct RHSEvaluator
                     actual_dim,
                     sign,
                     sign_idx,
-                    0.1
+                    surface
                 );
 
                 patch_update[idx] = patch_update[idx] - face_du;
             }
 
-            // apply inverse mass tensor (use globals passed in)
+            // apply inverse mass tensor (per-cell normalization: volume *
+            // reference_massmatrix inverse) In the Julia reference, this is:
+            // inv_massmatrix = inv(volume(cell) * reference_massmatrix) Which means: du =
+            // (1 / (volume * reference_mass)) * du = (1/volume) * inv(reference_mass) *
+            // du
             patch_update[idx] = amr::containers::algorithms::tensor::tensor_dot(
-                patch_update[idx], global_t::inv_volume_mass * 100
+                patch_update[idx], global_t::inv_volume_mass / volume
             );
+            // std::cout << "inverse volume" << global_t::inv_volume_mass / volume <<
+            // "\n";
         }
+
+        return maxeigenval;
     }
 };
 

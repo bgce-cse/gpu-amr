@@ -41,11 +41,11 @@ template <typename GlobalConfigType>
 struct dg_tree_printer_refactored
 {
     // Get configuration from amr::config namespace (populated by generated_config.hpp)
-    static constexpr std::size_t Dim       = amr::config::Dim;
-    static constexpr std::size_t Order     = amr::config::Order;
-    static constexpr std::size_t PatchSize = amr::config::PatchSize;
-    static constexpr std::size_t HaloWidth = amr::config::HaloWidth;
-    static constexpr std::size_t NumDOFs   = amr::config::DOFs;
+    static constexpr std::size_t Dim       = amr::config::GlobalConfigPolicy::Dim;
+    static constexpr std::size_t Order     = amr::config::GlobalConfigPolicy::Order;
+    static constexpr std::size_t PatchSize = amr::config::GlobalConfigPolicy::PatchSize;
+    static constexpr std::size_t HaloWidth = amr::config::GlobalConfigPolicy::HaloWidth;
+    static constexpr std::size_t NumDOFs   = amr::config::GlobalConfigPolicy::DOFs;
 
     static_assert(Dim == 2 || Dim == 3, "Only 2D and 3D supported");
     static_assert(Order >= 1, "Order must be >= 1");

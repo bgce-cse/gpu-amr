@@ -108,7 +108,7 @@ struct TreeBuilder
         amr::ndt::patches::patch_layout<layout_t, 1>; // HaloWidth literal
     using tree_t = amr::ndt::tree::ndtree<MarkerCell, patch_index_t, patch_layout_t>;
 
-    tree_t tree{ 10000 };
+    tree_t tree{ 100000 };
 
     TreeBuilder()
     {

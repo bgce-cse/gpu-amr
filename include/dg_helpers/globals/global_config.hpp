@@ -76,6 +76,11 @@ struct CoordinateMixin
         return global_to_reference(c, g, s);
     }
 
+    static auto cell_edge(std::integral auto& idx)
+    {
+        return edge(idx);
+    }
+
     template <typename SizeType>
     static constexpr auto cell_volume(const SizeType& size)
     {
@@ -121,13 +126,18 @@ private:
 public:
     static constexpr auto interpolate_initial_dofs(const auto& center, const auto& size)
     {
-        return Basis::project_to_reference_basis(
+        auto coeffs = Basis::project_to_reference_basis(
             [&](auto node_coords)
             {
                 auto shifted    = node_coords - 0.5;
                 auto global_pos = reference_to_global(center, shifted, size);
                 return EqImpl::get_initial_values(global_pos, 0.0);
             }
+        );
+        // Apply mass matrix inverse (L2 projection formula)
+        // coeffs = M^{-1} * coeffs, where M is the mass matrix
+        return amr::containers::algorithms::tensor::tensor_dot(
+            coeffs, TensorMixin<Policy>::inv_volume_mass
         );
     }
 };

@@ -20,7 +20,6 @@
 #include <cstddef>
 #include <fstream>
 #include <iomanip>
-#include <iomanip> // for std::setw, std::setprecision
 #include <iostream>
 #include <limits> // for std::numeric_limits
 #include <random>
@@ -49,9 +48,9 @@ int main()
     std::cout << "  DG Solver - AMR Main Loop\n";
     std::cout << "====================================\n\n";
     std::cout << "Configuration:\n";
-    std::cout << "  Order=" << amr::config::Order << ", Dim=" << amr::config::Dim
-              << ", DOFs=" << amr::config::DOFs << "\n";
-    std::cout << "  Equation=" << amr::config::Equation << "\n\n";
+    std::cout << "  Order=" << amr::config::GlobalConfigPolicy::Order
+              << ", Dim=" << amr::config::GlobalConfigPolicy::Dim
+              << ", DOFs=" << amr::config::GlobalConfigPolicy::DOFs << "\n";
 
     using global_t = GlobalConfig<amr::config::GlobalConfigPolicy>;
     using RHS      = amr::rhs::RHSEvaluator<global_t, amr::config::GlobalConfigPolicy>;
@@ -66,15 +65,18 @@ int main()
     using patch_layout_t    = typename dg_tree::patch_layout_t;
     using patch_container_t = amr::containers::
         static_tensor<typename S1::type, typename patch_layout_t::padded_layout_t>;
-    using IntegratorTraits = amr::time_integration::
-        TimeIntegratorTraits<amr::config::time_integrator, patch_container_t>;
+    using IntegratorTraits = amr::time_integration::TimeIntegratorTraits<
+        amr::config::GlobalConfigPolicy::integrator,
+        patch_container_t>;
+
     typename IntegratorTraits::type integrator;
 
     // Setup tree mesh
     // Time-stepping loop
-    double time     = 0.0;
-    double dt       = 0.01; // TODO: CFL condition based on max eigenvalue
-    int    timestep = 0;
+    double time        = 0.0;
+    double dt          = 0.01;
+    double maxeigenval = -std::numeric_limits<double>::infinity();
+    int    timestep    = 0;
 
     try
     {
@@ -91,33 +93,52 @@ int main()
         printer.template print<S1>(tree, time_extension);
         std::cout << "  Output: " << time_extension << " (timestep " << timestep << ")\n";
 
-        while (time < amr::config::EndTime)
+        while (time < amr::config::GlobalConfigPolicy::EndTime)
         {
             // Initialize halo cells with periodic boundary conditions
             tree.halo_exchange_update();
+
+            // Reset maxeigenval for this time step
+            maxeigenval = -std::numeric_limits<double>::infinity();
+
             // Apply time integrator to each patch in the tree
             for (std::size_t idx = 0; idx < tree.size(); ++idx)
             {
                 auto& dof_patch    = tree.template get_patch<S1>(idx);
                 auto& flux_patch   = tree.template get_patch<S2>(idx);
                 auto& center_patch = tree.template get_patch<S3>(idx);
+                auto  volume       = global_t::cell_volume(global_t::cell_edge(idx));
+                auto  surface      = global_t::cell_area(global_t::cell_edge(idx));
 
-                auto residual_callback = [&](patch_container_t&       patch_update,
-                                             const patch_container_t& current_dofs,
-                                             double /*t*/)
+                // Compute time step based on maximum eigenvalue
+                if (timestep > 0 && maxeigenval > 0.0)
                 {
-                    // std::cout << "global values" << globals.basis.quadpoints()
-                    //           << " quadweights " << globals.basis.quadweights() <<
-                    //           "\n";
-                    RHS::evaluate(
+                    dt = std::min(
+                        amr::config::CourantNumber /
+                            (amr::config::GlobalConfigPolicy::Order *
+                                 amr::config::GlobalConfigPolicy::Order +
+                             1.0) *
+                            global_t::cell_edge(idx) / maxeigenval,
+                        dt
+                    );
+                }
+                auto residual_callback = [&](
+                                             patch_container_t&       patch_update,
+                                             const patch_container_t& current_dofs,
+                                             double /*t*/
+                                         )
+                {
+                    double patch_maxeigenval = RHS::evaluate(
                         current_dofs,
                         flux_patch.data(),
                         patch_update,
                         center_patch.data(),
                         dt,
                         patch_layout_t{},
-                        0.01
+                        volume,
+                        surface
                     );
+                    maxeigenval = std::max(maxeigenval, patch_maxeigenval);
                 };
 
                 integrator.step(residual_callback, dof_patch.data(), time, dt);
@@ -133,19 +154,9 @@ int main()
                           << ")\n";
             }
 
-            // Advance time
             time += dt;
             ++timestep;
         }
-
-        // TODO: Generate PVD file for time series visualization
-        // ndt::print::dg_tree_printer<Dim, Order, PatchSize, HaloWidth, DOFs> printer(
-        //     "dg_tree_timestep"
-        // );
-        // printer.generate_pvd_file(
-        //     "vtk_output/dg_tree_advanced_simulation.pvd", vtk_files, times
-        // );
-        // std::cout << "PVD file generated successfully\n";
     }
     catch (const std::exception& e)
     {

@@ -2,6 +2,8 @@
 #define AMR_GLOBAL_COORDINATES_HPP
 
 #include "containers/container_algorithms.hpp"
+#include "iostream"
+#include "morton/morton_id.hpp"
 
 namespace amr::global
 {
@@ -53,18 +55,34 @@ constexpr auto global_to_reference(
     return (global_coords - cell_center) / cell_size;
 }
 
+constexpr auto edge(std::integral auto& idx)
+{
+    using patch_index_t = amr::ndt::morton::morton_id<
+        amr::config::GlobalConfigPolicy::MaxDepth,
+        static_cast<unsigned int>(amr::config::GlobalConfigPolicy::Dim)>;
+    auto patch_id                    = patch_index_t(idx);
+    auto [patch_coords, patch_level] = patch_index_t::decode(patch_id.id());
+    double patch_level_size          = 1.0 / static_cast<double>(1u << patch_level);
+    double cell_size                 = patch_level_size /
+                       static_cast<double>(amr::config::GlobalConfigPolicy::PatchSize);
+    return cell_size;
+}
+
 template <typename SizeType>
 constexpr auto volume(const SizeType& cell_size)
 {
-    return product(cell_size);
+    double res = 1.0;
+    for (std::size_t i = 0; i < amr::config::GlobalConfigPolicy::Dim; ++i)
+        res *= cell_size;
+    return res;
 }
 
 template <typename SizeType>
 constexpr auto area(const SizeType& cell_size)
 {
     double res = 1.0;
-    for (std::size_t i = 1; i < cell_size.elements(); ++i)
-        res *= cell_size[i];
+    for (std::size_t i = 1; i < amr::config::GlobalConfigPolicy::Dim; ++i)
+        res *= cell_size;
     return res;
 }
 
