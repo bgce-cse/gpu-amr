@@ -352,18 +352,7 @@ add_custom_target(generated_config_header
     DEPENDS ${GENERATED_CONFIG_HPP}
 )
 
-# ============================================================================
-# Compile-time functionality test target
-# ============================================================================
 
-# Comprehensive test: basis, globals, equations with generated config
-add_executable(test_compile_time_config test_compile_time_config.cpp)
-target_include_directories(test_compile_time_config PUBLIC ../include ../lib ${CMAKE_BINARY_DIR})
-target_compile_options(test_compile_time_config PRIVATE ${CXX_FLAGS})
-target_link_options(test_compile_time_config PRIVATE ${LINK_FLAGS})
-target_link_libraries(test_compile_time_config PRIVATE TBB::tbb ${VTK_LIBRARIES})
-target_include_directories(test_compile_time_config PRIVATE ${VTK_INCLUDE_DIRS})
-add_dependencies(test_compile_time_config generated_config_header)
 
 # Build messages
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")

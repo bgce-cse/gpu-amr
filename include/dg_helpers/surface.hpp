@@ -35,11 +35,11 @@ struct Surface
         numericalflux      = (sign * (flux_face + flux_face_neigh) * 0.5 +
                          (dofs_face - dofs_face_neigh) * (0.5 * maxeigenval)) *
                         surface;
-        std::cout << "sign: " << sign << " numerical flux: " << numericalflux << "\n"
-                  << "dofs_face: " << dofs_face << " flux_face: " << flux_face << "\n"
-                  << "dofs_neigh: " << dofs_face_neigh
-                  << " flux_face_neigh: " << flux_face_neigh << "\n"
-                  << "surface: " << surface << " maxeigenval: " << maxeigenval << "\n";
+        // std::cout << "sign: " << sign << " numerical flux: " << numericalflux << "\n"
+        //           << "dofs_face: " << dofs_face << " flux_face: " << flux_face << "\n"
+        //           << "dofs_neigh: " << dofs_face_neigh
+        //           << " flux_face_neigh: " << flux_face_neigh << "\n"
+        //           << "surface: " << surface << " maxeigenval: " << maxeigenval << "\n";
         return maxeigenval;
     }
 

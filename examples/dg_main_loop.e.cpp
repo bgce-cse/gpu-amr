@@ -15,6 +15,7 @@
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
+#include "ndtree/print_dg_tree_v2.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
 #include <fstream>
@@ -77,25 +78,18 @@ int main()
 
     try
     {
-        // std::cout << "\n====================================\n";
-        // std::cout << "  Initializing DG Tree Printer (Advanced)\n";
-        // std::cout << "====================================\n\n";
-        // ndt::print::dg_tree_printer_advanced<Dim, Order, PatchSize, HaloWidth, DOFs>
-        //     printer("dg_tree");
-        // std::cout << "DG tree printer created successfully\n";
-        // std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
-        // printer.template print<S1>(tree, time_extension);
-        // std::cout << "DG tree printer completed\n";
-
-        // // Print debug info for DOF inspection
-        // // advanced_printer.template print_debug_info<S1>(tree);
-
-        // std::vector<std::string> vtk_files;
-        // std::vector<double>      times;
+        std::cout << "\n====================================\n";
+        std::cout << "  Initializing DG Tree Printer (Refactored)\n";
+        std::cout << "====================================\n\n";
+        ndt::print::dg_tree_printer_refactored<global_t> printer("dg_tree");
+        std::cout << "DG tree printer created successfully\n";
 
         std::cout << "\n====================================\n";
         std::cout << "  Starting Time Integration\n";
         std::cout << "====================================\n\n";
+        std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
+        printer.template print<S1>(tree, time_extension);
+        std::cout << "  Output: " << time_extension << " (timestep " << timestep << ")\n";
 
         while (time < amr::config::EndTime)
         {
@@ -133,16 +127,10 @@ int main()
             tree.halo_exchange_update();
             if (timestep % 5 == 4)
             {
-                // // Print the VTU file
-                // time_extension = "_t" + std::to_string(timestep) + ".vtk";
-                // printer.template print<S1>(tree, time_extension);
-
-                // // Store the filename and time
-                // vtk_files.push_back(
-                //     "dg_tree_Order" + std::to_string(Order) + time_extension
-                // );
-                // times.push_back(time);
-                std::cout << timestep << "timestep\n";
+                time_extension = "_t" + std::to_string(timestep) + ".vtk";
+                printer.template print<S1>(tree, time_extension);
+                std::cout << "  Output: " << time_extension << " (timestep " << timestep
+                          << ")\n";
             }
 
             // Advance time
