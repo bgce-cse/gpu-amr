@@ -1,23 +1,27 @@
 cmake_minimum_required(VERSION 3.25)
+project(GPU_AMR VERSION 0.1 LANGUAGES CXX)
 
-project(GPU_AMR VERSION 0.1)
-
-# Set C++ Standard
+# ----------------------------
+# Basic project settings
+# ----------------------------
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
-
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_BUILD_PARALLEL_LEVEL 8)
 
-# Build type configurations
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug)
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
 endif()
 
-# Constexpr exceeding limit
-add_compile_options(-fconstexpr-ops-limit=100000000)
+# ----------------------------
+# Options
+# ----------------------------
+option(ENABLE_SANITIZERS "Enable runtime sanitizers (Debug only)" ON)
 
-set(CXX_WARNINGS
+# ----------------------------
+# Compiler flags
+# ----------------------------
+set(PROJECT_WARNINGS
 	-fbounds-check
 	-fvisibility=hidden
 	-pedantic
@@ -46,7 +50,7 @@ set(CXX_WARNINGS
 	-Wvla
 )
 
-set(CXX_DIAGNOSTICS
+set(PROJECT_DIAGNOSTICS
 	-fconcepts-diagnostics-depth=3
 	-fdiagnostics-color=auto
 	-fdiagnostics-path-format=inline-events
@@ -54,7 +58,7 @@ set(CXX_DIAGNOSTICS
 	-fdiagnostics-show-template-tree
 )
 
-set(CXX_DEBUG_INFO
+set(PROJECT_DEBUG_INFO
 	-fno-omit-frame-pointer
 	-fvar-tracking
 	-fvar-tracking-assignments
@@ -64,7 +68,7 @@ set(CXX_DEBUG_INFO
 	-gstatement-frontiers
 )
 
-set(DEBUG_CXX_FLAGS
+set(PROJECT_DEBUG_FLAGS
 	-ffinite-math-only
 	-fmax-errors=15
 	-fno-eliminate-unused-debug-symbols
@@ -75,7 +79,7 @@ set(DEBUG_CXX_FLAGS
 	-O0
 )
 
-set(RELEASE_CXX_FLAGS
+set(PROJECT_RELEASE_FLAGS
 	-fno-math-errno
 	-fno-trapping-math
 	-fstrength-reduce
@@ -93,7 +97,7 @@ set(REL_DEB_INFO_CXX_FLAGS
 	-O2
 )
 
-set(SANITIZER_FLAGS
+set(PROJECT_SANITIZERS
 	-fsanitize=address
 	-fsanitize=bounds
 	-fsanitize=float-cast-overflow
@@ -105,58 +109,96 @@ set(SANITIZER_FLAGS
 	-fsanitize=undefined
 )
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(CXX_FLAGS
-      "${DEBUG_CXX_FLAGS}"
-      "${CXX_DEBUG_INFO}"
-      "${CXX_WARNINGS}"
-      "${CXX_DIAGNOSTICS}"
-  )
-elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-  set(CXX_FLAGS
-      "${RELEASE_CXX_FLAGS}"
-      "${CXX_WARNINGS}"
-      "${CXX_DIAGNOSTICS}"
-  )
-elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-  set(CXX_FLAGS
-      "${REL_DEB_INFO_CXX_FLAGS}"
-      "${CXX_DEBUG_INFO}"
-      "${CXX_WARNINGS}"
-      "${CXX_DIAGNOSTICS}"
-  )
-else()
-  message(ERROR "Not implemented build type: ${CMAKE_BUILD_TYPE}")
-endif()
+# ----------------------------
+# Central INTERFACE target
+# ----------------------------
+add_library(project_options INTERFACE)
 
-set(LINK_FLAGS "")
+target_compile_options(project_options INTERFACE
+    -fconstexpr-ops-limit=100000000
+    ${PROJECT_WARNINGS}
+    ${PROJECT_DIAGNOSTICS}
 
-option(ENABLE_SANITIZERS "Enable compiler sanitizers for runtime checks" OFF)
-if(ENABLE_SANITIZERS)
-    list(APPEND CXX_FLAGS ${SANITIZER_FLAGS})
-    list(APPEND LINK_FLAGS ${SANITIZER_FLAGS})
-endif()
+    # Debug
+    $<$<CONFIG:Debug>:${PROJECT_DEBUG_FLAGS} ${PROJECT_DEBUG_INFO}>
 
-# Output directories
-set(OUT_TAIL_DIR ${CMAKE_BUILD_TYPE})
-set(OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/${OUT_TAIL_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+    # Release
+    $<$<CONFIG:Release>:${PROJECT_RELEASE_FLAGS}>
 
-set(EXAMPLES_DIR "./")
+    # RelWithDebInfo
+    $<$<CONFIG:RelWithDebInfo>:${REL_DEB_INFO_CXX_FLAGS} ${PROJECT_DEBUG_INFO}>
+
+    # Sanitizers: Debug only
+    $<$<AND:$<CONFIG:Debug>,$<BOOL:${ENABLE_SANITIZERS}>>:${PROJECT_SANITIZERS}>
+)
+
+target_link_options(project_options INTERFACE
+    $<$<AND:$<CONFIG:Debug>,$<BOOL:${ENABLE_SANITIZERS}>>:${PROJECT_SANITIZERS}>
+)
+
+target_include_directories(project_options INTERFACE
+    ${PROJECT_SOURCE_DIR}/../include
+    ${PROJECT_SOURCE_DIR}/../lib
+)
+
+add_library(project_benchmarks INTERFACE)
+
+target_compile_options(project_benchmarks INTERFACE
+    -fconstexpr-ops-limit=100000000
+    ${PROJECT_WARNINGS}
+    ${PROJECT_DIAGNOSTICS}
+    ${PROJECT_RELEASE_FLAGS}
+)
+
+target_link_options(project_benchmarks INTERFACE
+)
+
+target_include_directories(project_benchmarks INTERFACE
+    ${PROJECT_SOURCE_DIR}/../include
+    ${PROJECT_SOURCE_DIR}/../lib
+)
+
+# ----------------------------
+# Output directory
+# ----------------------------
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/$<CONFIG>)
+message(STATUS "Output directory pattern: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+
+# ----------------------------
+# Dependencies
+# ----------------------------
 find_package(TBB REQUIRED)
 
-# Generate executable for all .e.cpp
-file(GLOB EXAMPLE_FILES "${EXAMPLES_DIR}/*.e.cpp")
-foreach(EXAMPLE_FILE ${EXAMPLE_FILES})
-    get_filename_component(TARGET_NAME ${EXAMPLE_FILE} NAME_WE)
-    add_executable(${TARGET_NAME} ${EXAMPLE_FILE})
-    target_include_directories(${TARGET_NAME} PUBLIC ../include ../lib)
-    target_compile_options(${TARGET_NAME} PRIVATE ${CXX_FLAGS})
-    target_link_options(${TARGET_NAME} PRIVATE ${LINK_FLAGS})
-    target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb)
+# ----------------------------
+# Example executables
+# ----------------------------
+file(GLOB EXAMPLE_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.e.cpp
+)
+
+foreach(src ${EXAMPLE_SOURCES})
+    get_filename_component(name ${src} NAME_WE)
+    add_executable(${name} ${src})
+
+    target_link_libraries(${name} PRIVATE project_options TBB::tbb)
 endforeach()
 
-# Build messages
+# ----------------------------
+# Benchmark executables
+# ----------------------------
+file(GLOB BENCH_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.b.cpp
+)
+
+foreach(src ${BENCH_SOURCES})
+    get_filename_component(name ${src} NAME_WE)
+    add_executable(${name} ${src})
+
+    target_link_libraries(${name} PRIVATE project_benchmarks TBB::tbb)
+endforeach()
+
+# ----------------------------
+# Status
+# ----------------------------
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "Output directory: ${OUTPUT_DIR}")
-message(STATUS "Sanitizers: ${ENABLE_SANITIZERS}")
+message(STATUS "Sanitizers enabled (Debug only): ${ENABLE_SANITIZERS}")
