@@ -1,12 +1,23 @@
 # Performance Analysis
 
-## 13.12.2025 - Initial Tree-Solver integration
+## Initial Tree-Solver integration
+
+### Notes
+
+iTLB misses are way too high.This could potentially be due to the high amount of
+template generated code. Further analysis is required to troubleshoot the issue.
+
+High LLC misses must be analyzed further too. Could be caused by issues in th
+memory layout and access.
+
+### Data
 
 2D
 10x10 patches
 halo_width=2
 t_end=400
 refine_period=5
+intel i7-9750h
 
 perf stat -ddd ./bin/Release/benchmark_fvm_solver_integration
 

@@ -31,6 +31,14 @@ Work in progress
 
 No testing yet.
 
+## Performance Analysis
+
+Due to the premature status of the project, performance will not be analyzed in
+depth.
+Simple performance metrics will be collected to identify potential issues and regression analysis.
+
+More information and benchmark logs can be found in `./reports`
+
 ## License
 This project is licensed under the [MIT License](./LICENSE).
 
