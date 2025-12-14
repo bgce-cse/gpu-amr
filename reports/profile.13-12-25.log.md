@@ -42,7 +42,7 @@ perf stat -ddd ./bin/Release/benchmark_fvm_solver_integration
 
 Callgraph analysis:
 
-Incl Self Function
-83.24 82.30 amr_solver<>::time_step_2d(double)
-2.21 1.75 void amr::ndt::utils::patches::detail::halo_apply_unroll_impl<>(amr::ndt::tree::ndtree<>&, std::remove_cvref_t::linear_index_t)
-1.45 0.13 amr::ndt::tree::ndtree<>::sort_buffers()
+Incl Self Function\\
+83.24 82.30 amr_solver<>::time_step_2d(double)\\
+2.21 1.75 void amr::ndt::utils::patches::detail::halo_apply_unroll_impl<>(amr::ndt::tree::ndtree<>&, std::remove_cvref_t::linear_index_t)\\
+1.45 0.13 amr::ndt::tree::ndtree<>::sort_buffers()\\
