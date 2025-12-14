@@ -9,6 +9,7 @@
 #include "patch_utils.hpp"
 #include "utility/compile_time_utility.hpp"
 #include "utility/error_handling.hpp"
+#include "utility/logging.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -287,6 +288,7 @@ public:
 
     auto fragment(patch_index_t const node_id) -> void
     {
+        DEFAULT_SOURCE_LOG_TRACE("Fragmenting node " + node_id.repr());
         const auto it   = find_index(node_id);
         const auto from = it.value()->second;
         assert(it.has_value());
@@ -1048,13 +1050,13 @@ public:
                 assert(m_index_map.contains(m_linear_index_map[i]));
                 if (m_index_map.at(m_linear_index_map[i]) != i)
                 {
-                    std::cout << "index map is not correct" << std::endl;
+                    DEFAULT_SOURCE_LOG_ERROR("index map is not correct");
                     return false;
                 }
             }
             return true;
         }
-        std::cout << "linear index is not sorted" << std::endl;
+        DEFAULT_SOURCE_LOG_ERROR("linear index is not sorted");
         return false;
     }
 
@@ -1066,7 +1068,7 @@ public:
         {
             assert(m_linear_index_map[linear_idx] == node_idx);
         }
-        // std::cout << "Hash table looks good chef...\n";
+        DEFAULT_SOURCE_LOG_ERROR("linear index is not sorted");
     }
 #endif
 
