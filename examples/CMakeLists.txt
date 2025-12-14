@@ -7,7 +7,7 @@ project(GPU_AMR VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_VERBOSE_MAKEFILE ON)
-set(CMAKE_BUILD_PARALLEL_LEVEL 8)
+set(CMAKE_BUILD_PARALLEL_LEVEL 2)  # or even 1
 
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
@@ -114,10 +114,17 @@ set(PROJECT_SANITIZERS
 # ----------------------------
 add_library(project_options INTERFACE)
 
+set(CONSTEXPR_LIMIT_FLAGS
+    -fconstexpr-ops-limit=10000000000
+    -fconstexpr-loop-limit=1048576
+)
+
+
+
 target_compile_options(project_options INTERFACE
-    -fconstexpr-ops-limit=100000000
     ${PROJECT_WARNINGS}
     ${PROJECT_DIAGNOSTICS}
+    ${CONSTEXPR_LIMIT_FLAGS}
 
     # Debug
     $<$<CONFIG:Debug>:${PROJECT_DEBUG_FLAGS} ${PROJECT_DEBUG_INFO}>
@@ -144,9 +151,9 @@ target_include_directories(project_options INTERFACE
 add_library(project_benchmarks INTERFACE)
 
 target_compile_options(project_benchmarks INTERFACE
-    -fconstexpr-ops-limit=100000000
     ${PROJECT_WARNINGS}
     ${PROJECT_DIAGNOSTICS}
+    ${CONSTEXPR_LIMIT_FLAGS}
     ${PROJECT_RELEASE_FLAGS}
 )
 
