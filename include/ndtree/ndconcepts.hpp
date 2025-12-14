@@ -53,7 +53,7 @@ concept PatchIndex =
         { I::level(i) } -> std::same_as<typename I::level_t>;
         { i.id() } -> std::same_as<typename I::mask_t>;
         // TODO: Return string by value is probably suboptimal. Look into it
-        { i.repr() } -> std::same_as<std::string>;
+        { i.repr() } -> std::convertible_to<std::string_view>;
         { std::less{}(i, i) } -> std::convertible_to<bool>;
     } && std::integral<typename I::size_type> &&
     std::unsigned_integral<typename I::mask_t> && std::equality_comparable<I>;

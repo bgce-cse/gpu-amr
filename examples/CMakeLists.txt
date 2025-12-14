@@ -19,6 +19,15 @@ endif()
 option(ENABLE_SANITIZERS "Enable runtime sanitizers (Debug only)" ON)
 
 # ----------------------------
+# Logging
+# ----------------------------
+set(LOG_LEVEL "INFO" CACHE STRING
+    "Logging level: TRACE, DEBUG, INFO, WARNING, ERROR, FATAL, OFF")
+
+set_property(CACHE LOG_LEVEL PROPERTY STRINGS
+    TRACE DEBUG INFO WARNING ERROR FATAL OFF)
+
+# ----------------------------
 # Compiler flags
 # ----------------------------
 set(PROJECT_WARNINGS
@@ -112,6 +121,7 @@ set(PROJECT_SANITIZERS
 # ----------------------------
 # Central INTERFACE target
 # ----------------------------
+add_library(project_examples INTERFACE)
 add_library(project_options INTERFACE)
 
 set(CONSTEXPR_LIMIT_FLAGS
@@ -121,7 +131,8 @@ set(CONSTEXPR_LIMIT_FLAGS
 
 
 
-target_compile_options(project_options INTERFACE
+target_compile_options(project_examples INTERFACE
+    -fconstexpr-ops-limit=100000000
     ${PROJECT_WARNINGS}
     ${PROJECT_DIAGNOSTICS}
     ${CONSTEXPR_LIMIT_FLAGS}
@@ -139,11 +150,15 @@ target_compile_options(project_options INTERFACE
     $<$<AND:$<CONFIG:Debug>,$<BOOL:${ENABLE_SANITIZERS}>>:${PROJECT_SANITIZERS}>
 )
 
-target_link_options(project_options INTERFACE
+target_compile_definitions(project_examples INTERFACE
+    AMR_LOG_LEVEL=${LOG_LEVEL}
+)
+
+target_link_options(project_examples INTERFACE
     $<$<AND:$<CONFIG:Debug>,$<BOOL:${ENABLE_SANITIZERS}>>:${PROJECT_SANITIZERS}>
 )
 
-target_include_directories(project_options INTERFACE
+target_include_directories(project_examples INTERFACE
     ${PROJECT_SOURCE_DIR}/../include
     ${PROJECT_SOURCE_DIR}/../lib
 )
@@ -155,6 +170,10 @@ target_compile_options(project_benchmarks INTERFACE
     ${PROJECT_DIAGNOSTICS}
     ${CONSTEXPR_LIMIT_FLAGS}
     ${PROJECT_RELEASE_FLAGS}
+)
+
+target_compile_definitions(project_benchmarks INTERFACE
+    AMR_LOG_LEVEL=OFF
 )
 
 target_link_options(project_benchmarks INTERFACE
@@ -187,7 +206,7 @@ foreach(src ${EXAMPLE_SOURCES})
     get_filename_component(name ${src} NAME_WE)
     add_executable(${name} ${src})
 
-    target_link_libraries(${name} PRIVATE project_options TBB::tbb)
+    target_link_libraries(${name} PRIVATE project_examples TBB::tbb)
 endforeach()
 
 # ----------------------------
@@ -209,3 +228,4 @@ endforeach()
 # ----------------------------
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Sanitizers enabled (Debug only): ${ENABLE_SANITIZERS}")
+message(STATUS "Log level: ${AMR_LOG_LEVEL}")

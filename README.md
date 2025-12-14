@@ -21,7 +21,8 @@ Refer to [Compile time configuration](#Compile_time_configuration) for further d
 
 The optional build flags `OPTIONS` are used to enable parts of the project that might require dependencies or might not make sense always.
 The supported arguments are
-- `ENABLE_SANITIZERS={OFF,ON}`:Disables/Enables the use of sanitizers. Defaults to `ON`.
+- `ENABLE_SANITIZERS={OFF,ON}`: Disables/Enables the use of sanitizers. Defaults to `ON`.
+- `LOG_LEVEL={TRACE,DEBUG,INFO,WARNING,ERROR,FATAL,OFF}`: Control the logging level. Defaults to INFO.
 
 ### Compile Time Configuration
 

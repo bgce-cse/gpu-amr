@@ -13,6 +13,7 @@
 #include <functional>
 #include <iostream>
 #include <string>
+#include "utility/logging.hpp"
 #include <vector>
 
 int main()
