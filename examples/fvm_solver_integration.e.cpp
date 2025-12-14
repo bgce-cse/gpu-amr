@@ -6,7 +6,7 @@
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
 #include "morton/morton_id.hpp"
-
+#include "solver/physics_system.hpp"
 #include "solver/amr_solver.hpp"
 #include "solver/cell_types.hpp"
 
@@ -24,18 +24,25 @@ int main() {
     constexpr std::size_t N    = 10;
     constexpr std::size_t M    = 10;
     constexpr std::size_t Halo = 2;
+    constexpr double physics_x = 1000;
+    constexpr double physics_y = 1000;
+
+
+    constexpr std::array<double, 2> physics_lengths = {physics_x, physics_y};
+ 
 
     using shape_t         = amr::containers::static_shape<N, M>;
     using layout_t        = amr::containers::static_layout<shape_t>;
-    //using index_t         = typename layout_t::index_t;
+  
 
-    using patch_index_t  = amr::ndt::morton::morton_id<8u, 2u>;
+    using patch_index_t  = amr::ndt::morton::morton_id<7u, 2u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
     using tree_t         = amr::ndt::tree::ndtree<amr::cell::EulerCell2D, patch_index_t, patch_layout_t>;
 
+    using physics_t = amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
-    amr::ndt::print::example_halo_patch_print<Halo, M, N> printer("euler_halo");
-    amr::ndt::print::example_patch_print<Halo, M, N> printer2("euler_tree");
+    // amr::ndt::print::example_halo_patch_print<Halo, M, N> printer("euler_halo");
+    amr::ndt::print::example_patch_print<physics_t,Halo, M, N> printer2("euler_tree");
 
 
     double tmax = 400; // Example tmax, adjust as needed
@@ -46,7 +53,7 @@ int main() {
 
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t, 2> solver(1000000); // Provide initial capacity for tree
+    amr_solver<tree_t, physics_t, 2> solver(1000000); // Provide initial capacity for tree
 
 
     auto refineAll = [&]([[maybe_unused]] const patch_index_t& idx) {
@@ -92,9 +99,9 @@ int main() {
     constexpr double RHO_BG = 0.5;
     constexpr double P_BG = 1.0;
     constexpr double AMPLITUDE = 10.0;
-    constexpr double PULSE_WIDTH_SQ = 0.01; // sigma^2
-    constexpr double CENTER_X = 0.5;
-    constexpr double CENTER_Y = 0.5;
+    constexpr double PULSE_WIDTH_SQ = 0.01 * physics_x * physics_y; // sigma^2 in physical units
+    constexpr double CENTER_X = 0.5 * physics_x;
+    constexpr double CENTER_Y = 0.5 * physics_y;
 
     // The initial condition function (auto IC = [](){})
     auto acousticPulseIC = [](double x, double y) -> amr::containers::static_vector<double, 4> {
@@ -110,9 +117,9 @@ int main() {
 
         // Set primitive variables: [rho, u, v, p]
         prim[0] = RHO_BG + (perturbation*0.2);  // Density (rho)
-        prim[1] = 0.0;                    // X-velocity (u)
-        prim[2] = 0.0;                    // Y-velocity (v)
-        prim[3] = P_BG + perturbation;    // Pressure (p)
+        prim[1] = 0.0;                          // X-velocity (u)
+        prim[2] = 0.0;                          // Y-velocity (v)
+        prim[3] = P_BG + perturbation;          // Pressure (p)
         
         return prim;
     };
@@ -128,7 +135,7 @@ int main() {
     solver.get_tree().halo_exchange_update();
 
     // Print initial state
-    printer.print(solver.get_tree(), "_iteration_0.vtk");
+    // printer.print(solver.get_tree(), "_iteration_0.vtk");
 
     // Main Simulation Loop
     double t = 0.0;
@@ -159,7 +166,7 @@ int main() {
         // Print only when we've passed the next print time
         if (t >= next_print_time) {
             std::string file_extension = "_iteration_" + std::to_string(output_counter) + ".vtk";
-            printer.print(solver.get_tree(), file_extension);
+            // printer.print(solver.get_tree(), file_extension);
             printer2.print(solver.get_tree(), file_extension);
             next_print_time += print_frequency;
             output_counter++;
