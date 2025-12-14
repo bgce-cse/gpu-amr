@@ -26,7 +26,7 @@ private:
     static constexpr size_type s_max_depth = patch_index_t::max_depth();
     static constexpr uint32_t s_max_morton_coord = 1u << s_max_depth;
     
-    // Get cells per patch dimension from the data layout
+    
     static constexpr auto s_cells_per_patch_dim = []() constexpr {
         auto sizes = patch_layout_t::data_layout_t::shape_t::sizes();
         physics_coord_arr_t result{};
@@ -36,7 +36,7 @@ private:
         return result;
     }();
 
-    // Domain sizes - now per dimension
+    
     static constexpr auto s_physics_lengths = []() constexpr {
         physics_coord_arr_t result{};
         for (size_type i = 0; i < n_dimension; ++i) {
@@ -46,10 +46,10 @@ private:
     }();
 
 public:
-    // Default constructor
+    
     constexpr physics_system() = default;
 
-    // Get the physical size of a patch in each dimension
+    
     [[nodiscard]]
     static constexpr auto patch_sizes(patch_index_t const& morton_id) -> physics_coord_arr_t
     {
@@ -64,7 +64,7 @@ public:
         return result;
     }
 
-    // Get the physical size of a cell in each dimension
+    
     [[nodiscard]]
     static constexpr auto cell_sizes(patch_index_t const& morton_id) -> physics_coord_arr_t
     {
@@ -96,10 +96,7 @@ public:
         physics_coord_arr_t patch_origin = patch_coord(morton_id);
         auto cell_size = cell_sizes(morton_id);
 
-        // Convert linear index (in padded layout) to multi-index
         auto multi_idx = patch_layout_t::padded_layout_t::multi_index(linear_idx);
-        
-        // The halo width offset to get to the data region
         static constexpr auto halo_width = patch_layout_t::halo_width();
 
         physics_coord_arr_t result{};
