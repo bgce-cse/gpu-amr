@@ -697,7 +697,10 @@ public:
     auto get_linear_index_at(patch_index_t const node_id) const noexcept -> linear_index_t
     {
         const auto it = m_index_map.find(node_id);
-        assert(it != m_index_map.end());
+        if (it == m_index_map.end())
+        {
+            return std::numeric_limits<linear_index_t>::max();
+        }
         return it->second;
     }
 

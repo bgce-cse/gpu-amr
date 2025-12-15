@@ -138,6 +138,7 @@ public:
     static constexpr morton_id child_of(morton_id parent_id, offset_t off)
     {
         auto [coords, level] = decode(parent_id.id());
+        (void)coords; // unused
         assert(level < s_depth && "Cell already at max level");
         auto sibling = offset(parent_id.id() + 1, off);
 

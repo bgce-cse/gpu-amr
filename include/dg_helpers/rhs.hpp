@@ -170,7 +170,7 @@ struct RHSEvaluator
                 // Track maximum eigenvalue across all faces
                 maxeigenval = std::max(maxeigenval, curr_eigenval);
 
-                auto face_du = surface_t::template evaluate_face_integral(
+                auto face_du = surface_t::evaluate_face_integral(
                     curr_eigenval,
                     std::get<0>(cell_data),
                     std::get<0>(neighbor_data),

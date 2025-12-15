@@ -1,249 +1,332 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(GPU_AMR VERSION 0.1)
-
-# Set C++ Standard
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
-
-set(CMAKE_VERBOSE_MAKEFILE ON)
-set(CMAKE_BUILD_PARALLEL_LEVEL 8)
-
-# Build type configurations
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug)
-endif()
-
-set(CXX_WARNINGS
-	-fbounds-check
-	-fvisibility=hidden
-	-pedantic
-	-Wall
-	-Wconversion
-	-Wdangling-else
-	-Wdouble-promotion
-	-Wduplicated-branches
-	-Wduplicated-cond
-	-Werror
-	-Wextra
-	-Wfloat-equal
-	-Wformat
-	-Winvalid-pch
-	-Wlogical-op
-	-Wmisleading-indentation
-	-Wnull-dereference
-	-Wodr
-	-Wpointer-arith
-	-Wrestrict
-	-Wreturn-local-addr
-	-Wshadow
-	-Wswitch-default
-	-Wswitch-enum
-	-Wuninitialized
-	-Wvla
-)
-
-set(CXX_DIAGNOSTICS
-	-fconcepts-diagnostics-depth=3
-	-fdiagnostics-color=always
-	-fdiagnostics-path-format=inline-events
-	-fdiagnostics-show-caret
-	-fdiagnostics-show-template-tree
-)
-
-set(CXX_DEBUG_INFO
-	-fno-omit-frame-pointer
-	-fvar-tracking
-	-fvar-tracking-assignments
-	-ggdb3
-	-gvariable-location-views
-	-ginline-points
-	-gstatement-frontiers
-)
-
-set(DEBUG_CXX_FLAGS
-	-ffinite-math-only
-	-fmax-errors=15
-	-fno-eliminate-unused-debug-symbols
-	-fno-inline
-	-fno-default-inline
-	-march=native
-	
-	-O0
-)
-
-set(RELEASE_CXX_FLAGS
-	-fno-math-errno
-	-fno-trapping-math
-	-fstrength-reduce
-	-march=native
-	
-	-O3
-)
-
-
-set(REL_DEB_INFO_CXX_FLAGS
-	-fno-math-errno
-	-fno-trapping-math
-	-fstrength-reduce
-	-march=native
-	
-	-O2
-)
-
-set(SANITIZER_FLAGS
-	-fsanitize=address
-	-fsanitize=bounds
-	-fsanitize=float-cast-overflow
-	-fsanitize=float-divide-by-zero
-	-fsanitize=integer-divide-by-zero
-	-fsanitize=leak
-	-fsanitize=null
-	-fsanitize=signed-integer-overflow
-	-fsanitize=undefined
-)
-
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(CXX_FLAGS
-      "${DEBUG_CXX_FLAGS}"
-      "${CXX_DEBUG_INFO}"
-      "${CXX_WARNINGS}"
-      "${CXX_DIAGNOSTICS}"
-  )
-elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-  set(CXX_FLAGS
-      "${RELEASE_CXX_FLAGS}"
-      "${CXX_WARNINGS}"
-      "${CXX_DIAGNOSTICS}"
-  )
-elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-  set(CXX_FLAGS
-      "${REL_DEB_INFO_CXX_FLAGS}"
-      "${CXX_DEBUG_INFO}"
-      "${CXX_WARNINGS}"
-      "${CXX_DIAGNOSTICS}"
-  )
-else()
-  message(ERROR "Not implemented build type: ${CMAKE_BUILD_TYPE}")
-endif()
-
-set(LINK_FLAGS "")
-
-option(ENABLE_SANITIZERS "Enable compiler sanitizers for runtime checks" OFF)
-if(ENABLE_SANITIZERS)
-    list(APPEND CXX_FLAGS ${SANITIZER_FLAGS})
-    list(APPEND LINK_FLAGS ${SANITIZER_FLAGS})
-endif()
-
-# Output directories
-set(OUT_TAIL_DIR ${CMAKE_BUILD_TYPE})
-set(OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/${OUT_TAIL_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+project(GPU_AMR VERSION 0.1 LANGUAGES CXX)
 
 # ============================================================================
-# YAML Config to C++ Header Preprocessing
+# C++ Standard Configuration
+# ============================================================================
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# ============================================================================
+# Build System Configuration
+# ============================================================================
+set(CMAKE_VERBOSE_MAKEFILE ON)
+set(CMAKE_BUILD_PARALLEL_LEVEL 8)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Default to Release build if not specified (production-ready default)
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
+    message(STATUS "⚙️  No build type specified. Defaulting to Release (production-ready)")
+endif()
+
+# ============================================================================
+# Common Compiler Flags
+# Applied to all build types for consistency
+# ============================================================================
+
+# Warning flags - strict error checking
+set(CXX_WARNINGS
+    -Wall
+    -Wextra
+    -Werror
+    -pedantic
+    -Wconversion
+    -Wshadow
+    -Wnull-dereference
+    -Wdouble-promotion
+    -Wformat=2
+    -Wfloat-equal
+    -Wpointer-arith
+    -Wswitch-default
+    -Wswitch-enum
+    -Wuninitialized
+    -Wmisleading-indentation
+    -Wduplicated-cond
+    -Wduplicated-branches
+    -Wlogical-op
+    -Wdangling-else
+    -Wrestrict
+    -Wreturn-local-addr
+    -Winvalid-pch
+    -Wodr
+    -Wvla
+    -fbounds-check
+    -fvisibility=hidden
+)
+
+# Compiler diagnostics - enhanced error messages
+set(CXX_DIAGNOSTICS
+    -fdiagnostics-color=always
+    -fdiagnostics-show-caret
+    -fdiagnostics-show-template-tree
+)
+
+# ============================================================================
+# Debug Build: Full debugging support, no optimization
+# Ideal for development and debugging
+# ============================================================================
+set(DEBUG_FLAGS
+    # Optimization (disabled for better debugging)
+    -O0
+    -fno-inline
+    
+    # Debug symbols - comprehensive information
+    -g3                              # Maximum debug info
+    -ggdb3                           # GDB-specific extensions
+    -fno-omit-frame-pointer          # Keep frame pointers for profiling
+    -fvar-tracking                   # Track variable locations
+    -fvar-tracking-assignments       # Track variable assignments
+    -gvariable-location-views        # Generate location view info
+    -ginline-points                  # Include inline points
+    -gstatement-frontiers            # Statement frontier debugging
+    -fno-eliminate-unused-debug-symbols
+    
+    # Architecture
+    -march=native
+)
+
+# ============================================================================
+# Release Build: Maximum optimization, production-ready
+# Ideal for performance-critical deployments
+# ============================================================================
+set(RELEASE_FLAGS
+    # Optimization (maximum performance)
+    -O3                              # Maximum optimization level
+    -march=native                    # Native architecture tuning
+    -fstrength-reduce                # Replace multiply with add
+    
+    # Math optimizations (fast math)
+    -fno-math-errno                  # Assume math functions won't set errno
+    -fno-trapping-math               # Assume no math traps
+    -ffast-math                      # Aggressive floating-point optimizations
+    
+    # Advanced optimizations
+    -flto                            # Link-time optimization
+    -fomit-frame-pointer             # Omit frame pointers (saves registers)
+)
+
+# ============================================================================
+# RelWithDebInfo Build: Balanced - optimization with debug symbols
+# Ideal for profiling and debugging optimized code
+# ============================================================================
+set(RELWITHDEBINFO_FLAGS
+    # Optimization (balanced)
+    -O2                              # Good balance of speed and debug info
+    -march=native                    # Native architecture tuning
+    -fstrength-reduce                # Replace multiply with add
+    
+    # Debug information (for profiling)
+    -g3                              # Comprehensive debug info
+    -ggdb3                           # GDB extensions
+    -fno-omit-frame-pointer          # Keep frame pointers for profiling
+    -gvariable-location-views        # Generate location view info
+    
+    # Math optimizations
+    -fno-math-errno                  # Assume math functions won't set errno
+    -fno-trapping-math               # Assume no math traps
+)
+
+# ============================================================================
+# Sanitizer Configuration (Optional, for testing)
+# Enables runtime checks for common bugs
+# Adds significant overhead (~2-3x slowdown) but catches bugs early
+# ============================================================================
+set(SANITIZER_FLAGS
+    -fsanitize=address               # Memory access bugs
+    -fsanitize=leak                  # Memory leaks
+    -fsanitize=undefined             # Undefined behavior
+    -fsanitize=bounds                # Array bounds violations
+    -fsanitize=null                  # Null pointer dereferences
+    -fsanitize=integer-divide-by-zero # Division by zero
+    -fsanitize=float-divide-by-zero  # Float division by zero
+    -fsanitize=float-cast-overflow   # Float cast overflow
+    -fsanitize=signed-integer-overflow # Signed integer overflow
+)
+
+option(ENABLE_SANITIZERS "Enable compiler sanitizers for runtime checks (adds ~2-3x overhead)" OFF)
+
+# ============================================================================
+# Apply Compiler Flags Based on Build Type and Generator
+# ============================================================================
+
+message(STATUS "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+message(STATUS "Build Configuration Summary")
+message(STATUS "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+message(STATUS "Build Type:      ${CMAKE_BUILD_TYPE}")
+message(STATUS "Generator:       ${CMAKE_GENERATOR}")
+message(STATUS "Compiler:        ${CMAKE_CXX_COMPILER}")
+message(STATUS "C++ Standard:    C++${CMAKE_CXX_STANDARD}")
+
+if(CMAKE_GENERATOR STREQUAL "Xcode")
+    message(STATUS "")
+    message(STATUS "⚠️  Xcode Generator Detected - Using AppleClang-Compatible Flags")
+    message(STATUS "    (Full compiler flags require Unix Makefiles generator)")
+    message(STATUS "")
+    
+    # Xcode with AppleClang - simplified flag set
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(CXX_FLAGS -g -O0 -Wall -Wextra)
+        message(STATUS "Debug Mode:      ✓ Optimizations disabled, full debug symbols")
+    elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        set(CXX_FLAGS -O2 -g -Wall -Wextra -fvisibility=default)
+        message(STATUS "RelWithDebInfo:  ✓ Balanced optimization with debug symbols")
+    elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+        set(CXX_FLAGS -O3 -Wall -Wextra)
+        message(STATUS "Release Mode:    ✓ Full optimization, production-ready")
+    else()
+        message(FATAL_ERROR "Unsupported build type for Xcode: ${CMAKE_BUILD_TYPE}")
+    endif()
+else()
+    # Unix Makefiles and other generators - full feature flags
+    message(STATUS "")
+    message(STATUS "✓ Full Compiler Flags Configuration Enabled")
+    message(STATUS "")
+    
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(CXX_FLAGS
+            ${DEBUG_FLAGS}
+            ${CXX_WARNINGS}
+            ${CXX_DIAGNOSTICS}
+        )
+        message(STATUS "Debug Mode:      ✓ O0, Full debug symbols, frame pointers")
+        message(STATUS "                 ✓ Variable tracking enabled")
+        message(STATUS "                 ✓ Better debugger experience")
+        
+    elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+        set(CXX_FLAGS
+            ${RELEASE_FLAGS}
+            ${CXX_WARNINGS}
+            ${CXX_DIAGNOSTICS}
+        )
+        message(STATUS "Release Mode:    ✓ O3, LTO, fast math enabled")
+        message(STATUS "                 ✓ Maximum performance, production-ready")
+        message(STATUS "                 ✓ No debug information")
+        
+    elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        set(CXX_FLAGS
+            ${RELWITHDEBINFO_FLAGS}
+            ${CXX_WARNINGS}
+            ${CXX_DIAGNOSTICS}
+        )
+        message(STATUS "RelWithDebInfo:  ✓ O2, debug symbols with optimization")
+        message(STATUS "                 ✓ Ideal for profiling optimized code")
+        
+    else()
+        message(FATAL_ERROR "Unsupported build type: ${CMAKE_BUILD_TYPE}")
+    endif()
+endif()
+
+# ============================================================================
+# Sanitizer Configuration
+# ============================================================================
+set(LINK_FLAGS "")
+if(ENABLE_SANITIZERS)
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        message(WARNING "⚠️  Sanitizers enabled with Release build - expect 2-3x slowdown")
+    endif()
+    list(APPEND CXX_FLAGS ${SANITIZER_FLAGS})
+    list(APPEND LINK_FLAGS ${SANITIZER_FLAGS})
+    message(STATUS "Sanitizers:      ✓ ENABLED (AddressSanitizer, UBSan, etc.)")
+else()
+    message(STATUS "Sanitizers:      ✗ Disabled")
+endif()
+
+message(STATUS "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+message(STATUS "")
+
+# ============================================================================
+# Output Directories
+# ============================================================================
+set(OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/${CMAKE_BUILD_TYPE})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+message(STATUS "📁 Output directory: ${OUTPUT_DIR}")
+
+# ============================================================================
+# Configuration File Generation from YAML
+# Automatically generates C++ header from config.yaml
 # ============================================================================
 set(CONFIG_YAML "${CMAKE_SOURCE_DIR}/../config.yaml")
 set(GENERATED_CONFIG_HPP "${CMAKE_BINARY_DIR}/generated_config.hpp")
 
-# Read the YAML file
-if(EXISTS ${CONFIG_YAML})
-    file(READ "${CONFIG_YAML}" CONFIG_TEXT)
-    
-    # Extract simulation parameters
-    string(REGEX MATCH "end_time:[ ]*[0-9.]+" END_TIME_LINE "${CONFIG_TEXT}")
-    string(REGEX MATCH "grid_elements:[ ]*[0-9]+" GRID_ELEMENTS_LINE "${CONFIG_TEXT}")
-    string(REGEX MATCH "grid_size:[ ]*[0-9.]+" GRID_SIZE_LINE "${CONFIG_TEXT}")
-    
-    # Extract solver parameters
-    string(REGEX MATCH "order:[ ]*[0-9]+" ORDER_LINE "${CONFIG_TEXT}")
-    string(REGEX MATCH "courant:[ ]*[0-9.]+" COURANT_LINE "${CONFIG_TEXT}")
-    string(REGEX MATCH "timeintegrator:[ ]*[A-Z0-9]+" TIMEINT_LINE "${CONFIG_TEXT}")
-    
-    # Extract equation and scenario
-    string(REGEX MATCH "equation:[ ]*[a-z_]+" EQUATION_LINE "${CONFIG_TEXT}")
-    string(REGEX MATCH "scenario:[ ]*[a-z_]+" SCENARIO_LINE "${CONFIG_TEXT}")
-    
-    # Extract Dim and DOFs (root level)
-    string(REGEX MATCH "Dim:[ ]*[0-9]+" DIM_LINE "${CONFIG_TEXT}")
-    string(REGEX MATCH "DOFs:[ ]*[0-9]+" DOFS_LINE "${CONFIG_TEXT}")
-    string(REGEX MATCH "MaxDepth:[ ]*[0-9]+" MAXDEPTH_LINE "${CONFIG_TEXT}")
-    
-    # Parse simulation values
-    string(REGEX REPLACE "end_time:[ ]*" "" END_TIME_VALUE "${END_TIME_LINE}")
-    string(REGEX REPLACE "grid_elements:[ ]*" "" GRID_ELEMENTS_VALUE "${GRID_ELEMENTS_LINE}")
-    string(REGEX REPLACE "grid_size:[ ]*" "" GRID_SIZE_VALUE "${GRID_SIZE_LINE}")
-    
-    # Parse solver values
-    string(REGEX REPLACE "order:[ ]*" "" ORDER_VALUE "${ORDER_LINE}")
-    string(REGEX REPLACE "courant:[ ]*" "" COURANT_VALUE "${COURANT_LINE}")
-    string(REGEX REPLACE "timeintegrator:[ ]*" "" TIMEINT_VALUE "${TIMEINT_LINE}")
-    
-    # Parse equation values
-    string(REGEX REPLACE "equation:[ ]*" "" EQUATION_VALUE "${EQUATION_LINE}")
-    string(REGEX REPLACE "scenario:[ ]*" "" SCENARIO_VALUE "${SCENARIO_LINE}")
-    
-    # Parse Dim and DOFs
-    string(REGEX REPLACE "Dim:[ ]*" "" DIM_VALUE "${DIM_LINE}")
-    string(REGEX REPLACE "DOFs:[ ]*" "" DOFS_VALUE "${DOFS_LINE}")
-    string(REGEX REPLACE "MaxDepth:[ ]*" "" MAXDEPTH_VALUE "${MAXDEPTH_LINE}")
-    
-    # Validate extracted values with defaults
-    if(NOT ORDER_VALUE)
-        set(ORDER_VALUE 2)
-        message(WARNING "Order not found in config.yaml, using default: 2")
+if(NOT EXISTS ${CONFIG_YAML})
+    message(FATAL_ERROR "❌ config.yaml not found at ${CONFIG_YAML}")
+endif()
+
+message(STATUS "📄 Parsing config.yaml...")
+
+# Read YAML configuration file
+file(READ "${CONFIG_YAML}" CONFIG_TEXT)
+
+# ============================================================================
+# YAML Extraction Patterns
+# ============================================================================
+
+# Simulation parameters
+string(REGEX MATCH "end_time:[ ]*[0-9.]+" END_TIME_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "grid_elements:[ ]*[0-9]+" GRID_ELEMENTS_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "grid_size:[ ]*[0-9.]+" GRID_SIZE_LINE "${CONFIG_TEXT}")
+
+# Solver parameters
+string(REGEX MATCH "order:[ ]*[0-9]+" ORDER_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "courant:[ ]*[0-9.]+" COURANT_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "timeintegrator:[ ]*[A-Z0-9]+" TIMEINT_LINE "${CONFIG_TEXT}")
+
+# Equation and scenario
+string(REGEX MATCH "equation:[ ]*[a-z_]+" EQUATION_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "scenario:[ ]*[a-z_]+" SCENARIO_LINE "${CONFIG_TEXT}")
+
+# Domain and discretization
+string(REGEX MATCH "Dim:[ ]*[0-9]+" DIM_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "DOFs:[ ]*[0-9]+" DOFS_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "MaxDepth:[ ]*[0-9]+" MAXDEPTH_LINE "${CONFIG_TEXT}")
+
+# ============================================================================
+# Configuration Parsing Macro
+# Extracts value from YAML line, provides default if not found
+# ============================================================================
+macro(parse_config_value VAR_NAME REGEX_LINE DEFAULT_VALUE)
+    string(REGEX REPLACE "^[^:]+:[ ]*" "" ${VAR_NAME} "${${REGEX_LINE}}")
+    if(NOT ${VAR_NAME})
+        set(${VAR_NAME} ${DEFAULT_VALUE})
+        message(STATUS "  ⚠️  ${VAR_NAME} not found, using default: ${DEFAULT_VALUE}")
+    else()
+        message(STATUS "  ✓ ${VAR_NAME}: ${${VAR_NAME}}")
     endif()
-    if(NOT DIM_VALUE)
-        set(DIM_VALUE 2)
-        message(WARNING "Dim not found in config.yaml, using default: 2")
-    endif()
-    if(NOT DOFS_VALUE)
-        set(DOFS_VALUE 4)
-        message(WARNING "DOFs not found in config.yaml, using default: 4")
-    endif()
-    if(NOT MAXDEPTH_VALUE)
-        set(MAXDEPTH_VALUE 1)
-        message(WARNING "MaxDepth not found in config.yaml, using default: 1")
-    endif()
-    if(NOT EQUATION_VALUE)
-        set(EQUATION_VALUE "advection")
-        message(WARNING "Equation not found in config.yaml, using default: advection")
-    endif()
-    if(NOT SCENARIO_VALUE)
-        set(SCENARIO_VALUE "gaussian_wave")
-        message(WARNING "Scenario not found in config.yaml, using default: gaussian_wave")
-    endif()
-    if(NOT END_TIME_VALUE)
-        set(END_TIME_VALUE 4.0)
-        message(WARNING "end_time not found in config.yaml, using default: 4.0")
-    endif()
-    if(NOT GRID_ELEMENTS_VALUE)
-        set(GRID_ELEMENTS_VALUE 16)
-        message(WARNING "grid_elements not found in config.yaml, using default: 16")
-    endif()
-    if(NOT GRID_SIZE_VALUE)
-        set(GRID_SIZE_VALUE 1.0)
-        message(WARNING "grid_size not found in config.yaml, using default: 1.0")
-    endif()
-    if(NOT COURANT_VALUE)
-        set(COURANT_VALUE 0.5)
-        message(WARNING "courant not found in config.yaml, using default: 0.5")
-    endif()
-    if(NOT TIMEINT_VALUE)
-        set(TIMEINT_VALUE "SSPRK2")
-        message(WARNING "timeintegrator not found in config.yaml, using default: SSPRK2")
-    endif()
-    
-   # Determine enum value strings
+endmacro()
+
+# ============================================================================
+# Parse Configuration Values from YAML
+# ============================================================================
+message(STATUS "Configuration values:")
+parse_config_value(END_TIME_VALUE END_TIME_LINE "4.0")
+parse_config_value(GRID_ELEMENTS_VALUE GRID_ELEMENTS_LINE "16")
+parse_config_value(GRID_SIZE_VALUE GRID_SIZE_LINE "1.0")
+parse_config_value(ORDER_VALUE ORDER_LINE "2")
+parse_config_value(COURANT_VALUE COURANT_LINE "0.5")
+parse_config_value(TIMEINT_VALUE TIMEINT_LINE "SSPRK2")
+parse_config_value(EQUATION_VALUE EQUATION_LINE "advection")
+parse_config_value(SCENARIO_VALUE SCENARIO_LINE "gaussian_wave")
+parse_config_value(DIM_VALUE DIM_LINE "2")
+parse_config_value(DOFS_VALUE DOFS_LINE "4")
+parse_config_value(MAXDEPTH_VALUE MAXDEPTH_LINE "1")
+
+# ============================================================================
+# Map Configuration Values to C++ Enums
+# ============================================================================
+
+# Equation type enum
 if(EQUATION_VALUE STREQUAL "advection")
     set(EQUATION_ENUM "EquationType::Advection")
 elseif(EQUATION_VALUE STREQUAL "euler")
     set(EQUATION_ENUM "EquationType::Euler")
 else()
-    message(FATAL_ERROR "Unknown equation: ${EQUATION_VALUE}")
+    message(FATAL_ERROR "Unknown equation type: ${EQUATION_VALUE}")
 endif()
 
-# Determine time integrator enum value
+# Time integrator enum
 if(TIMEINT_VALUE STREQUAL "Euler" OR TIMEINT_VALUE STREQUAL "SSPRK1")
     set(TIMEINT_ENUM "TimeIntegratorType::Euler")
 elseif(TIMEINT_VALUE STREQUAL "SSPRK2")
@@ -254,7 +337,7 @@ else()
     message(FATAL_ERROR "Unknown time integrator: ${TIMEINT_VALUE}")
 endif()
 
-# Generate header
+# Generate configuration header file
 file(WRITE "${GENERATED_CONFIG_HPP}"
 "#pragma once\n\n"
 "/**\n"
@@ -266,11 +349,13 @@ file(WRITE "${GENERATED_CONFIG_HPP}"
 "#include <string_view>\n"
 "#include <cstddef>\n\n"
 "namespace amr::config {\n\n"
-"// Canonical size type: std::size_t\n"
-"// Type aliases for container shapes\n"
-"enum class EquationType { Advection, Euler };\n"
-"enum class TimeIntegratorType { Euler, SSPRK2, SSPRK3 };\n"
-"constexpr double CourantNumber = ${COURANT_VALUE};\n"
+"/// Equation type enumeration\n"
+"enum class EquationType { Advection, Euler };\n\n"
+"/// Time integration scheme enumeration\n"
+"enum class TimeIntegratorType { Euler, SSPRK2, SSPRK3 };\n\n"
+"/// Courant-Friedrichs-Lewy condition number\n"
+"constexpr double CourantNumber = ${COURANT_VALUE};\n\n"
+"/// Global compile-time configuration policy\n"
 "struct GlobalConfigPolicy\n"
 "{\n"
 "    static constexpr double EndTime = ${END_TIME_VALUE};\n"
@@ -286,57 +371,100 @@ file(WRITE "${GENERATED_CONFIG_HPP}"
 "} // namespace amr::config\n"
 )
 
-    
-    message(STATUS "Generated config header: ${GENERATED_CONFIG_HPP}")
-    message(STATUS "  === Compile-time DG Configuration ===")
-    message(STATUS "  Order      = ${ORDER_VALUE}")
-    message(STATUS "  Dim        = ${DIM_VALUE}")
-    message(STATUS "  DOFs       = ${DOFS_VALUE}")
-    message(STATUS "  Equation   = ${EQUATION_VALUE}")
-    message(STATUS "  Scenario   = ${SCENARIO_VALUE}")
-    message(STATUS "  === Simulation Parameters ===")
-    message(STATUS "  EndTime    = ${END_TIME_VALUE}")
-    message(STATUS "  GridElements = ${GRID_ELEMENTS_VALUE}")
-    message(STATUS "  GridSize   = ${GRID_SIZE_VALUE}")
-    message(STATUS "  === Solver Parameters ===")
-    message(STATUS "  Courant    = ${COURANT_VALUE}")
-    message(STATUS "  TimeIntegrator = ${TIMEINT_VALUE}")
-else()
-    message(FATAL_ERROR "config.yaml not found at ${CONFIG_YAML}")
-endif()
+# Display configuration summary
+message(STATUS "=== Generated Configuration Summary ===")
+message(STATUS "Config file: ${GENERATED_CONFIG_HPP}")
+message(STATUS "")
+message(STATUS "Compile-time DG Configuration:")
+message(STATUS "  Order      = ${ORDER_VALUE}")
+message(STATUS "  Dimension  = ${DIM_VALUE}")
+message(STATUS "  DOFs       = ${DOFS_VALUE}")
+message(STATUS "  Equation   = ${EQUATION_VALUE} (${EQUATION_ENUM})")
+message(STATUS "  Scenario   = ${SCENARIO_VALUE}")
+message(STATUS "")
+message(STATUS "Simulation Parameters:")
+message(STATUS "  End Time       = ${END_TIME_VALUE}")
+message(STATUS "  Grid Elements  = ${GRID_ELEMENTS_VALUE}")
+message(STATUS "  Grid Size      = ${GRID_SIZE_VALUE}")
+message(STATUS "  Max Depth      = ${MAXDEPTH_VALUE}")
+message(STATUS "")
+message(STATUS "Solver Parameters:")
+message(STATUS "  Courant Number    = ${COURANT_VALUE}")
+message(STATUS "  Time Integrator   = ${TIMEINT_VALUE} (${TIMEINT_ENUM})")
+message(STATUS "=======================================")
 
-set(EXAMPLES_DIR "./")
+# Custom target for header generation
+add_custom_target(generated_config_header DEPENDS ${GENERATED_CONFIG_HPP})
+
+# ============================================================================
+# Find Dependencies
+# ============================================================================
 find_package(TBB REQUIRED)
 find_package(VTK REQUIRED COMPONENTS
     CommonCore
+    CommonDataModel
     IOXML
     IOLegacy
     ImagingCore
-    CommonDataModel
 )
 
-# Generate executable for all .e.cpp
+message(STATUS "TBB found: ${TBB_VERSION}")
+message(STATUS "VTK found: ${VTK_VERSION}")
+
+# ============================================================================
+# Build Examples
+# ============================================================================
+set(EXAMPLES_DIR "./")
 file(GLOB EXAMPLE_FILES "${EXAMPLES_DIR}/*.e.cpp")
+
+if(NOT EXAMPLE_FILES)
+    message(WARNING "No example files (*.e.cpp) found in ${EXAMPLES_DIR}")
+endif()
+
 foreach(EXAMPLE_FILE ${EXAMPLE_FILES})
     get_filename_component(TARGET_NAME ${EXAMPLE_FILE} NAME_WE)
+    
+    # Create executable
     add_executable(${TARGET_NAME} ${EXAMPLE_FILE})
-    target_include_directories(${TARGET_NAME} PUBLIC ../include ../lib ${CMAKE_BINARY_DIR})
+    
+    # Include directories
+    target_include_directories(${TARGET_NAME} 
+        PUBLIC 
+            ../include 
+            ../lib 
+            ${CMAKE_BINARY_DIR}
+        PRIVATE 
+            ${VTK_INCLUDE_DIRS}
+    )
+    
+    # Compiler options
     target_compile_options(${TARGET_NAME} PRIVATE ${CXX_FLAGS})
+    
+    # Linker options
     target_link_options(${TARGET_NAME} PRIVATE ${LINK_FLAGS})
-    target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb ${VTK_LIBRARIES})
-    target_include_directories(${TARGET_NAME} PRIVATE ${VTK_INCLUDE_DIRS})
-    # Ensure generated config is created before compiling
+    
+    # Libraries
+    target_link_libraries(${TARGET_NAME} 
+        PRIVATE 
+            TBB::tbb 
+            ${VTK_LIBRARIES}
+    )
+    
+    # Ensure config header is generated first
     add_dependencies(${TARGET_NAME} generated_config_header)
+    
+    message(STATUS "Added target: ${TARGET_NAME}")
 endforeach()
 
-# Custom target to ensure header generation
-add_custom_target(generated_config_header
-    DEPENDS ${GENERATED_CONFIG_HPP}
-)
-
-
-
-# Build messages
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "Output directory: ${OUTPUT_DIR}")
-message(STATUS "Sanitizers: ${ENABLE_SANITIZERS}")
+# ============================================================================
+# Build Summary
+# ============================================================================
+message(STATUS "")
+message(STATUS "=== Build Configuration Summary ===")
+message(STATUS "Build Type:         ${CMAKE_BUILD_TYPE}")
+message(STATUS "C++ Standard:       C++${CMAKE_CXX_STANDARD}")
+message(STATUS "Compiler:           ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "Sanitizers:         ${ENABLE_SANITIZERS}")
+message(STATUS "Output Directory:   ${OUTPUT_DIR}")
+message(STATUS "Parallel Jobs:      ${CMAKE_BUILD_PARALLEL_LEVEL}")
+message(STATUS "====================================")
