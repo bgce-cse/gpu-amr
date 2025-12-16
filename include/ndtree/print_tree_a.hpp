@@ -10,8 +10,6 @@
 
 #include "solver/cell_types.hpp"
 
-struct S1;
-
 namespace amr::ndt::print
 {
 

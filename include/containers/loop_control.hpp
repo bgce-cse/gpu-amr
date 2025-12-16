@@ -17,7 +17,53 @@ public:
     using rank_t  = typename S::rank_t;
 
 private:
-    static constexpr auto s_rank = shape_t::rank();
+    static constexpr auto s_rank   = shape_t::rank();
+    static constexpr auto s_sizes  = shape_t::sizes();
+    static constexpr auto s_stride = index_t{ Stride };
+    static constexpr auto s_start  = []
+    {
+        using start_t = std::remove_cvref_t<decltype(Start)>;
+        if constexpr (std::is_arithmetic_v<start_t>)
+        {
+            if constexpr (Start >= 0)
+            {
+                return index_t{ Start };
+            }
+            else
+            {
+                auto sizes = s_sizes;
+                for (auto& e : sizes)
+                    e += Start;
+                return sizes;
+            }
+        }
+        else
+        {
+            return index_t{ Start };
+        }
+    }();
+    static constexpr auto s_end = []
+    {
+        using end_t = std::remove_cvref_t<decltype(End)>;
+        if constexpr (std::is_arithmetic_v<end_t>)
+        {
+            if constexpr (End >= 0)
+            {
+                return index_t{ End };
+            }
+            else
+            {
+                auto sizes = s_sizes;
+                for (auto& e : sizes)
+                    e += End;
+                return sizes;
+            }
+        }
+        else
+        {
+            return index_t{ End };
+        }
+    }();
 
 public:
     [[nodiscard]]
@@ -69,15 +115,18 @@ private:
     [[nodiscard]]
     static consteval auto is_valid() noexcept -> bool
     {
-        static_assert(check_param(Start));
-        static_assert(check_param(Stride));
-        static_assert(check_param(End));
+        static_assert(check_param(s_start));
+        static_assert(check_param(s_end));
+        static_assert(check_param(s_stride));
         for (auto i = decltype(s_rank){}; i != s_rank; ++i)
         {
-            if ((at_idx(Start, i) >= index_t{}) && (at_idx(Start, i) <= at_idx(End, i)) &&
-                (at_idx(End, i) <= shape_t::size(i)) &&
-                ((at_idx(End, i) - at_idx(Start, i)) % at_idx(Stride, i) == index_t{}))
+            if ((at_idx(s_start, i) >= index_t{}) &&
+                (at_idx(s_start, i) <= at_idx(s_end, i)) &&
+                (at_idx(s_end, i) <= s_sizes[i] &&
+                 ((at_idx(s_end, i) - at_idx(s_start, i)) % at_idx(s_stride, i) ==
+                  index_t{})))
             {
+                continue;
             }
             else
             {
@@ -93,19 +142,19 @@ public:
     [[nodiscard]]
     static constexpr auto start(const rank_t i) noexcept -> index_t
     {
-        return at_idx(Start, i);
+        return at_idx(s_start, i);
     }
 
     [[nodiscard]]
     static constexpr auto end(const rank_t i) noexcept -> index_t
     {
-        return at_idx(End, i);
+        return at_idx(s_end, i);
     }
 
     [[nodiscard]]
     static constexpr auto stride(const rank_t i) noexcept -> index_t
     {
-        return at_idx(Stride, i);
+        return at_idx(s_stride, i);
     }
 };
 

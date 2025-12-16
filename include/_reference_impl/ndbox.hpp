@@ -1,7 +1,7 @@
 #ifndef GPU_AMR_NDBOX
 #define GPU_AMR_NDBOX
 
-#include "error_handling.hpp"
+#include "utility/error_handling.hpp"
 #include "logging.hpp"
 #include "ndboundary.hpp"
 #include "ndt_concepts.hpp"

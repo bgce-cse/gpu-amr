@@ -64,7 +64,7 @@ private:
     static constexpr size_type s_halo_width = patch_layout_t::halo_width();
     static constexpr size_type s_1d_fanout  = patch_index_t::fanout();
     static constexpr size_type s_nd_fanout  = patch_index_t::nd_fanout();
-    static constexpr size_type s_dimension  = patch_layout_t::dimension();
+    static constexpr size_type s_rank  = patch_layout_t::rank();
 
     static_assert(s_1d_fanout > 1);
     static_assert(s_nd_fanout > 1);
@@ -124,9 +124,9 @@ private:
 
 public:
     [[nodiscard]]
-    static constexpr auto dimension() noexcept -> auto const&
+    static constexpr auto rank() noexcept -> auto const&
     {
-        return s_dimension;
+        return s_rank;
     }
 
     [[nodiscard]]

@@ -7,6 +7,7 @@
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iostream>
+#include <string_view>
 #include <tuple>
 
 struct S1
@@ -16,6 +17,11 @@ struct S1
     static constexpr auto index() noexcept -> std::size_t
     {
         return 0;
+    }
+
+    static constexpr auto name() noexcept -> std::string_view
+    {
+        return "S1";
     }
 
     type value;
@@ -28,6 +34,11 @@ struct S2
     static constexpr auto index() noexcept -> std::size_t
     {
         return 1;
+    }
+
+    static constexpr auto name() noexcept -> std::string_view
+    {
+        return "S2";
     }
 
     type value;
@@ -83,8 +94,8 @@ int main()
     tree_t tree(100000);
 
     amr::ndt::print::structured_print p(std::cout);
+    amr::ndt::print::vtk_print        vtk_printer("test");
 
-    std::cout << "Print 0\n";
     p.print(tree);
 
     auto refine_criterion = [](const patch_index_t& idx)
@@ -136,6 +147,9 @@ int main()
 
     std::cout << "Print 3\n";
     p.print(tree);
+
+    std::string file_extension = "_iteration_" + std::to_string(0) + ".vtk";
+    vtk_printer.print(tree, file_extension);
 
     return EXIT_SUCCESS;
 }
