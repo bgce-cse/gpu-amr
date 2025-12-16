@@ -4,11 +4,11 @@
 #include "ndtree/ndtree.hpp"
 #include "cell_types.hpp"
 #include "EulerPhysics.hpp"
-
+#include "physics_system.hpp"
 #include <vector>
 #include <functional>
 
-template<typename TreeT, int DIM>
+template<typename TreeT, typename PhysicsT, int DIM>
 class amr_solver {
 private:
     TreeT m_tree;
@@ -16,6 +16,7 @@ private:
     double cfl;         // CFL number
 
 public:
+    using physics_system_t = PhysicsT;
     using PatchLayoutT = typename TreeT::patch_layout_t;
     using PatchIndexT = typename TreeT::patch_index_t;
     using EulerPhysicsSolver = EulerPhysics<DIM>;
@@ -67,30 +68,12 @@ public:
 
     template<typename InitFunc>
     void initialize_2d(InitFunc init_func) {
-        // Get geometrical constants
-        // constexpr double global_size = 1.0;
-        //constexpr size_t patch_size_x = Patch_Layout::data_layout_t::sizes()[0]; 
-        constexpr std::size_t patch_size_padded_x = PatchLayoutT::padded_layout_t::shape_t::sizes()[1];
-        constexpr std::size_t patch_size_padded_y = PatchLayoutT::padded_layout_t::shape_t::sizes()[0];
         constexpr std::size_t patch_flat_size = PatchLayoutT::flat_size();
-
-        // Get max_depth from the TreeT definition
-        constexpr auto max_depth = PatchIndexT::max_depth();
-
-        // The total coordinate range is 2^max_depth (e.g., 512 for max_depth=9)
-        constexpr double max_cell_size = 1u << max_depth;
-        constexpr double max_coord_x = max_cell_size * patch_size_padded_x;
-        constexpr double max_coord_y = max_cell_size * patch_size_padded_y;
 
         // Loop over all patches
         for (std::size_t patch_idx = 0; patch_idx < m_tree.size(); ++patch_idx) {
             
             auto patch_id = m_tree.get_node_index_at(patch_idx);
-            auto level = patch_id.level();
-            auto [patch_coords_raw, _] = PatchIndexT::decode(patch_id.id());
-            
-            // Size of a single cell in terms of the maximum coordinate units
-            uint32_t cell_size_units = 1u << (max_depth - level);
             
             // Get references to the patch data buffers
             auto& rho_patch  = m_tree.template get_patch<amr::cell::Rho>(patch_idx);
@@ -106,24 +89,13 @@ public:
                     continue;
                 }
 
-                // Calculate 2D coordinates (i, j) within the **unpadded** patch layout
-                uint32_t i = static_cast<uint32_t>(linear_idx % patch_size_padded_x);
-                uint32_t j = static_cast<uint32_t>(linear_idx / patch_size_padded_x);
+                // Get cell center coordinates using physics system
+                auto cell_center = physics_system_t::cell_coord(patch_id, linear_idx);
                 
-                // Calculate absolute cell center coordinates in max_coord units
-                // x_units = (Patch Origin X) + (Cell Index i) * (Cell Size in units) + (Half Cell Size)
-                uint32_t cell_x_units = patch_coords_raw[0] *  static_cast<uint32_t>(patch_size_padded_x) + 
-                                        static_cast<uint32_t>(i) * cell_size_units + 
-                                        cell_size_units / 2;
-                
-                uint32_t cell_y_units = patch_coords_raw[1] *  static_cast<uint32_t>(patch_size_padded_y) + 
-                                        static_cast<uint32_t>(j) * cell_size_units + 
-                                        cell_size_units / 2;
-
-                // Convert to normalized world coordinates [0, 1]
-                double x_world = static_cast<double>(cell_x_units) / max_coord_x;
-                double y_world = static_cast<double>(cell_y_units) / max_coord_y;
-
+                // For cell centers, add 0.5 * cell_size
+                auto cell_size = physics_system_t::cell_sizes(patch_id);
+                double x_world = cell_center[0] + 0.5 * cell_size[0];
+                double y_world = cell_center[1] + 0.5 * cell_size[1];
 
                 // Evaluate the Initial Condition
                 amr::containers::static_vector<double, NVAR> prim = init_func(x_world, y_world);
@@ -228,12 +200,16 @@ public:
     void time_step_2d(double dt){
         constexpr size_t patch_size_padded_x = PatchLayoutT::padded_layout_t::shape_t::sizes()[1];
         constexpr size_t patch_flat_size = PatchLayoutT::flat_size();
-        constexpr auto max_depth = PatchIndexT::max_depth();
-        // A temporary buffer to store the new states before committing them to the tree
-        std::vector<std::vector<amr::cell::EulerCell2D>> U_new_patches;
 
         // Loop over the tree and apply the finite volume update
         for (std::size_t patch_idx = 0; patch_idx < m_tree.size(); ++patch_idx) {
+            
+            auto patch_id = m_tree.get_node_index_at(patch_idx);
+            
+            // Get cell sizes for this patch using physics system
+            auto cell_size = physics_system_t::cell_sizes(patch_id);
+            double dx = cell_size[0];
+            double dy = cell_size[1];
             
             // Get current patch's conservative states
             auto& rho_patch = m_tree.template get_patch<amr::cell::Rho>(patch_idx);
@@ -245,10 +221,9 @@ public:
             std::vector<std::array<double, NVAR>> U_new_patch_buffer(patch_flat_size);
 
             // Loop over cells of patch
-            for (std::size_t linear_idx = 0; linear_idx != patch_flat_size;
-                ++linear_idx)
+            for (std::size_t linear_idx = 0; linear_idx != patch_flat_size; ++linear_idx)
             {
-                // SKip halo cells
+                // Skip halo cells
                 if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(linear_idx))
                 {
                     continue;
@@ -305,14 +280,6 @@ public:
                 EulerPhysicsSolver::rusanovFlux(U_bottom_neighbor, U_cell, flux_bottom, Direction::Y, gamma);
                 
                 // Apply the finite volume update to the temporary buffer
-                auto patch_id = m_tree.get_node_index_at(patch_idx);
-                auto level = patch_id.level();
-                // auto max_depth = decltype(patch_id)::max_depth();
-                uint32_t cell_size = 1u << (max_depth - level);
-
-                double dx = cell_size;
-                double dy = cell_size;
-                
                 for (int k = 0; k < NVAR; ++k) {
                     U_new_patch_buffer[linear_idx][k] = U_cell[k] - (dt / dx) * (flux_right[k] - flux_left[k])
                                             - (dt / dy) * (flux_top[k] - flux_bottom[k]);
@@ -477,19 +444,19 @@ public:
     }
 
     double compute_time_step_2d() const {
-        constexpr size_t patch_flat_size = PatchLayoutT::flat_size();
-        constexpr auto max_depth = PatchIndexT::max_depth();
+        constexpr auto patch_flat_size = PatchLayoutT::flat_size();
         
         double dt_min = 1e10;
 
         // Loop over all patches
         for (std::size_t patch_idx = 0; patch_idx < m_tree.size(); ++patch_idx) {
             
-            // Get patch properties
             auto patch_id = m_tree.get_node_index_at(patch_idx);
-            auto level = patch_id.level();
-            uint32_t cell_size = 1u << (max_depth - level);
-            double dx = cell_size;
+            
+            // Get cell sizes using physics system
+            auto cell_size = physics_system_t::cell_sizes(patch_id);
+            double dx = cell_size[0];
+            double dy = cell_size[1];
 
             // Get current patch's conservative states
             const auto& rho_patch = m_tree.template get_patch<amr::cell::Rho>(patch_idx);
@@ -517,12 +484,15 @@ public:
                 // Get sound speed
                 double a = EulerPhysicsSolver::computeSoundSpeed(U_cell, gamma);
 
-                // Compute time step for each direction
-                for (int dim = 0; dim < 2; ++dim) {
-                    double u_dim = prim[1 + dim];
-                    double dt_dir = dx / (std::abs(u_dim) + a);
-                    dt_min = std::min(dt_min, dt_dir);
-                }
+                // Compute time step for X direction
+                double u_x = prim[1];
+                double dt_x = dx / (std::abs(u_x) + a);
+                dt_min = std::min(dt_min, dt_x);
+                
+                // Compute time step for Y direction
+                double u_y = prim[2];
+                double dt_y = dy / (std::abs(u_y) + a);
+                dt_min = std::min(dt_min, dt_y);
             }
         }
 
@@ -586,10 +556,10 @@ public:
 };
 
 // Typedefs
-template<typename TreeT>
-using amr_solver_2d = amr_solver<TreeT, 2>;
+template<typename TreeT, typename PhysicsT>
+using amr_solver_2d = amr_solver<TreeT, PhysicsT, 2>;
 
-template<typename TreeT>
-using amr_solver_3d = amr_solver<TreeT, 3>;
+template<typename TreeT, typename PhysicsT>
+using amr_solver_3d = amr_solver<TreeT, PhysicsT, 3>;
 
 #endif // AMR_SOLVER_HPP

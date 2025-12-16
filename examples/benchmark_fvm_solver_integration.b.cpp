@@ -23,6 +23,12 @@ int main()
     constexpr std::size_t M    = 10;
     constexpr std::size_t Halo = 2;
 
+    constexpr double physics_x = 1000;
+    constexpr double physics_y = 1000;
+
+
+    constexpr std::array<double, 2> physics_lengths = {physics_x, physics_y};
+
     using shape_t  = amr::containers::static_shape<N, M>;
     using layout_t = amr::containers::static_layout<shape_t>;
     // using index_t         = typename layout_t::index_t;
@@ -32,12 +38,14 @@ int main()
     using tree_t =
         amr::ndt::tree::ndtree<amr::cell::EulerCell2D, patch_index_t, patch_layout_t>;
 
+    using physics_t = amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
+
     double            tmax          = 400;
 
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t, 2> solver(1000000); // Provide initial capacity for tree
+    amr_solver<tree_t,physics_t, 2> solver(1000000); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)

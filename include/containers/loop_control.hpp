@@ -39,7 +39,7 @@ private:
         }
         else
         {
-            return index_t{ Start };
+            return Start;
         }
     }();
     static constexpr auto s_end = []
@@ -61,7 +61,7 @@ private:
         }
         else
         {
-            return index_t{ End };
+            return End;
         }
     }();
 

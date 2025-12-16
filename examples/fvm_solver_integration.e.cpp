@@ -5,9 +5,10 @@
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
-#include "ndtree/print_tree_a.hpp"
+#include "ndtree/vtk_print.hpp"
 #include "solver/amr_solver.hpp"
 #include "solver/cell_types.hpp"
+#include "solver/physics_system.hpp"
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -19,21 +20,26 @@
 int main()
 {
     std::cout << "Hello AMR world\n";
-    constexpr std::size_t N    = 10;
-    constexpr std::size_t M    = 10;
-    constexpr std::size_t Halo = 2;
+    constexpr std::size_t N         = 10;
+    constexpr std::size_t M         = 10;
+    constexpr std::size_t Halo      = 2;
+    constexpr double      physics_x = 1000;
+    constexpr double      physics_y = 1000;
+
+    constexpr std::array<double, 2> physics_lengths = { physics_x, physics_y };
 
     using shape_t  = amr::containers::static_shape<N, M>;
     using layout_t = amr::containers::static_layout<shape_t>;
-    // using index_t         = typename layout_t::index_t;
 
-    using patch_index_t  = amr::ndt::morton::morton_id<8u, 2u>;
+    using patch_index_t  = amr::ndt::morton::morton_id<7u, 2u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
     using tree_t =
         amr::ndt::tree::ndtree<amr::cell::EulerCell2D, patch_index_t, patch_layout_t>;
 
-    amr::ndt::print::example_halo_patch_print<Halo, M, N> printer("euler_halo");
-    amr::ndt::print::example_patch_print<Halo, M, N>      printer2("euler_tree");
+    using physics_t =
+        amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
+
+    amr::ndt::print::vtk_print<physics_t> printer("euler_print");
 
     double            tmax            = 400;  // Example tmax, adjust as needed
     double            print_frequency = 10.0; // Print every 10 seconds
@@ -42,7 +48,7 @@ int main()
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t, 2> solver(1000000); // Provide initial capacity for tree
+    amr_solver<tree_t, physics_t, 2> solver(1000000); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
@@ -90,12 +96,13 @@ int main()
     };
 
     // Parameters for the Acoustic Pulse
-    constexpr double RHO_BG         = 0.5;
-    constexpr double P_BG           = 1.0;
-    constexpr double AMPLITUDE      = 10.0;
-    constexpr double PULSE_WIDTH_SQ = 0.01; // sigma^2
-    constexpr double CENTER_X       = 0.5;
-    constexpr double CENTER_Y       = 0.5;
+    constexpr double RHO_BG    = 0.5;
+    constexpr double P_BG      = 1.0;
+    constexpr double AMPLITUDE = 10.0;
+    constexpr double PULSE_WIDTH_SQ =
+        0.01 * physics_x * physics_y; // sigma^2 in physical units
+    constexpr double CENTER_X = 0.5 * physics_x;
+    constexpr double CENTER_Y = 0.5 * physics_y;
 
     // The initial condition function (auto IC = [](){})
     auto acousticPulseIC = [](double x,
@@ -131,7 +138,7 @@ int main()
     solver.get_tree().halo_exchange_update();
 
     // Print initial state
-    printer.print(solver.get_tree(), "_iteration_0.vtk");
+    // printer.print(solver.get_tree(), "_iteration_0.vtk");
 
     // Main Simulation Loop
     double t               = 0.0;
@@ -145,10 +152,7 @@ int main()
     {
         double dt = solver.compute_time_step();
 
-        DEFAULT_SOURCE_LOG_INFO(
-            "Step " + std::to_string(step) + ", t=" + std::to_string(t) +
-            ", dt=" + std::to_string(dt)
-        );
+        std::cout << "Step " << step << ", t=" << t << ", dt=" << dt << std::endl;
 
         solver.time_step(dt);
         solver.get_tree().halo_exchange_update();
@@ -166,8 +170,8 @@ int main()
         {
             std::string file_extension =
                 "_iteration_" + std::to_string(output_counter) + ".vtk";
+            // printer.print(solver.get_tree(), file_extension);
             printer.print(solver.get_tree(), file_extension);
-            printer2.print(solver.get_tree(), file_extension);
             next_print_time += print_frequency;
             output_counter++;
         }
