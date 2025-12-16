@@ -7,6 +7,7 @@
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
 #include "ndtree/print_tree_a.hpp"
+#include "solver/physics_system.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iomanip> // for std::setw, std::setprecision
@@ -75,6 +76,13 @@ int main()
     constexpr std::size_t N    = 4;
     constexpr std::size_t M    = 6;
     constexpr std::size_t Halo = 1;
+    constexpr double physics_x = 1000;
+    constexpr double physics_y = 1000;
+
+
+    constexpr std::array<double, 2> physics_lengths = {physics_x, physics_y};
+    
+
     // using linear_index_t    = std::uint32_t;
     [[maybe_unused]]
     constexpr auto Fanout = 2;
@@ -86,10 +94,12 @@ int main()
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
     using tree_t         = amr::ndt::tree::ndtree<cell, patch_index_t, patch_layout_t>;
 
+    using physics_t = amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
+
     tree_t tree(100000); // Provide initial capacity
     std::cout << "Dim: " << patch_layout_t::padded_layout_t::shape_t::sizes()[0] << '\n';
 
-    amr::ndt::print::example_patch_print<Halo, M, N> printer("circle_tree");
+    amr::ndt::print::example_patch_print<,Halo, M, N> printer("circle_tree");
 
     auto refine_criterion = [](const patch_index_t& idx)
     {

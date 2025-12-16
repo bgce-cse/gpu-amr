@@ -172,7 +172,7 @@ private:
 
 
 // template of patch_x and patch_y
-template <size_t Halo, std::size_t... PatchDims>
+template <typename PhysicsSystem, size_t Halo, std::size_t... PatchDims>
 struct example_patch_print
 {
     static_assert(sizeof...(PatchDims) >= 2, "Need at least 2 dimensions for patch");
@@ -215,60 +215,41 @@ private:
 
     void write_patch_data(std::ofstream& file, auto const& tree) const
     {
-        using TreeType  = std::remove_cvref_t<decltype(tree)>;
-        using IndexType = typename TreeType::patch_index_t;
+        // using TreeType  = std::remove_cvref_t<decltype(tree)>;
+        // using IndexType = typename TreeType::patch_index_t;
 
-        std::vector<std::array<uint32_t, 3>> points;
-        std::vector<float>                   s1_values;
+        std::vector<std::array<double, 3>> points;
         std::vector<double> rho_values;
 
-        size_t   total_cells = tree.size() * total_patch_elements;
-        uint32_t max_coord   = 1u << IndexType::max_depth();
-
-        // uint32_t max_coord_x = max_coord * patch_size_x;
-        uint32_t max_coord_y = max_coord * patch_size_y;
+        size_t total_cells = tree.size() * total_patch_elements;
 
         for (size_t patch_idx = 0; patch_idx < tree.size(); ++patch_idx)
         {
-            auto     patch_id   = tree.get_node_index_at(patch_idx);
-            auto     level      = patch_id.level();
-            auto     max_depth  = IndexType::max_depth();
-            uint32_t patch_size = 1u << (max_depth - level);
+            auto patch_id = tree.get_node_index_at(patch_idx);
 
-            auto [patch_coords, _] = IndexType::decode(patch_id.id());
-            uint32_t patch_x       = patch_size_x * patch_coords[0];
-            uint32_t patch_y       = patch_size_y * patch_coords[1];
-
-            // Get the S1 data for this patch
-            //auto s1_patch = tree.template get_patch<S1>(patch_idx);
+            // Get patch origin and cell size from physics system
+            auto patch_origin = PhysicsSystem::patch_coord(patch_id);
+            auto cell_size = PhysicsSystem::cell_sizes(patch_id);
 
             // Get references to specific data components
-            const auto& rho_patch  = tree.template get_patch<amr::cell::Rho>(patch_idx);
+            const auto& rho_patch = tree.template get_patch<amr::cell::Rho>(patch_idx);
 
             // For each cell in the patch_size_x * patch_size_y patch
-            for (std::size_t i = 0; i < patch_size_x; i++)
+            for (std::size_t j = 0; j < patch_size_y; j++)  // Y dimension
             {
-                for (std::size_t j = 0; j < patch_size_y; j++)
+                for (std::size_t i = 0; i < patch_size_x; i++)  // X dimension
                 {
-                    // FIXED: Each cell gets a fraction of the patch space
-                    uint32_t cell_x = patch_x + static_cast<uint32_t>(i) * patch_size;
-                    uint32_t cell_y = patch_y + static_cast<uint32_t>(j) * patch_size;
+                    // Calculate cell corner position in physical coordinates
+                    double cell_x = patch_origin[0] + static_cast<double>(i) * cell_size[0];
+                    double cell_y = patch_origin[1] + static_cast<double>(j) * cell_size[1];
 
-                    // FLIP Y coordinates for top-left origin
-                    uint32_t flipped_y     = max_coord_y - cell_y - patch_size;
-                    uint32_t flipped_y_top = max_coord_y - cell_y;
+                    // Add the 4 corners of this cell
+                    points.push_back({ cell_x, cell_y, 0.0 });                                      // bottom-left
+                    points.push_back({ cell_x + cell_size[0], cell_y, 0.0 });                      // bottom-right
+                    points.push_back({ cell_x + cell_size[0], cell_y + cell_size[1], 0.0 });       // top-right
+                    points.push_back({ cell_x, cell_y + cell_size[1], 0.0 });                      // top-left
 
-                    // Add the 4 corners of this cell (with Y flipped)
-                    points.push_back({ cell_x, flipped_y_top, 0 }); // top-left
-                    points.push_back(
-                        { cell_x + patch_size, flipped_y_top, 0 }
-                    ); // top-right
-                    points.push_back(
-                        { cell_x + patch_size, flipped_y, 0 }
-                    );                                          // bottom-right
-                    points.push_back({ cell_x, flipped_y, 0 }); // bottom-left
-
-                    // Store the S1 value for this cell
+                    // Store the rho value for this cell (skip halos, use data region)
                     rho_values.push_back(rho_patch[j + Halo, i + Halo]);
                 }
             }
@@ -297,9 +278,9 @@ private:
             file << "9\n";
         }
 
-        // Write S1 values as cell data
+        // Write rho values as cell data
         file << "CELL_DATA " << total_cells << "\n";
-        file << "SCALARS RHO_values float 1\n";
+        file << "SCALARS RHO_values double 1\n";
         file << "LOOKUP_TABLE default\n";
         for (size_t i = 0; i < rho_values.size(); ++i)
         {
