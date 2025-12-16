@@ -4,9 +4,12 @@
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
 #include "ndtree/structured_print.hpp"
+#include "ndtree/vtk_print.hpp"
+#include "solver/physics_system.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iostream>
+#include <string_view>
 #include <tuple>
 
 struct S1
@@ -16,6 +19,11 @@ struct S1
     static constexpr auto index() noexcept -> std::size_t
     {
         return 0;
+    }
+
+    static constexpr auto name() noexcept -> std::string_view
+    {
+        return "S1";
     }
 
     type value;
@@ -28,6 +36,11 @@ struct S2
     static constexpr auto index() noexcept -> std::size_t
     {
         return 1;
+    }
+
+    static constexpr auto name() noexcept -> std::string_view
+    {
+        return "S2";
     }
 
     type value;
@@ -66,9 +79,14 @@ auto operator<<(std::ostream& os, cell const& c) -> std::ostream&
 
 int main()
 {
-    constexpr std::size_t N    = 4;
-    constexpr std::size_t M    = 6;
-    constexpr std::size_t Halo = 2;
+    constexpr std::size_t N    = 2;
+    constexpr std::size_t M    = 2;
+    constexpr std::size_t Halo = 1;
+
+    constexpr auto domain_size_x = 1000.0;
+    constexpr auto domain_size_y = 1000.0;
+
+    constexpr auto physics_lengths = std::array{ domain_size_x, domain_size_y };
     // using linear_index_t    = std::uint32_t;
     [[maybe_unused]]
     constexpr auto Fanout = 2;
@@ -79,12 +97,14 @@ int main()
     using patch_index_t  = amr::ndt::morton::morton_id<9u, 2u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
     using tree_t         = amr::ndt::tree::ndtree<cell, patch_index_t, patch_layout_t>;
+    using physics_t =
+        amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
     tree_t tree(100000);
 
-    amr::ndt::print::structured_print p(std::cout);
+    amr::ndt::print::structured_print     p(std::cout);
+    amr::ndt::print::vtk_print<physics_t> vtk_printer("test");
 
-    std::cout << "Print 0\n";
     p.print(tree);
 
     auto refine_criterion = [](const patch_index_t& idx)
@@ -136,6 +156,9 @@ int main()
 
     std::cout << "Print 3\n";
     p.print(tree);
+
+    std::string file_extension = "_iteration_" + std::to_string(0) + ".vtk";
+    vtk_printer.print(tree, file_extension);
 
     return EXIT_SUCCESS;
 }

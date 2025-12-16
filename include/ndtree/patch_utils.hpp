@@ -8,6 +8,7 @@
 #include "ndutils.hpp"
 #include "neighbor.hpp"
 #include "utility/compile_time_utility.hpp"
+#include "utility/logging.hpp"
 #include <algorithm>
 
 namespace amr::ndt::utils
@@ -315,6 +316,11 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            DEFAULT_SOURCE_LOG_TRACE(
+                std::string("Boundary halo exchange in direction ") +
+                std::to_string(direction.index())
+            );
+            DEFAULT_SOURCE_LOG_DEBUG("Boundary halo exchange not implemented");
         }
     };
 
@@ -328,6 +334,10 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            DEFAULT_SOURCE_LOG_TRACE(
+                std::string("Same halo exchange in direction ") +
+                std::to_string(direction.index())
+            );
             using direction_t   = std::remove_cvref_t<decltype(direction)>;
             const auto dim      = direction.dimension();
             const auto positive = direction_t::is_positive(direction);
@@ -349,6 +359,10 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            DEFAULT_SOURCE_LOG_TRACE(
+                std::string("Finer halo exchange in direction ") +
+                std::to_string(direction.index())
+            );
             using direction_t = std::remove_cvref_t<decltype(direction)>;
             using value_t     = std::remove_cvref_t<decltype(current_patch[idxs])>;
 
@@ -390,7 +404,7 @@ struct halo_exchange_impl_t
                     s_halo_width;
             }
 
-            value_t           sum{};
+            value_t sum{};
             for (index_t fine_offset = 0; fine_offset < s_nd_fanout; ++fine_offset)
             {
                 auto    fine_cell_idxs = base_fine_idxs;
@@ -418,6 +432,10 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            DEFAULT_SOURCE_LOG_TRACE(
+                std::string("Coarser halo exchange in direction ") +
+                std::to_string(direction.index())
+            );
             using direction_t = std::remove_cvref_t<decltype(direction)>;
 
             const auto dim      = direction.dimension();

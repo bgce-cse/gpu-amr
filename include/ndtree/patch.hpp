@@ -57,15 +57,6 @@ public:
         return m_data;
     }
 
-    // TODO: Remove
-    [[nodiscard]]
-    static constexpr auto from_container(container_t const& c) noexcept -> patch
-    {
-        patch p{};
-        p.m_data = c;
-        return p;
-    }
-
 public:
     template <class... I>
         requires(sizeof...(I) == s_rank) && (std::integral<std::remove_cvref_t<I>> && ...)

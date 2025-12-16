@@ -6,7 +6,6 @@
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
-#include "ndtree/print_tree_a.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iomanip> // for std::setw, std::setprecision

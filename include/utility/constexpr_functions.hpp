@@ -8,11 +8,11 @@
 namespace utility::cx_functions
 {
 
-// Do not use this for anything serious
-template <concepts::Arithmetic T>
-constexpr auto pow(T base, T exp) noexcept -> T
+constexpr auto pow(concepts::Arithmetic auto base, concepts::Arithmetic auto exp) noexcept
+    -> std::remove_cvref_t<decltype(base)>
 {
-    T result{ 1 };
+    using ret_t = std::remove_cvref_t<decltype(base)>;
+    ret_t result{ 1 };
     for (; exp > 0; --exp)
     {
         result *= base;

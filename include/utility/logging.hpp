@@ -230,15 +230,24 @@ auto init() -> void
 
 class default_source
 {
+    inline static constexpr std::string_view s_info_repr    = "info";
+    inline static constexpr std::string_view s_debug_repr   = "debug";
+    inline static constexpr std::string_view s_error_repr   = "error";
+    inline static constexpr std::string_view s_fatal_repr   = "fatal";
+    inline static constexpr std::string_view s_trace_repr   = "trace";
+    inline static constexpr std::string_view s_warning_repr = "warning";
+    inline static constexpr std::string_view s_unknown_repr = "UNKNOWN";
+
 public:
-    inline static auto log(severity_level sev, std::string_view message) -> void
+    inline static auto log(severity_level sev, auto&& message) -> void
     {
 #ifdef USE_BOOST_LOGGING
         std::cal_once(s_initialized, init);
         static src::severity_logger<severity_level> lg;
-        BOOST_LOG_SEV(lg, sev) << message;
+        BOOST_LOG_SEV(lg, sev) << std::forward<decltype(message)>(message);
 #else
-        DEBUG_OSTREAM << "Log <" << severity_name(sev) << "> " << message << '\n';
+        DEBUG_OSTREAM << "Log <" << severity_name(sev) << "> "
+                      << std::forward<decltype(message)>(message) << '\n';
 #endif
     }
 
@@ -251,13 +260,13 @@ private:
     {
         switch (sev)
         {
-            case utility::logging::severity_level::info: return "info";
-            case utility::logging::severity_level::debug: return "debug";
-            case utility::logging::severity_level::error: return "error";
-            case utility::logging::severity_level::fatal: return "fatal";
-            case utility::logging::severity_level::trace: return "trace";
-            case utility::logging::severity_level::warning: return "warning";
-            default: return "UNKNOWN";
+            case utility::logging::severity_level::info: return s_info_repr;
+            case utility::logging::severity_level::debug: return s_debug_repr;
+            case utility::logging::severity_level::error: return s_error_repr;
+            case utility::logging::severity_level::fatal: return s_fatal_repr;
+            case utility::logging::severity_level::trace: return s_trace_repr;
+            case utility::logging::severity_level::warning: return s_warning_repr;
+            default: return s_unknown_repr;
         }
     };
 #endif

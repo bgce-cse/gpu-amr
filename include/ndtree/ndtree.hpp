@@ -64,7 +64,7 @@ private:
     static constexpr size_type s_halo_width = patch_layout_t::halo_width();
     static constexpr size_type s_1d_fanout  = patch_index_t::fanout();
     static constexpr size_type s_nd_fanout  = patch_index_t::nd_fanout();
-    static constexpr size_type s_dimension  = patch_layout_t::dimension();
+    static constexpr size_type s_rank  = patch_layout_t::rank();
 
     static_assert(s_1d_fanout > 1);
     static_assert(s_nd_fanout > 1);
@@ -124,9 +124,9 @@ private:
 
 public:
     [[nodiscard]]
-    static constexpr auto dimension() noexcept -> auto const&
+    static constexpr auto rank() noexcept -> auto const&
     {
-        return s_dimension;
+        return s_rank;
     }
 
     [[nodiscard]]
@@ -708,6 +708,7 @@ public:
         assert(it != nullptr && it != m_index_map.end());
         if (it == nullptr)
         {
+            DEFAULT_SOURCE_LOG_FATAL("Patch index " + node_id.repr() + " not found in index map");
             utility::error_handling::assert_unreachable();
         }
         return it->second;
@@ -833,8 +834,8 @@ public:
 public:
     [[nodiscard]]
     auto gather_node(linear_index_t const i) const noexcept -> map_type
-
     {
+        DEFAULT_SOURCE_LOG_TRACE("Gather node");
         return std::apply(
             [i](auto&&... args)
             { return map_type(std::forward<decltype(args)>(args)[i]...); },
@@ -844,6 +845,7 @@ public:
 
     auto scatter_node(map_type const& v, const linear_index_t i) const noexcept -> void
     {
+        DEFAULT_SOURCE_LOG_TRACE("Scatter node");
         [this, &v, i]<std::size_t... I>(std::index_sequence<I...>)
         {
             ((void)(std::get<I>(m_data_buffers)[i] = std::get<I>(v.data_tuple()).value),
@@ -856,6 +858,7 @@ public:
         linear_index_t const to
     ) noexcept -> void
     {
+        DEFAULT_SOURCE_LOG_TRACE("Patch restriction");
         static constexpr auto patch_size = patch_layout_t::flat_size();
 
         // TODO: remove
@@ -919,6 +922,7 @@ public:
         linear_index_t const start_to
     ) noexcept -> void
     {
+        DEFAULT_SOURCE_LOG_TRACE("Patch interpolation");
         for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
         {
             const auto child_patch_index = start_to + patch_idx;
@@ -946,9 +950,9 @@ public:
 
     constexpr auto halo_exchange_update() noexcept -> void
     {
+        DEFAULT_SOURCE_LOG_TRACE("Performing halo exchange");
         for (linear_index_t i = 0; i != m_size; ++i)
         {
-            // TODO: TODO
             utils::patches::halo_apply<halo_exchange_operator_impl_t, patch_direction_t>(
                 *this, i
             );
@@ -995,10 +999,9 @@ private:
         return true;
     }
 
-    // TODO: privatize
-public:
     auto compact() noexcept -> void
     {
+        DEFAULT_SOURCE_LOG_TRACE("Comacting tree");
         size_t tail = 0;
         for (linear_index_t head = 0; head < m_size; ++head)
         {

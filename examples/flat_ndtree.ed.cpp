@@ -3,8 +3,7 @@
 #include "containers/static_vector.hpp"
 #include "morton/morton_id.hpp"
 #include "ndtree/ndhierarchy.hpp"
-// #include "ndtree/structured_print.hpp"
-#include "ndtree/print_tree_a.hpp"
+#include "ndtree/structured_print.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iostream>

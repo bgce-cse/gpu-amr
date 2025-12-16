@@ -20,6 +20,7 @@ public:
     using padded_layout_t = typename containers::utils::types::layout::padded_layout<
         data_layout_t>::template type<size_type{ Halo_Width * 2 }>;
 
+    using shape_t = typename data_layout_t::shape_t;
     using index_t = typename data_layout_t::index_t;
     using rank_t  = typename data_layout_t::rank_t;
 
@@ -27,6 +28,28 @@ private:
     static constexpr auto      s_rank       = data_layout_t::rank();
     static constexpr size_type s_flat_size  = padded_layout_t::flat_size();
     static constexpr size_type s_halo_width = Halo_Width;
+
+    [[nodiscard]]
+    static constexpr auto full_iteration_impl() -> auto
+    {
+        constexpr auto start  = index_t{};
+        constexpr auto end    = padded_layout_t::sizes();
+        constexpr auto stride = index_t{ 1 };
+        return containers::control::
+            loop_control<typename padded_layout_t::shape_t, start, end, stride>{};
+    }
+
+    [[nodiscard]]
+    static constexpr auto interior_iteration_impl() -> auto
+    {
+        static constexpr auto h = halo_width();
+
+        constexpr auto                                       start  = s_halo_width;
+        constexpr std::make_signed_t<decltype(s_halo_width)> end    = -s_halo_width;
+        constexpr auto                                       stride = index_t{ 1 };
+        return containers::control::
+            loop_control<typename padded_layout_t::shape_t, start, end, stride>{};
+    }
 
     template <concepts::Direction auto Direction>
     [[nodiscard]]
@@ -69,6 +92,8 @@ private:
     }
 
 public:
+    using full_iteration_t     = decltype(full_iteration_impl());
+    using interior_iteration_t = decltype(interior_iteration_impl());
     template <concepts::Direction auto Direction>
     using halo_iteration_control_t = decltype(halo_iteration_control_impl<Direction>());
 
