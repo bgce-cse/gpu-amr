@@ -93,6 +93,10 @@ public:
     [[nodiscard]]
     static constexpr auto cell_coord(patch_index_t const& morton_id, typename patch_layout_t::padded_layout_t::index_t linear_idx) -> physics_coord_arr_t
     {
+        if (amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(linear_idx)) {
+            assert(false && "this function should not be called for a halo cell!");
+            return physics_coord_arr_t{}; 
+        }
         physics_coord_arr_t patch_origin = patch_coord(morton_id);
         auto cell_size = cell_sizes(morton_id);
 

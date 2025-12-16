@@ -128,10 +128,7 @@ set(CONSTEXPR_LIMIT_FLAGS
     -fconstexpr-loop-limit=1048576
 )
 
-
-
 target_compile_options(project_examples INTERFACE
-    -fconstexpr-ops-limit=100000000
     ${PROJECT_WARNINGS}
     ${PROJECT_DIAGNOSTICS}
     ${CONSTEXPR_LIMIT_FLAGS}
