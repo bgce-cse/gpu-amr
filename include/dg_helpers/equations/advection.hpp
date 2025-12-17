@@ -30,7 +30,7 @@ struct Advection :
 
     static constexpr double max_eigenvalue(
         [[maybe_unused]] typename Advection::dof_t celldofs,
-        [[maybe_unused]] std::size_t               normalidx
+        [[maybe_unused]] std::integral auto&       normalidx
     )
     {
         return std::abs(velocity);

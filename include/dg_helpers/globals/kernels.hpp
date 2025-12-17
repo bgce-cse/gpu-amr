@@ -52,6 +52,32 @@ struct MassTensors
     }();
 };
 
+template <std::integral auto Order>
+struct DerivativeKernel
+{
+    using derivative_t = typename amr::containers::static_tensor<
+        double,
+        amr::containers::static_layout<amr::containers::static_shape<Order, Order>>>;
+    using lagrange_t       = typename amr::basis::Lagrange<Order>;
+    using gauss_legendre_t = typename amr::basis::GaussLegendre<Order>;
+
+    static constexpr auto derivative_tensor = []()
+    {
+        derivative_t   result{};
+        constexpr auto nodes = gauss_legendre_t::points;
+
+        auto it = result.begin();
+        for (std::size_t i = 0; i < Order; ++i)
+        {
+            for (std::size_t j = 0; j < Order; ++j)
+            {
+                *it++ = lagrange_t::derivative(nodes, j, nodes[i]);
+            }
+        }
+        return result;
+    }();
+};
+
 } // namespace amr::global
 
 #endif // AMR_GLOBAL_KERNELS_HPP

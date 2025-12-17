@@ -4,7 +4,7 @@
 # Simulation parameters
 simulation:
   end_time: 1.0                    # Total simulation time
-  grid_elements: 12         # Number of elements per dimension
+  grid_elements: 12        # Number of elements per dimension
   grid_size: 1.0
   MaxDepth: 1.0                   # Physical domain size
   offset: [0.0, 0.0]               # Domain offset
@@ -17,7 +17,7 @@ solver:
 
 # Equation and scenario selection
 equation:
-  equation: euler               # Options: "advection", "euler"
+  equation: advection               # Options: "advection", "euler"
   scenario: gaussian_wave           # Scenario selection
 
 # Output configuration

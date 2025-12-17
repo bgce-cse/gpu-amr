@@ -73,10 +73,10 @@ int main()
 
     // Setup tree mesh
     // Time-stepping loop
-    double time        = 0.0;
-    double dt          = 0.01;
-    double maxeigenval = -std::numeric_limits<double>::infinity();
-    int    timestep    = 0;
+    double time         = 0.0;
+    double dt           = 0.01;
+    auto   max_eigenval = -std::numeric_limits<double>::infinity();
+    int    timestep     = 0;
 
     try
     {
@@ -92,14 +92,14 @@ int main()
         std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
         printer.template print<S1>(tree, time_extension);
         std::cout << "  Output: " << time_extension << " (timestep " << timestep << ")\n";
-
+        std::cout << "points: " << global_t::quad_points << "\n";
+        std::cout << "derivative" << global_t::derivative_tensor << "\n";
         while (time < amr::config::GlobalConfigPolicy::EndTime)
         {
             // Initialize halo cells with periodic boundary conditions
             tree.halo_exchange_update();
 
             // Reset maxeigenval for this time step
-            maxeigenval = -std::numeric_limits<double>::infinity();
 
             // Apply time integrator to each patch in the tree
             for (std::size_t idx = 0; idx < tree.size(); ++idx)
@@ -110,15 +110,22 @@ int main()
                 auto  volume       = global_t::cell_volume(global_t::cell_edge(idx));
                 auto  surface      = global_t::cell_area(global_t::cell_edge(idx));
 
+                for (size_t linear_idx = 0; linear_idx < patch_layout_t::flat_size();
+                     ++linear_idx)
+                {
+                    flux_patch[linear_idx] =
+                        global_t::EquationImpl::evaluate_flux(dof_patch[linear_idx]);
+                }
                 // Compute time step based on maximum eigenvalue
-                if (timestep > 0 && maxeigenval > 0.0)
+                if (timestep > 0 && max_eigenval > 0.0)
                 {
                     dt = std::min(
-                        amr::config::CourantNumber /
+                        1 /
                             (amr::config::GlobalConfigPolicy::Order *
                                  amr::config::GlobalConfigPolicy::Order +
                              1.0) *
-                            global_t::cell_edge(idx) / maxeigenval,
+                            amr::config::CourantNumber * global_t::cell_edge(idx) /
+                            max_eigenval,
                         dt
                     );
                 }
@@ -128,25 +135,23 @@ int main()
                                              double /*t*/
                                          )
                 {
-                    double patch_maxeigenval = RHS::evaluate(
+                    RHS::evaluate(
                         current_dofs,
                         flux_patch.data(),
                         patch_update,
                         center_patch.data(),
                         dt,
-                        patch_layout_t{},
                         volume,
-                        surface
+                        surface,
+                        max_eigenval
                     );
-                    maxeigenval = std::max(maxeigenval, patch_maxeigenval);
                 };
 
                 integrator.step(residual_callback, dof_patch.data(), time, dt);
+                // std::cout << "dt = " << dt << "\n";
             }
 
-            // Update halo cells with periodic boundary conditions
-            tree.halo_exchange_update();
-            if (timestep % 5 == 4)
+            if (timestep % 20 == 19)
             {
                 time_extension = "_t" + std::to_string(timestep) + ".vtk";
                 printer.template print<S1>(tree, time_extension);
@@ -157,6 +162,7 @@ int main()
             time += dt;
             ++timestep;
         }
+        std::cout << "dt: " << dt << "\n";
     }
     catch (const std::exception& e)
     {

@@ -162,8 +162,10 @@ struct Euler :
     /**
      * @brief Compute maximum eigenvalue (wave speed) in given direction.
      */
-    static constexpr Scalar
-        max_eigenvalue(const typename Euler::dof_t& celldofs, unsigned int normalidx)
+    static constexpr Scalar max_eigenvalue(
+        const typename Euler::dof_t& celldofs,
+        std::integral auto&          normalidx
+    )
     {
         // Evaluate at first quadrature point (can be extended to search all points)
         auto        idx = typename Euler::dof_t::multi_index_t{};

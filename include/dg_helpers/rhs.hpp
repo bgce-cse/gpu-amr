@@ -4,6 +4,7 @@
 #include "basis/basis.hpp"
 #include "containers/container_manipulations.hpp"
 #include "containers/container_operations.hpp"
+#include "dg_helpers/tree_builder.hpp"
 #include "equations/equations.hpp"
 #include "globals/global_config.hpp"
 #include "globals/globals.hpp"
@@ -32,6 +33,13 @@ struct RHSEvaluator
 {
     using eq        = typename global_t::EquationImpl;
     using surface_t = amr::surface::Surface<global_t, Policy>;
+    using dg_tree = amr::dg_tree::TreeBuilder<global_t, amr::config::GlobalConfigPolicy>;
+    using patch_layout_t  = typename dg_tree::patch_layout_t;
+    using direction_t     = amr::ndt::neighbors::direction<Policy::Dim>;
+    using padded_layout_t = typename patch_layout_t::padded_layout_t;
+    using flux_vector_t   = dg_tree::S1::type;
+    using size_type       = typename flux_vector_t::size_type;
+    using size_t          = typename patch_layout_t::size_type;
 
     template <
         std::size_t Dim,
@@ -79,41 +87,42 @@ struct RHSEvaluator
         );
     }
 
+    static double
+        maxeigenvalue(auto& max_eigenval, auto& dof_cell, auto& dof_neigh, auto& dim)
+    {
+        double eigenval_curr  = eq::max_eigenvalue(dof_cell, dim);
+        double eigenval_neigh = eq::max_eigenvalue(dof_neigh, dim);
+
+        double curr_eigenval = std::max(eigenval_curr, eigenval_neigh);
+
+        return std::max(max_eigenval, curr_eigenval);
+    }
+
     template <
         typename DOFTensorType,
         typename FluxVectorType,
-        typename PatchLayoutType,
         typename CenterType>
-    inline static double evaluate(
+    inline static void evaluate(
         const DOFTensorType&               dof_patch,    // const: read-only
-        FluxVectorType&                    flux_patch,   // written inside
+        const FluxVectorType&              flux_patch,   // written inside
         DOFTensorType&                     patch_update, // output
         [[maybe_unused]] const CenterType& cell_center,  // read-only
         [[maybe_unused]] double const&     dt,
-        const PatchLayoutType&             patch_layout_t,
-        [[maybe_unused]] const double&     volume,
-        const double&                      surface
+        const double&                      volume,
+        const double&                      surface,
+        double&                            max_eigenval
     )
     {
-        using direction_t     = amr::ndt::neighbors::direction<Policy::Dim>;
-        using padded_layout_t = typename PatchLayoutType::padded_layout_t;
-        using flux_vector_t   = std::decay_t<decltype(flux_patch[0])>;
-        using size_type       = typename flux_vector_t::size_type;
-        using size_t          = typename PatchLayoutType::size_type;
-
-        double maxeigenval = -std::numeric_limits<double>::infinity();
-
         // Loop over each cell in the patch (including halos)
-        for (size_t linear_idx = 0; linear_idx < patch_layout_t.flat_size(); ++linear_idx)
+        for (size_t linear_idx = 0; linear_idx < patch_layout_t::flat_size();
+             ++linear_idx)
         {
             auto idx = static_cast<int>(linear_idx);
 
-            if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutType>(idx))
+            if (amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(idx))
             {
                 continue;
             }
-            // compute flux from current DOFs
-            flux_patch[idx] = eq::evaluate_flux(dof_patch[idx]);
 
             for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
             {
@@ -145,59 +154,46 @@ struct RHSEvaluator
                 auto actual_dim_sz = static_cast<size_type>(actual_dim);
 
                 // project to face (caller supplies face_kernels via global_t)
-                auto cell_data = dispatch_project_to_faces<Policy::Dim>(
+                auto [dofs_face, flux_face] = dispatch_project_to_faces<Policy::Dim>(
                     dof_patch[idx], flux_patch[idx][actual_dim_sz], sign_idx, actual_dim
                 );
 
-                auto neighbor_data = dispatch_project_to_faces<Policy::Dim>(
+                auto [dofs_face_neigh, flux_face_neigh] =
+                    dispatch_project_to_faces<Policy::Dim>(
+                        dof_patch[neighbor_linear_idx],
+                        flux_patch[neighbor_linear_idx][actual_dim_sz],
+                        1 - sign_idx,
+                        actual_dim
+                    );
+
+                max_eigenval = maxeigenvalue(
+                    max_eigenval,
+                    dof_patch[idx],
                     dof_patch[neighbor_linear_idx],
-                    flux_patch[neighbor_linear_idx][actual_dim_sz],
-                    1 - sign_idx,
                     actual_dim
                 );
 
-                // Compute maximum eigenvalue for Rusanov flux
-                // Use the maximum eigenvalue from the original DOF tensors at the cell
-                // center
-                double eigenval_curr = eq::max_eigenvalue(
-                    dof_patch[idx], static_cast<unsigned int>(actual_dim)
-                );
-                double eigenval_neigh = eq::max_eigenvalue(
-                    dof_patch[neighbor_linear_idx], static_cast<unsigned int>(actual_dim)
-                );
-                double curr_eigenval = std::max(eigenval_curr, eigenval_neigh);
-
-                // Track maximum eigenvalue across all faces
-                maxeigenval = std::max(maxeigenval, curr_eigenval);
-
                 auto face_du = surface_t::evaluate_face_integral(
-                    curr_eigenval,
-                    std::get<0>(cell_data),
-                    std::get<0>(neighbor_data),
-                    std::get<1>(cell_data),
-                    std::get<1>(neighbor_data),
+                    dofs_face,
+                    dofs_face_neigh,
+                    flux_face,
+                    flux_face_neigh,
                     actual_dim,
                     sign,
                     sign_idx,
-                    surface
+                    surface,
+                    max_eigenval
                 );
 
                 patch_update[idx] = patch_update[idx] - face_du;
             }
-
-            // apply inverse mass tensor (per-cell normalization: volume *
-            // reference_massmatrix inverse) In the Julia reference, this is:
-            // inv_massmatrix = inv(volume(cell) * reference_massmatrix) Which means: du =
-            // (1 / (volume * reference_mass)) * du = (1/volume) * inv(reference_mass) *
-            // du
+            // std::cout << "patch update: " << patch_update[idx] << "\n\n";
             patch_update[idx] = amr::containers::algorithms::tensor::tensor_dot(
                 patch_update[idx], global_t::inv_volume_mass / volume
             );
             // std::cout << "inverse volume" << global_t::inv_volume_mass / volume <<
             // "\n";
         }
-
-        return maxeigenval;
     }
 };
 

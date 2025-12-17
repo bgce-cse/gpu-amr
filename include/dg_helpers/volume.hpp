@@ -6,6 +6,7 @@
 #include "generated_config.hpp"
 #include "globals/global_config.hpp"
 #include "globals/globals.hpp"
+#include "tree_builder.hpp"
 #include <cassert>
 
 namespace amr::volume
@@ -48,47 +49,13 @@ struct BuffersVolume
 template <typename global_t, typename Policy>
 struct VolumeEvaluator
 {
-    using global_config                     = global_t::GlobalConfig;
-    static constexpr auto& ref_deriv_matrix = global_config::reference_derivative_matrix;
-    static constexpr auto& quad_weights     = global_config::quad_weights_nd;
+    using global_config = global_t::GlobalConfig;
+    using tree          = typename amr::dg_tree::TreeBuilder<global_t, Policy>;
+    using flux_patch_t  = tree::S1::type;
 
-    /**
-     * @brief Evaluate volume term contribution to RHS
-     *
-     * Implements: celldu += D^T * (χ ⊙ flux_coeff)
-     * where χ = diagonal(A ⊗ quadweights), A = inv_jacobian' * volume
-     *
-     * @param buffers Pre-allocated buffers for intermediate results
-     * @param flux_coeff Flux coefficients (computed from F(u))
-     * @param inverse_jacobian Inverse Jacobian (assumed diagonal)
-     * @param volume Volume of the cell
-     * @param celldu Output: RHS update (+=)
-     */
-    template <typename FluxTensorType, typename JacobianType, typename DOFType>
-    static void evaluate(
-        BuffersVolume<global_t, Policy>& buffers,
-        const FluxTensorType&            flux_coeff,
-        const JacobianType&              inverse_jacobian,
-        double                           volume,
-        DOFType&                         celldu
-    )
+    template <flux_patch_t Tensor>
+    static auto evaluate_volume_integral()
     {
-        // Compute scaling: A = inv_jacobian' * volume
-        // For diagonal case: diag(A) = diag(inv_jacobian) * volume
-        auto A_diag = inverse_jacobian; // Element-wise product with volume
-        for (auto& elem : A_diag)
-            elem *= volume;
-
-        // Build diagonal chi: kron(Diagonal(diag(A)), Diagonal(quadweights))
-        // For diagonal tensors, this is element-wise multiplication of the kronecker
-        // product chi[i,j] = A[i % dim_A] * quadweights[j % dim_Q]
-        compute_chi_tensor(buffers.chi, A_diag, quad_weights);
-
-        // Scale flux coefficients: scaled = chi ⊙ flux_coeff (element-wise)
-        apply_diagonal_scaling(buffers.scaled_fluxcoeff, buffers.chi, flux_coeff);
-
-        // Apply derivative matrix: celldu += D^T * scaled
-        apply_derivative_matrix(celldu, ref_deriv_matrix, buffers.scaled_fluxcoeff);
     }
 
 private:

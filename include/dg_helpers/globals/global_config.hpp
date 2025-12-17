@@ -17,8 +17,9 @@ namespace amr::global
 template <typename Policy>
 struct QuadratureMixin
 {
-    static constexpr auto& quad_points  = QuadData<Policy::Order>::points;
-    static constexpr auto& quad_weights = QuadData<Policy::Order>::weights;
+    static constexpr auto& quad_points = amr::basis::GaussLegendre<Policy::Order>::points;
+    static constexpr auto& quad_weights =
+        amr::basis::GaussLegendre<Policy::Order>::weights;
 };
 
 template <typename Policy>
@@ -59,6 +60,14 @@ struct TensorMixin
     static constexpr auto& surface_mass     = SurfaceMassTensors::mass_tensor;
     static constexpr auto& inv_surface_mass = SurfaceMassTensors::inv_mass_tensor;
     static constexpr auto& face_kernels     = FaceKernels::kernels;
+};
+
+template <typename Policy>
+struct DerivativeMixin
+{
+    using Derivative = amr::global::DerivativeKernel<Policy::Order>;
+
+    static constexpr auto& derivative_tensor = Derivative::derivative_tensor;
 };
 
 template <typename Policy>
@@ -149,6 +158,7 @@ struct GlobalConfig :
     EquationMixin<Policy>,
     IntegratorMixin<Policy>,
     TensorMixin<Policy>,
+    DerivativeMixin<Policy>,
     CoordinateMixin<Policy>,
     InitMixin<Policy>
 {
@@ -159,10 +169,12 @@ struct GlobalConfig :
     using MassTensors        = typename TensorMixin<Policy>::MassTensors;
     using SurfaceMassTensors = typename TensorMixin<Policy>::SurfaceMassTensors;
     using FaceKernels        = typename TensorMixin<Policy>::FaceKernels;
+    using VolumeKernel       = typename DerivativeMixin<Policy>::Derivative;
 
     // Bring in static data members
     using QuadratureMixin<Policy>::quad_points;
     using QuadratureMixin<Policy>::quad_weights;
+    using DerivativeMixin<Policy>::derivative_tensor;
     using TensorMixin<Policy>::volume_mass;
     using TensorMixin<Policy>::inv_volume_mass;
     using TensorMixin<Policy>::surface_mass;
