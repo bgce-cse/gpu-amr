@@ -11,6 +11,7 @@
 #include "ndtree/ndtree.hpp"
 #include "ndtree/neighbor.hpp"
 #include "surface.hpp"
+#include "volume.hpp"
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -33,6 +34,7 @@ struct RHSEvaluator
 {
     using eq        = typename global_t::EquationImpl;
     using surface_t = amr::surface::Surface<global_t, Policy>;
+    using volume_t  = amr::volume::VolumeEvaluator<global_t, Policy>;
     using dg_tree = amr::dg_tree::TreeBuilder<global_t, amr::config::GlobalConfigPolicy>;
     using patch_layout_t  = typename dg_tree::patch_layout_t;
     using direction_t     = amr::ndt::neighbors::direction<Policy::Dim>;
@@ -123,6 +125,9 @@ struct RHSEvaluator
             {
                 continue;
             }
+            volume_t::evaluate_volume_integral(
+                patch_update[idx], flux_patch[idx], volume
+            );
 
             for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
             {

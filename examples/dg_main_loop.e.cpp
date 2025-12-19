@@ -94,6 +94,10 @@ int main()
         std::cout << "  Output: " << time_extension << " (timestep " << timestep << ")\n";
         std::cout << "points: " << global_t::quad_points << "\n";
         std::cout << "derivative" << global_t::derivative_tensor << "\n";
+        auto risultato = amr::containers::algorithms::tensor::derivative_contraction(
+            global_t::derivative_tensor, global_t::derivative_tensor, 1
+        );
+        std::cout << "dxf" << risultato << "\n";
         while (time < amr::config::GlobalConfigPolicy::EndTime)
         {
             // Initialize halo cells with periodic boundary conditions

@@ -325,6 +325,44 @@ auto tensor_dot(TensorA const& Ta, TensorB const& Tb)
     return result;
 }
 
+template <typename Derivative, typename Flux>
+auto derivative_contraction(
+    Derivative const&  derivative,
+    Flux const&        flux,
+    std::integral auto dim
+)
+{
+    using multi_index_t = typename Flux::multi_index_t;
+    using value_type    = typename Flux::value_type; // This is static_vector<double, 4>
+    using index_t       = typename Flux::index_t;
+
+    static constexpr auto Order = std::remove_cvref_t<Derivative>::size(0);
+
+    auto const& flux_component = flux;
+    Flux        result         = Flux::zero();
+
+    // Iterate over all result indices
+    auto idx = multi_index_t{};
+    do
+    {
+        value_type sum{};
+
+        auto const i_dim = idx[dim];
+
+        for (index_t a = 0; a < Order; ++a)
+        {
+            auto flux_idx = idx;
+            flux_idx[dim] = a;
+
+            sum = sum + derivative[i_dim, a] * flux_component[flux_idx];
+        }
+
+        result[idx] = sum;
+    } while (idx.increment());
+
+    return result;
+}
+
 } // namespace tensor
 
 } // namespace amr::containers::algorithms
