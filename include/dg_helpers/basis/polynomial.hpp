@@ -51,7 +51,7 @@ struct Basis
             double prod = 1.0;
             for (std::size_t j = 0; j < Dim; ++j)
                 prod *= Lagrange_t::evaluate(quadpoints, idx[j], position[j]);
-            sum += coeffs[idx] * prod;
+            sum = sum + coeffs[idx] * prod;
         } while (idx.increment());
 
         return sum;

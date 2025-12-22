@@ -83,7 +83,7 @@ int main()
         std::cout << "\n====================================\n";
         std::cout << "  Initializing DG Tree Printer (Refactored)\n";
         std::cout << "====================================\n\n";
-        ndt::print::dg_tree_printer_refactored<global_t> printer("dg_tree");
+        ndt::print::dg_tree_printer_2d<global_t, GlobalConfigPolicy> printer("dg_tree");
         std::cout << "DG tree printer created successfully\n";
 
         std::cout << "\n====================================\n";
@@ -108,11 +108,13 @@ int main()
             // Apply time integrator to each patch in the tree
             for (std::size_t idx = 0; idx < tree.size(); ++idx)
             {
-                auto& dof_patch    = tree.template get_patch<S1>(idx);
-                auto& flux_patch   = tree.template get_patch<S2>(idx);
-                auto& center_patch = tree.template get_patch<S3>(idx);
-                auto  volume       = global_t::cell_volume(global_t::cell_edge(idx));
-                auto  surface      = global_t::cell_area(global_t::cell_edge(idx));
+                auto& dof_patch        = tree.template get_patch<S1>(idx);
+                auto& flux_patch       = tree.template get_patch<S2>(idx);
+                auto& center_patch     = tree.template get_patch<S3>(idx);
+                auto  edge             = global_t::cell_edge(idx);
+                auto  volume           = global_t::cell_volume(edge);
+                auto  surface          = global_t::cell_area(edge);
+                auto  inverse_jacobian = 1 / edge;
 
                 for (size_t linear_idx = 0; linear_idx < patch_layout_t::flat_size();
                      ++linear_idx)
@@ -147,7 +149,8 @@ int main()
                         dt,
                         volume,
                         surface,
-                        max_eigenval
+                        max_eigenval,
+                        inverse_jacobian
                     );
                 };
 
@@ -155,7 +158,7 @@ int main()
                 // std::cout << "dt = " << dt << "\n";
             }
 
-            if (timestep % 20 == 19)
+            if (timestep % 2 == 1)
             {
                 time_extension = "_t" + std::to_string(timestep) + ".vtk";
                 printer.template print<S1>(tree, time_extension);

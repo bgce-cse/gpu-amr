@@ -112,7 +112,8 @@ struct RHSEvaluator
         [[maybe_unused]] double const&     dt,
         const double&                      volume,
         const double&                      surface,
-        double&                            max_eigenval
+        double&                            max_eigenval,
+        const double&                      inverse_jacobian
     )
     {
         // Loop over each cell in the patch (including halos)
@@ -125,9 +126,14 @@ struct RHSEvaluator
             {
                 continue;
             }
-            volume_t::evaluate_volume_integral(
-                patch_update[idx], flux_patch[idx], volume
-            );
+
+            if (Policy::Order > 1)
+            {
+                volume_t::evaluate_volume_integral(
+                    patch_update[idx], flux_patch[idx], volume, inverse_jacobian
+                );
+                // std::cout << "du = " << patch_update[idx] << "\n\n";
+            }
 
             for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
             {
