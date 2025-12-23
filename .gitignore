@@ -17,6 +17,9 @@ bin/
 build/
 out/
 
+# Testing
+Testing/
+
 # Log Files
 *.log
 
@@ -167,3 +170,7 @@ dkms.conf
 *.ptx
 *.cubin
 *.fatbin
+
+####### Output
+*.vtk
+*vtk*
