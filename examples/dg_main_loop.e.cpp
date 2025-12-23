@@ -52,6 +52,17 @@ int main()
               << ", Dim=" << amr::config::GlobalConfigPolicy::Dim
               << ", DOFs=" << amr::config::GlobalConfigPolicy::DOFs << "\n";
 
+    // --- DEBUG: Print mass matrix and its inverse for Order=2 ---
+    using global_t = GlobalConfig<amr::config::GlobalConfigPolicy>;
+    std::cout << "\n[DEBUG] Mass matrix (volume_mass):\n";
+    std::cout << global_t::volume_mass << "\n";
+    std::cout << "[DEBUG] Inverse mass matrix (inv_volume_mass):\n";
+    std::cout << global_t::inv_volume_mass << "\n";
+    std::cout << "[DEBUG] Quadrature weights (1D):\n";
+    std::cout << global_t::quad_weights << "\n";
+    std::cout << "[DEBUG] Quadrature points (1D):\n";
+    std::cout << global_t::quad_points << "\n\n";
+
     using global_t = GlobalConfig<amr::config::GlobalConfigPolicy>;
     using RHS      = amr::rhs::RHSEvaluator<global_t, amr::config::GlobalConfigPolicy>;
     using dg_tree  = amr::dg_tree::TreeBuilder<global_t, amr::config::GlobalConfigPolicy>;

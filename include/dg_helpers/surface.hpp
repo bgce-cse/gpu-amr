@@ -90,7 +90,7 @@ struct Surface
         auto weighted_flux =
             amr::containers::algorithms::tensor::tensor_dot(numericalflux, surface_mass);
 
-        if (direction)
+        if (direction == 1)
         {
             return amr::containers::algorithms::tensor::tensor_product(
                 weighted_flux, kernel_vec

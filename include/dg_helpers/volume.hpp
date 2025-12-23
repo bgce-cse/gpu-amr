@@ -37,14 +37,20 @@ struct VolumeEvaluator
         for (std::size_t i = 0; i < Policy::Dim; ++i)
         {
             cell_du =
-                cell_du + amr::containers::algorithms::tensor::derivative_contraction(
-                              global_t::derivative_tensor, cell_flux[i], i
-                          );
+                cell_du + inverse_jacobian * cell_volume *
+                              amr::containers::algorithms::tensor::derivative_contraction(
+                                  global_t::derivative_tensor,
+                                  amr::containers::algorithms::tensor::tensor_dot(
+                                      cell_flux[i], global_t::volume_mass
+                                  ),
+                                  i
+                              );
         }
-        cell_du = inverse_jacobian * cell_volume *
-                  amr::containers::algorithms::tensor::tensor_dot(
-                      cell_du, global_t::volume_mass
-                  ); // TODO add the inverse Jacobian, see the volume mass
+        // cell_du = inverse_jacobian * cell_volume *
+        //           amr::containers::algorithms::tensor::tensor_dot(
+        //               cell_du, global_t::volume_mass
+        //           ); // TODO add the inverse Jacobian, see the volume mass
+        // TODO multiply the matrix beforehand
     }
 };
 
