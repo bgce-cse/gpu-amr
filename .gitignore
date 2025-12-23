@@ -48,7 +48,7 @@ perf.data*
 perf.report
 perf.script
 
-# Defualt Private
+# Default Private
 .pdf
 .csv
 .png
@@ -67,6 +67,9 @@ perf.script
 [._]s[a-rt-v][a-z]
 [._]ss[a-gi-z]
 [._]sw[a-p]
+
+##### Apple Garbage
+.DS_Store
 
 # Languages
 ##### C++
@@ -167,6 +170,3 @@ dkms.conf
 *.ptx
 *.cubin
 *.fatbin
-
-.DS_Store
-
