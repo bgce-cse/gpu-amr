@@ -132,7 +132,6 @@ struct RHSEvaluator
                 volume_t::evaluate_volume_integral(
                     patch_update[idx], flux_patch[idx], volume, inverse_jacobian
                 );
-                // std::cout << "du = " << patch_update[idx] << "\n\n";
             }
 
             for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
@@ -198,10 +197,12 @@ struct RHSEvaluator
 
                 patch_update[idx] = patch_update[idx] - face_du;
             }
-            // std::cout << "patch update: " << patch_update[idx] << "\n\n";
+
             patch_update[idx] = amr::containers::algorithms::tensor::tensor_dot(
                 patch_update[idx], global_t::inv_volume_mass / volume
             );
+            // std::cout << "final du at cell center " << cell_center[idx] << " = "
+            //           << patch_update[idx] << "\n\n";
             // std::cout << "inverse volume" << global_t::inv_volume_mass / volume <<
             // "\n";
         }

@@ -11,7 +11,7 @@ simulation:
 
 # Solver configuration
 solver:
-  order: 2                 # Polynomial order for basis functions (Order)
+  order: 2                # Polynomial order for basis functions (Order)
   courant: 0.5                      # CFL number for time stepping
   timeintegrator: SSPRK1            # Time integration scheme
 
@@ -30,4 +30,4 @@ output:
 # - advection: variable (1, 2, 3, etc.)
 # - euler: 4 (2D) or 5 (3D)
 Dim: 2                            # Spatial dimension (2D or 3D)
-DOFs: 4            #####TODO link this to equation in some way               # Degrees of freedom per cell (4 for Euler 2D: rho, rho*u, rho*v, E)
+DOFs: 4           #####TODO link this to equation in some way               # Degrees of freedom per cell (4 for Euler 2D: rho, rho*u, rho*v, E)
