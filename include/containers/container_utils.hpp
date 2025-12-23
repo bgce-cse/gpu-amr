@@ -236,21 +236,25 @@ struct tensor_contraction_result
 {
     using size_type  = std::common_type_t<typename A::size_type, typename B::size_type>;
     using value_type = std::common_type_t<typename A::value_type, typename B::value_type>;
+    static_assert(std::ranges::all_of(
+        CIS,
+        [](auto const& p) { return A::size(p.first) == B::size(p.second); }
+    ));
 
     static constexpr auto s_out_sizes = []
     {
         constexpr size_type s_in_rank  = A::rank() + B::rank();
         constexpr size_type s_out_rank = s_in_rank - 2 * CIS.order();
         using ret_t                    = std::array<size_type, s_out_rank>;
-        // constexpr auto sizes           = sequences::concatenate_v<A::sizes(), B::sizes()>;
-        ret_t          ret{};
+        // constexpr auto sizes           = sequences::concatenate_v<A::sizes(),
+        // B::sizes()>;
+        ret_t ret{};
 
         size_type k = 0;
         for (auto i = size_type{}; i != A::rank(); ++i)
         {
-            if (std::ranges::find_if(
-                    CIS, [&i](auto const& p) { return p.first == i; }
-                ) != std::cend(CIS))
+            if (std::ranges::find_if(CIS, [&i](auto const& p) { return p.first == i; }) !=
+                std::cend(CIS))
             {
                 continue;
             }

@@ -3,6 +3,7 @@
 
 #include "container_manipulations.hpp"
 #include "container_utils.hpp"
+#include "static_shape.hpp"
 #include "static_vector.hpp"
 #include <concepts>
 
@@ -303,7 +304,7 @@ template <
     concepts::ContractionIndexSet auto CIS,
     concepts::StaticContainer          A,
     concepts::StaticContainer          B>
-[[nodiscard]]
+[[nodiscard, deprecated("Not implemented")]]
 constexpr auto
     contraction([[maybe_unused]] A const& a, [[maybe_unused]] B const& b) noexcept
     -> utils::types::tensor::
@@ -314,7 +315,17 @@ constexpr auto
     static constexpr auto contraction_index_set = CIS;
     using ret_t                                 = utils::types::tensor::
         tensor_contraction_result_t<a_t, b_t, contraction_index_set>;
+    // using reduction_loop_shape_t = containers::static_shape<>;
+
     ret_t ret{};
+    containers::manipulators::apply(
+        ret,
+        [](auto& out, auto const& idxs)
+        {
+            out[idxs] = 1;
+            utility::error_handling::assert_unreachable();
+        }
+    );
     return ret;
 }
 
