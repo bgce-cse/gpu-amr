@@ -6,9 +6,11 @@ Adaptative Mesh Refinement (AMR) framework.
 
 ## Build
 
-The examples for this project in the `examples/` directory, which have a `.e.cpp` extension, are automatically detected by CMake.
+The examples for this project in the `examples/` directory. Examples with a `.e.cpp` extension, are automatically detected by CMake.\
+The examples for this project in the `benchmark/` directory. Benchmarks with a `.b.cpp` extension, are automatically detected by CMake.\
 
-These examples can be compiled with cmake using the provided CMakeLists.txt.\
+These examples can be compiled with cmake using the provided CMakeLists.txt in
+the root directory.\
 One possible way to compile is:
 1. Create a build directory and move into it: `mkdir build && cd build`
 2. Run cmake: `cmake -DCMAKE_BUILD_TYPE={Debug,Release,RelWithDebInfo} [-DOPTIONS=OPT...] ..`
@@ -30,7 +32,13 @@ Work in progress
 
 ## Testing
 
-No testing yet.
+The tests for this project in the `tests/` directory. Tests with a `.t.cpp` extension, are automatically detected by CMake.\
+GoogleTest has been used as the testing framework.
+
+Test can be run after building. For example, from the project root directory:
+1. `cmkae -S . -B build`
+1. `cmake --build build --parallel 12`
+1. `ctest --test-dir build/tests`
 
 ## Performance Analysis
 
