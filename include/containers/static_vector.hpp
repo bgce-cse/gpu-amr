@@ -22,16 +22,18 @@ template <typename T, std::integral auto N>
 struct static_vector
 {
     using value_type      = std::remove_cv_t<T>;
-    using shape_t         = static_shape<N>;
+    using shape_t         = static_shape<std::array{ N }>;
     using layout_t        = static_layout<shape_t>;
     using size_type       = typename layout_t::size_type;
-    using size_pack_t     = typename layout_t::size_pack_t;
     using index_t         = typename layout_t::index_t;
     using rank_t          = typename layout_t::rank_t;
     using const_iterator  = value_type const*;
     using iterator        = value_type*;
     using const_reference = value_type const&;
     using reference       = value_type&;
+
+    template <typename U>
+    using rebind_t = static_vector<U, N>;
 
 private:
     static_assert(std::is_trivially_copyable_v<value_type>);
@@ -117,6 +119,27 @@ public:
         assert_in_bounds(idx);
 #endif
         return data_[idx];
+    }
+
+    [[nodiscard]]
+    constexpr auto underlying_at(const index_t i) noexcept -> reference
+    {
+        return const_cast<reference>(std::as_const(*this).underlying_at(i));
+    }
+
+    [[nodiscard]]
+    constexpr auto underlying_at(const index_t i) const noexcept -> const_reference
+    {
+        static_assert(
+            sizeof(static_vector) == sizeof(value_type) * elements(),
+            "Container must be compact to bypass the subscript operator!"
+        );
+        assert(i < elements());
+        if constexpr (std::is_signed_v<index_t>)
+        {
+            assert(i >= index_t{});
+        }
+        return data_[i];
     }
 
     [[nodiscard]]

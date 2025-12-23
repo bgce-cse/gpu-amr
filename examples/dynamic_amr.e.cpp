@@ -78,7 +78,7 @@ int main()
     // using linear_index_t    = std::uint32_t;
     [[maybe_unused]]
     constexpr auto Fanout = 2;
-    using shape_t         = amr::containers::static_shape<N, M>;
+    using shape_t         = amr::containers::static_shape<std::array{ N, M }>;
     using layout_t        = amr::containers::static_layout<shape_t>;
     using index_t         = typename layout_t::index_t;
 

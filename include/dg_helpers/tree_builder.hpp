@@ -97,9 +97,11 @@ struct TreeBuilder
         deconstructed_types_map_t m_data;
     };
 
+    // TODO: Allow non square patches
     using shape_t =
-        amr::containers::static_shape<Policy::PatchSize, Policy::PatchSize>; // PatchSize
-                                                                             // literal
+        amr::containers::static_shape<std::array{ Policy::PatchSize,
+                                                  Policy::PatchSize }>; // PatchSize
+                                                                        // literal
     using layout_t      = amr::containers::static_layout<shape_t>;
     using patch_index_t = amr::ndt::morton::morton_id<
         Policy::MaxDepth,

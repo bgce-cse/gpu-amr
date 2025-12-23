@@ -17,7 +17,7 @@ int main()
     using index_t       = std::int32_t;
     [[maybe_unused]]
     constexpr auto Fanout = 2;
-    using shape_t         = amr::containers::static_shape<N, M>;
+    using shape_t         = amr::containers::static_shape<std::array{ N, M }>;
     using patch_layout_t  = amr::ndt::patches::patch_layout<static_layout<shape_t>, Halo>;
     using patch_t         = amr::ndt::patches::patch<index_t, patch_layout_t>;
     using tensor_t        = typename patch_t::container_t;
@@ -41,7 +41,7 @@ int main()
 
     using d_t               = amr::ndt::neighbors::direction<patch_t::rank()>;
     static constexpr auto d = d_t::first();
-    using lc_t              = typename patch_layout_t::template halo_iteration_control_t<d>;
+    using lc_t = typename patch_layout_t::template halo_iteration_control_t<d>;
     for (index_t i = 0; i != patch_t::rank(); ++i)
     {
         std::cout << "[ " << lc_t::start(i) << " , " << lc_t::end(i) << " ), "

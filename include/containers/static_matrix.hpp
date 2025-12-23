@@ -24,16 +24,18 @@ class static_matrix
 {
 public:
     using value_type      = std::remove_cv_t<T>;
-    using shape_t         = static_shape<M, N>;
+    using shape_t         = static_shape<std::array{ M, N }>;
     using layout_t        = static_layout<shape_t>;
     using size_type       = typename layout_t::size_type;
-    using size_pack_t       = typename layout_t::size_pack_t;
     using index_t         = typename layout_t::index_t;
     using rank_t          = typename layout_t::rank_t;
     using const_iterator  = value_type const*;
     using iterator        = value_type*;
     using const_reference = value_type const&;
     using reference       = value_type&;
+
+    template <typename U>
+    using rebind_t = static_matrix<U, N, M>;
 
 private:
     static_assert(std::is_trivially_copyable_v<T>);
@@ -71,7 +73,6 @@ public:
         return layout_t::sizes();
     }
 
-
     [[nodiscard]]
     constexpr static auto strides() noexcept -> auto const&
     {
@@ -86,19 +87,40 @@ public:
     }
 
     [[nodiscard]]
-    constexpr auto operator[](const size_type j, const size_type i) noexcept -> reference
+    constexpr auto operator[](const index_t j, const index_t i) noexcept -> reference
     {
         return const_cast<reference>(std::as_const(*this).operator[](i, j));
     }
 
     [[nodiscard]]
-    constexpr auto operator[](const size_type j, const size_type i) const noexcept
+    constexpr auto operator[](const index_t j, const index_t i) const noexcept
         -> const_reference
     {
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
         assert_in_bounds(j, i);
 #endif
         return data_[j * N + i];
+    }
+
+    [[nodiscard]]
+    constexpr auto underlying_at(const index_t i) noexcept -> reference
+    {
+        return const_cast<reference>(std::as_const(*this).underlying_at(i));
+    }
+
+    [[nodiscard]]
+    constexpr auto underlying_at(const index_t i) const noexcept -> const_reference
+    {
+        static_assert(
+            sizeof(static_matrix) == sizeof(value_type) * elements(),
+            "Container must be compact to bypass the subscript operator!"
+        );
+        assert(i < elements());
+        if constexpr (std::is_signed_v<index_t>)
+        {
+            assert(i >= index_t{});
+        }
+        return data_[i];
     }
 
     [[nodiscard]]
@@ -153,7 +175,7 @@ public:
 
     constexpr auto operator<=>(static_matrix const&) const noexcept = default;
 
-private:
+public:
     // TODO: Alignment, maybe padding
     value_type data_[flat_size()];
 };

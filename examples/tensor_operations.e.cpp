@@ -1,5 +1,6 @@
 #include "containers/container_algorithms.hpp"
 #include "containers/container_manipulations.hpp"
+#include "containers/container_operations.hpp"
 #include "containers/container_utils.hpp"
 #include "containers/static_layout.hpp"
 #include "containers/static_shape.hpp"
@@ -23,9 +24,11 @@ int main()
     constexpr auto N = 3;
     constexpr auto M = 2;
     using F          = int;
-    using tensor5_t  = static_tensor<F, static_layout<static_shape<N, 3, 4, 2, 3>>>;
-    using tensor2_t  = static_tensor<F, static_layout<static_shape<N, N, N>>>;
-    using tensor3_t  = static_tensor<F, static_layout<static_shape<M, M>>>;
+    using tensor5_t =
+        static_tensor<F, static_layout<static_shape<std::array{ N, 3, 4, 2, 3 }>>>;
+    using tensor2_t =
+        static_tensor<F, static_layout<static_shape<std::array{ N, N, N }>>>;
+    using tensor3_t = static_tensor<F, static_layout<static_shape<std::array{ M, M }>>>;
     std::cout << tensor5_t::elements() << '\n';
     for (int i = 0; i != tensor5_t::rank(); ++i)
     {
@@ -219,9 +222,7 @@ int main()
     std::cout << "tensor value: " << power << std::endl;
     std::cout << "tensor product value: " << out << std::endl;
 
-    std::cout << "product tensor value: "
-              << amr::containers::algorithms::tensor::tensor_dot(power, power)
-              << std::endl;
+    std::cout << "product tensor value: " << power * power << std::endl;
     tensor2_t t2{};
     tensor3_t t3{};
     std::iota(std::begin(t2), std::end(t2), 0);

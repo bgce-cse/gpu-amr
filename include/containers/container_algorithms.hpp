@@ -36,16 +36,17 @@ constexpr auto cartesian_expansion(static_vector<T, Size> const& v) noexcept
     return ret;
 }
 
-template <concepts::StaticContainer T1, concepts::StaticContainer T2>
+template <concepts::StaticContainer A, concepts::StaticContainer B>
 [[nodiscard]]
-constexpr auto tensor_product(T1 const& t1, T2 const& t2) noexcept -> utils::types::
-    tensor::tensor_product_result_t<std::remove_cvref_t<T1>, std::remove_cvref_t<T2>>
+constexpr auto tensor_product(A const& a, B const& b) noexcept -> utils::types::tensor::
+    tensor_product_result_t<std::remove_cvref_t<A>, std::remove_cvref_t<B>>
 {
-    using ret_t = utils::types::tensor::
-        tensor_product_result_t<std::remove_cvref_t<T1>, std::remove_cvref_t<T2>>;
+    using a_t   = std::remove_cvref_t<A>;
+    using b_t   = std::remove_cvref_t<B>;
+    using ret_t = utils::types::tensor::tensor_product_result_t<a_t, b_t>;
     static_assert(
         std::tuple_size_v<std::remove_cvref_t<decltype(ret_t::sizes())>> ==
-        T1::rank() + T2::rank()
+        a_t::rank() + b_t::rank()
     );
 
     ret_t ret{};
@@ -54,23 +55,23 @@ constexpr auto tensor_product(T1 const& t1, T2 const& t2) noexcept -> utils::typ
     manipulators::shaped_for<lc_t>(
         [&ret](auto const& a, auto const& b, auto const& idxs)
         {
-            ret[idxs] = a[std::span<typename ret_t::index_t const, T1::rank()>{
-                            idxs.data(), T1::rank() }] *
-                        b[std::span<typename ret_t::index_t const, T2::rank()>{
-                            idxs.data() + T1::rank(), T2::rank() }];
+            ret[idxs] = a[std::span<typename ret_t::index_t const, a_t::rank()>{
+                            idxs.data(), a_t::rank() }] *
+                        b[std::span<typename ret_t::index_t const, b_t::rank()>{
+                            idxs.data() + a_t::rank(), b_t::rank() }];
         },
         t1,
         t2
     );
     */
     using index_t              = typename ret_t::index_t;
-    constexpr auto outter_size = static_cast<index_t>(T1::shape_t::elements());
-    constexpr auto inner_size  = static_cast<index_t>(T2::shape_t::elements());
+    constexpr auto outter_size = static_cast<index_t>(A::shape_t::elements());
+    constexpr auto inner_size  = static_cast<index_t>(B::shape_t::elements());
     for (auto i = index_t{}; i != outter_size; ++i)
     {
         for (auto j = index_t{}; j != inner_size; ++j)
         {
-            ret[i * inner_size + j] = t1[i] * t2[j];
+            ret[i * inner_size + j] = a[i] * b[j];
         }
     }
     return ret;
@@ -298,6 +299,25 @@ constexpr auto contract(Tensor const& tensor, Vec const& vec) noexcept
     return result;
 }
 
+template <
+    concepts::ContractionIndexSet auto CIS,
+    concepts::StaticContainer          A,
+    concepts::StaticContainer          B>
+[[nodiscard]]
+constexpr auto
+    contraction([[maybe_unused]] A const& a, [[maybe_unused]] B const& b) noexcept
+    -> utils::types::tensor::
+        tensor_contraction_result_t<std::remove_cvref_t<A>, std::remove_cvref_t<B>, CIS>
+{
+    using a_t                                   = std::remove_cvref_t<A>;
+    using b_t                                   = std::remove_cvref_t<B>;
+    static constexpr auto contraction_index_set = CIS;
+    using ret_t                                 = utils::types::tensor::
+        tensor_contraction_result_t<a_t, b_t, contraction_index_set>;
+    ret_t ret{};
+    return ret;
+}
+
 template <std::size_t N, typename TensorType>
 constexpr auto tensor_power(TensorType const& tensor)
 {
@@ -306,23 +326,6 @@ constexpr auto tensor_power(TensorType const& tensor)
         return tensor;
     else
         return tensor_product(tensor, tensor_power<N - 1>(tensor));
-}
-
-template <typename TensorA, typename TensorB>
-auto tensor_dot(TensorA const& Ta, TensorB const& Tb)
-{
-    // Element-wise product of two tensors with the same shape
-    static_assert(
-        TensorA::rank() == TensorB::rank(),
-        "tensor_dot requires tensors with the same shape"
-    );
-
-    TensorA result{};
-    for (typename TensorA::size_type i = 0; i < TensorA::shape_t::elements(); ++i)
-    {
-        result[i] = Ta[i] * Tb[i];
-    }
-    return result;
 }
 
 template <typename Derivative, typename Flux>

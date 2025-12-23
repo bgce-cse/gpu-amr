@@ -1,7 +1,9 @@
 #ifndef AMR_INCLUDED_STATIC_SHAPE
 #define AMR_INCLUDED_STATIC_SHAPE
 
+#include "container_concepts.hpp"
 #include "utility/utility_concepts.hpp"
+#include <algorithm>
 #include <array>
 #include <cassert>
 
@@ -12,23 +14,27 @@
 namespace amr::containers
 {
 
-template <std::integral auto N, std::integral auto... Ns>
-    requires utility::concepts::are_same<decltype(N), decltype(Ns)...> && (N > 0) &&
-             ((Ns > 0) && ...)
+template <concepts::Container auto Sizes>
+    requires std::integral<typename decltype(Sizes)::value_type>
 class static_shape
 {
 public:
     // TODO: This can be dangerous, maybe hardcode a type once we know what we
     // need
-    using size_type   = std::common_type_t<decltype(N), decltype(Ns)...>;
-    using size_pack_t = std::integer_sequence<size_type, N, Ns...>;
-    using rank_t      = size_type;
-    using index_t     = size_type;
+    using size_type = typename decltype(Sizes)::value_type;
+    using rank_t    = size_type;
+    using index_t   = size_type;
 
 private:
-    inline static constexpr size_type                     s_elements = (N * ... * Ns);
-    inline static constexpr rank_t                        s_rank     = sizeof...(Ns) + 1;
-    inline static constexpr std::array<size_type, s_rank> s_sizes    = { N, Ns... };
+    static_assert(
+        std::ranges::all_of(Sizes, [](auto const& e) { return e > size_type{}; })
+    );
+
+private:
+    inline static constexpr auto const& s_sizes = Sizes;
+    inline static constexpr rank_t      s_rank  = s_sizes.size();
+    inline static constexpr size_type   s_elements =
+        std::ranges::fold_left(s_sizes, size_type{ 1 }, std::multiplies{});
 
     static_assert(s_rank > 0);
 
@@ -54,7 +60,10 @@ public:
     [[nodiscard]]
     constexpr static auto size(index_t const i) noexcept -> size_type
     {
-        assert(i < s_rank);
+        if (!std::is_constant_evaluated())
+        {
+            assert(i < rank());
+        }
         using container_index_t =
             typename std::remove_cvref_t<decltype(s_sizes)>::size_type;
         return s_sizes[static_cast<container_index_t>(i)];

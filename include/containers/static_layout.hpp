@@ -21,7 +21,6 @@ class static_layout
 public:
     using shape_t       = Shape;
     using size_type     = typename shape_t::size_type;
-    using size_pack_t   = typename shape_t::size_pack_t;
     using rank_t        = typename shape_t::rank_t;
     using index_t       = typename shape_t::index_t;
     using multi_index_t = index::static_multi_index<index_t, shape_t>;

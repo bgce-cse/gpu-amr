@@ -57,7 +57,8 @@ struct DerivativeKernel
 {
     using derivative_t = typename amr::containers::static_tensor<
         double,
-        amr::containers::static_layout<amr::containers::static_shape<Order, Order>>>;
+        amr::containers::static_layout<
+            amr::containers::static_shape<std::array{ Order, Order }>>>;
     using lagrange_t       = typename amr::basis::Lagrange<Order>;
     using gauss_legendre_t = typename amr::basis::GaussLegendre<Order>;
 

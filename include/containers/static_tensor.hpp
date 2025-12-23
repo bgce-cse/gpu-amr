@@ -23,7 +23,6 @@ public:
     using layout_t        = Layout;
     using shape_t         = typename layout_t::shape_t;
     using size_type       = typename layout_t::size_type;
-    using size_pack_t     = typename layout_t::size_pack_t;
     using index_t         = typename layout_t::index_t;
     using rank_t          = typename layout_t::rank_t;
     using multi_index_t   = typename layout_t::multi_index_t;
@@ -31,6 +30,9 @@ public:
     using iterator        = value_type*;
     using const_reference = value_type const&;
     using reference       = value_type&;
+
+    template <typename U>
+    using rebind_t = static_tensor<U, layout_t>;
 
 private:
     static_assert(std::is_trivially_copyable_v<T>);
@@ -64,7 +66,10 @@ public:
     [[nodiscard]]
     static constexpr auto size(index_t const i) noexcept -> size_type
     {
-        assert(i < rank());
+        if (!std::is_constant_evaluated())
+        {
+            assert(i < rank());
+        }
         return layout_t::size(i);
     }
 
@@ -111,8 +116,9 @@ public:
     constexpr auto
         operator[](std::ranges::contiguous_range auto const& idxs) const noexcept
         -> const_reference
+    // TODO: @Miguel
     // requires(std::ranges::size(idxs) == rank() &&
-    // std::is_same_v<std::ranges::range_value_t<decltype(idxs)>, index_t>) #TODO: @Miguel
+    // std::is_same_v<std::ranges::range_value_t<decltype(idxs)>, index_t>)
     {
         return data_[linear_index(idxs)];
     }
@@ -122,6 +128,27 @@ public:
         -> reference
     {
         return const_cast<reference>(std::as_const(*this).operator[](idxs));
+    }
+
+    [[nodiscard]]
+    constexpr auto underlying_at(const index_t i) noexcept -> reference
+    {
+        return const_cast<reference>(std::as_const(*this).underlying_at(i));
+    }
+
+    [[nodiscard]]
+    constexpr auto underlying_at(const index_t i) const noexcept -> const_reference
+    {
+        static_assert(
+            sizeof(static_tensor) == sizeof(value_type) * elements(),
+            "Container must be compact to bypass the subscript operator!"
+        );
+        assert(i < elements());
+        if constexpr (std::is_signed_v<index_t>)
+        {
+            assert(i >= index_t{});
+        }
+        return data_[i];
     }
 
     template <typename... I>
@@ -188,7 +215,7 @@ public:
         return std::end(data_);
     }
 
-private:
+public:
     // TODO: Alignment?
     value_type data_[flat_size()];
 };
@@ -261,7 +288,10 @@ auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
     if constexpr (std::is_arithmetic_v<T>)
     {
         // TODO: Improve. Max is not necessarily the most restrictive value
-        width = std::clamp((int)std::ceil(std::log10(std::ranges::max(t))), 1, 7) + 1;
+        width = std::clamp(
+                    (int)std::ceil(std::log10(std::abs(std::ranges::max(t)) + 1)), 1, 7
+                ) +
+                1;
     }
 
     os << prefixes[rank - 1];

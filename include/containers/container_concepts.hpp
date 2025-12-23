@@ -16,7 +16,7 @@ concept Container = requires {
 
 template <typename V>
 concept Vector = requires(V v, typename V::size_type i) { v[i]; } && Container<V> &&
-                 std::is_trivially_constructible_v<V>;
+                 (V::rank() == 1) && std::is_trivially_constructible_v<V>;
 
 template <typename I>
 concept MultiIndex = requires() {
@@ -72,6 +72,14 @@ concept LoopControl = requires {
     {
         C::stride(std::declval<typename C::index_t>())
     } -> std::same_as<typename C::index_t>;
+};
+
+template <typename CIS>
+concept ContractionIndexSet = requires(CIS const& cis) {
+    typename CIS::index_t;
+    {
+        cis[std::declval<typename CIS::index_t>()]
+    } -> std::convertible_to<std::pair<typename CIS::index_t, typename CIS::index_t>>;
 };
 
 } // namespace amr::containers::concepts

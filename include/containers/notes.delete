@@ -1,0 +1,5 @@
+Tensor A is N dimensional
+Tensor B is M dimensional
+
+list of pair of indices Indices
+dim(A,i) == dim(B, j) forall (i, j) in Indices
