@@ -1,6 +1,7 @@
 #pragma once
 
 #include "containers/container_algorithms.hpp"
+#include "containers/container_operations.hpp"
 #include "containers/static_vector.hpp"
 #include "generated_config.hpp"
 #include "globals/global_config.hpp"
@@ -86,9 +87,8 @@ struct Surface
             max_eigenval,
             numericalflux
         );
-        auto kernel_vec = kernels[sign_idx];
-        auto weighted_flux =
-            amr::containers::algorithms::tensor::tensor_dot(numericalflux, surface_mass);
+        auto kernel_vec    = kernels[sign_idx];
+        auto weighted_flux = numericalflux * surface_mass;
 
         if (direction == 1)
         {

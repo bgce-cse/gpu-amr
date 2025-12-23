@@ -198,9 +198,7 @@ struct RHSEvaluator
                 patch_update[idx] = patch_update[idx] - face_du;
             }
 
-            patch_update[idx] = amr::containers::algorithms::tensor::tensor_dot(
-                patch_update[idx], global_t::inv_volume_mass / volume
-            );
+            patch_update[idx] = patch_update[idx] * global_t::inv_volume_mass / volume;
             // std::cout << "final du at cell center " << cell_center[idx] << " = "
             //           << patch_update[idx] << "\n\n";
             // std::cout << "inverse volume" << global_t::inv_volume_mass / volume <<

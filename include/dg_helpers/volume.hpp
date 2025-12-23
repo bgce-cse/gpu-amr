@@ -40,9 +40,7 @@ struct VolumeEvaluator
                 cell_du + inverse_jacobian * cell_volume *
                               amr::containers::algorithms::tensor::derivative_contraction(
                                   global_t::derivative_tensor,
-                                  amr::containers::algorithms::tensor::tensor_dot(
-                                      cell_flux[i], global_t::volume_mass
-                                  ),
+                                  cell_flux[i] * global_t::volume_mass,
                                   i
                               );
         }
