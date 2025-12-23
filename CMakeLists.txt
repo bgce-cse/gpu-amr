@@ -192,10 +192,11 @@ endforeach()
 
 add_subdirectory(examples)
 add_subdirectory(tests)
+add_subdirectory(benchmark)
 
 # ----------------------------
 # Status
 # ----------------------------
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Sanitizers enabled (Debug only): ${ENABLE_SANITIZERS}")
-message(STATUS "Log level: ${AMR_LOG_LEVEL}")
+message(STATUS "Examles log level: ${LOG_LEVEL}")
