@@ -28,25 +28,23 @@ struct VolumeEvaluator
 {
     template <typename Cell_t, typename Flux_t>
     static auto evaluate_volume_integral(
-        Cell_t&       cell_du,
-        const Flux_t& cell_flux,
-        auto&         cell_volume
+        Cell_t&                cell_du,
+        const Flux_t&          cell_flux,
+        [[maybe_unused]] auto& cell_volume,
+        auto&                  inverse_jacobian
     )
     {
         for (std::size_t i = 0; i < Policy::Dim; ++i)
         {
-            cell_du = cell_du -
-                      cell_volume *
-                          amr::containers::algorithms::tensor::tensor_dot(
-                              amr::containers::algorithms::tensor::derivative_contraction(
-                                  global_t::derivative_tensor, cell_flux[i], i
-                              ),
-                              global_t::volume_mass
+            cell_du =
+                cell_du + amr::containers::algorithms::tensor::derivative_contraction(
+                              global_t::derivative_tensor, cell_flux[i], i
                           );
         }
-        // cell_du = cell_volume * amr::containers::algorithms::tensor::tensor_dot(
-        //                             cell_du, global_t::volume_mass
-        //                         );
+        cell_du = inverse_jacobian * cell_volume *
+                  amr::containers::algorithms::tensor::tensor_dot(
+                      cell_du, global_t::volume_mass
+                  ); // TODO add the inverse Jacobian, see the volume mass
     }
 };
 

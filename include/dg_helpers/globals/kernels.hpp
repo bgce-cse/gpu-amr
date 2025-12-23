@@ -72,7 +72,7 @@ struct DerivativeKernel
         {
             for (std::size_t j = 0; j < Order; ++j)
             {
-                *it++ = lagrange_t::derivative(nodes, j, nodes[i]);
+                *it++ = lagrange_t::derivative(nodes, i, nodes[j]);
             }
         }
         return result;

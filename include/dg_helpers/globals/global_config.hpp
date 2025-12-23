@@ -143,11 +143,12 @@ public:
                 return EqImpl::get_initial_values(global_pos, 0.0);
             }
         );
-        // Apply mass matrix inverse (L2 projection formula)
-        // coeffs = M^{-1} * coeffs, where M is the mass matrix
-        return amr::containers::algorithms::tensor::tensor_dot(
-            coeffs, TensorMixin<Policy>::inv_volume_mass
-        );
+        // For nodal Lagrange basis at Gauss-Legendre nodes the projected
+        // coefficients are simply the function samples at the nodes.
+        // Previous code multiplied by the inverse quadrature weights which
+        // artificially amplified values for Order>=2. Return the sampled
+        // coefficients directly.
+        return coeffs;
     }
 };
 
