@@ -9,7 +9,9 @@
 #include "neighbor.hpp"
 #include "utility/compile_time_utility.hpp"
 #include "utility/logging.hpp"
+#include "../solver/boundary.hpp"
 #include <algorithm>
+#include <type_traits>
 
 namespace amr::ndt::utils
 {
@@ -158,13 +160,14 @@ constexpr auto halo_apply_section_impl(
     std::visit(
         utils::overloads{
             // None impl
-            [&p_i, &args...](typename n_linear_idx_varant_t::none const&)
+            [&tree, &p_i, &args...](typename n_linear_idx_varant_t::none const& )
             {
                 containers::manipulators::for_each<
                     typename patch_layout_t::template halo_iteration_control_t<D>>(
                     p_i.data(),
                     Halo_Exchange_Operator::boundary,
                     D,
+                    std::type_identity<T>{},
                     std::forward<decltype(args)>(args)...
                 );
             },
@@ -180,6 +183,7 @@ constexpr auto halo_apply_section_impl(
                     Halo_Exchange_Operator::same,
                     p_n.data(),
                     D,
+                    std::type_identity<T>{},
                     std::forward<decltype(args)>(args)...
                 );
             },
@@ -212,6 +216,7 @@ constexpr auto halo_apply_section_impl(
                     Halo_Exchange_Operator::finer,
                     p_neighbors,
                     D,
+                    std::type_identity<T>{},
                     std::forward<decltype(args)>(args)...
                 );
             },
@@ -230,6 +235,7 @@ constexpr auto halo_apply_section_impl(
                     p_n.data(),
                     D,
                     neighbor.dim_offset,
+                    std::type_identity<T>{},
                     std::forward<decltype(args)>(args)...
                 );
             } },
@@ -311,27 +317,83 @@ struct halo_exchange_impl_t
     struct boundary_t
     {
         static constexpr auto operator()(
-            [[maybe_unused]] auto const& p_i,
-            [[maybe_unused]] auto const& direction,
-            [[maybe_unused]] auto&&... args
+            auto&                     p_i,
+            auto const&               direction,
+            auto                      type_tag,
+            auto const&               bc_set,
+            auto const&               idxs
         ) noexcept -> void
         {
             DEFAULT_SOURCE_LOG_TRACE(
                 std::string("Boundary halo exchange in direction ") +
                 std::to_string(direction.index())
             );
-            DEFAULT_SOURCE_LOG_DEBUG("Boundary halo exchange not implemented");
+
+            using field_type = typename std::remove_cvref_t<decltype(type_tag)>::type;
+            using direction_t = std::remove_cvref_t<decltype(direction)>;
+            using value_t     = std::remove_cvref_t<decltype(p_i[idxs])>;
+
+            const auto bc_t = bc_set.template get_bc_type<field_type>(direction.index());
+            const auto bc_v = bc_set.template get_bc_value<field_type>(direction.index());
+
+            const auto dim      = direction.dimension();
+            const auto positive = direction_t::is_positive(direction);
+            
+            //TODO: This is problematic for halo width not 1
+            //it requires some precondition i think
+            switch (bc_t)
+            {
+                case amr::ndt::solver::bc_type::Dirichlet:
+                {
+                    p_i[idxs] = static_cast<value_t>(bc_v);
+                    break;
+                }
+                
+                case amr::ndt::solver::bc_type::Neumann:
+                {
+                    auto interior_idxs = idxs;
+                    interior_idxs[dim] += positive ? -index_t{1} : index_t{1};
+
+                    p_i[idxs] = p_i[interior_idxs] - static_cast<value_t>(bc_v);
+                    break;
+                }
+                
+                case amr::ndt::solver::bc_type::Extrapolate:
+                {
+                    auto interior_idxs_1 = idxs;
+                    auto interior_idxs_2 = idxs;
+                    interior_idxs_1[dim] += positive ? -index_t{1} : index_t{1};
+                    interior_idxs_2[dim] += positive ? -index_t{2} : index_t{2};
+                    
+                    // Linear extrapolation: halo = 2*first_interior - second_interior
+                    p_i[idxs] = p_i[interior_idxs_1] * 2 - p_i[interior_idxs_2];
+                    break;
+                }
+                
+                case amr::ndt::solver::bc_type::Periodic:
+                {
+                    assert(false && "Periodic BC should not reach boundary_t");
+                    break;
+                }
+                default:
+                {
+                    assert(false);
+                    break;
+                }
+            }
         }
     };
 
     struct same_t
     {
         static constexpr auto operator()(
-            auto&       self_patch,
-            auto const& other_patch,
-            auto const& direction,
-            auto const& idxs,
-            [[maybe_unused]] auto&&... args
+            auto&                     self_patch,
+            auto const&               other_patch,
+            auto const&               direction,
+            [[maybe_unused]] auto     type_tag,
+            [[maybe_unused]] auto const& bc_set,
+            auto const&               idxs
+            
         ) noexcept -> void
         {
             DEFAULT_SOURCE_LOG_TRACE(
@@ -355,8 +417,10 @@ struct halo_exchange_impl_t
             auto&                                     current_patch,
             std::ranges::contiguous_range auto const& neighbor_patches,
             auto const&                               direction,
-            auto const&                               idxs,
-            [[maybe_unused]] auto&&... args
+            [[maybe_unused]] auto                     type_tag,
+            [[maybe_unused]] auto const&              bc_set,
+            auto const&                               idxs
+            
         ) noexcept -> void
         {
             DEFAULT_SOURCE_LOG_TRACE(
@@ -424,12 +488,14 @@ struct halo_exchange_impl_t
     struct coarser_t
     {
         static constexpr auto operator()(
-            auto&       self_patch,
-            auto const& other_patch,
-            auto const& direction,
-            auto const& dim_offset,
-            auto const& idxs,
-            [[maybe_unused]] auto&&... args
+            auto&                     self_patch,
+            auto const&               other_patch,
+            auto const&               direction,
+            auto const&               dim_offset,
+            [[maybe_unused]] auto     type_tag,
+            [[maybe_unused]] auto const& bc_set,
+            auto const&               idxs
+            
         ) noexcept -> void
         {
             DEFAULT_SOURCE_LOG_TRACE(
