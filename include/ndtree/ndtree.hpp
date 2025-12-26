@@ -7,6 +7,7 @@
 #include "neighbor.hpp"
 #include "patch.hpp"
 #include "patch_utils.hpp"
+#include "../solver/boundary.hpp"
 #include "utility/compile_time_utility.hpp"
 #include "utility/error_handling.hpp"
 #include "utility/logging.hpp"
@@ -35,7 +36,9 @@ namespace amr::ndt::tree
 template <
     concepts::DeconstructibleType T,
     concepts::PatchIndex          Patch_Index,
-    concepts::PatchLayout         Patch_Layout>
+    concepts::PatchLayout         Patch_Layout,
+    typename                      BoundaryConditionSet 
+>
 class ndtree
 {
 public:
@@ -85,6 +88,11 @@ private:
     using reference_t = Type&;
     template <typename Type>
     using const_reference_t = Type const&;
+
+    using bc_dir_array_t =
+    std::array<amr::ndt::solver::bc_type, patch_direction_t::elements()>;
+
+    bc_dir_array_t m_bc_dir_types{};
 
 public:
     template <typename Map_Type>
@@ -136,9 +144,10 @@ public:
     }
 
 public:
-    ndtree(size_type size) noexcept
-        : m_size{}
-
+    
+    ndtree(size_type size, BoundaryConditionSet bc_set) noexcept
+        : m_bc_set(std::move(bc_set))
+        , m_size{}
     {
         std::apply(
             [size](auto&... b)
@@ -157,18 +166,8 @@ public:
             (pointer_t<refine_status_t>)std::malloc(size * sizeof(refine_status_t));
         m_neighbors =
             (pointer_t<patch_neighbors_t>)std::malloc(size * sizeof(patch_neighbors_t));
-
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
-        patch_neighbors_t root_neighbors;
-        for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
-             d.advance())
-        {
-            neighbor_patch_index_variant_t periodic_neighbor;
-            periodic_neighbor.data =
-                typename neighbor_patch_index_variant_t::same{ patch_index_t::root() };
-            root_neighbors[d.index()] = periodic_neighbor;
-        }
-        append(patch_index_t::root(), root_neighbors);
+        initialize_root_with_bcs();
     }
 
     ~ndtree() noexcept
@@ -179,6 +178,60 @@ public:
         std::free(m_neighbors);
         std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_data_buffers);
     }
+
+private:
+    auto initialize_root_with_bcs() -> void
+    {
+        patch_neighbors_t root_neighbors;   
+        for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel(); d.advance())
+        {
+            neighbor_patch_index_variant_t neighbor;
+
+            const bool periodic = is_periodic_direction(d);
+            m_bc_dir_types[d.index()] = periodic
+                ? amr::ndt::solver::bc_type::Periodic
+                : amr::ndt::solver::bc_type::Extrapolate; 
+            if (periodic) {
+                neighbor.data = typename neighbor_patch_index_variant_t::same{ patch_index_t::root() };
+            } else {
+                neighbor.data = typename neighbor_patch_index_variant_t::none{};
+            }
+
+            root_neighbors[d.index()] = neighbor;
+        }
+        append(patch_index_t::root(), root_neighbors);
+    }
+    
+    auto is_periodic_direction(patch_direction_t const& d) const -> bool
+    {
+        DEFAULT_SOURCE_LOG_TRACE(
+            std::string("Checking if direction ") + std::to_string(d.index()) + " is periodic"
+        );
+        // Check if periodic for any field type
+        return check_periodic_impl(
+            d, 
+            std::make_index_sequence<std::tuple_size_v<deconstructed_raw_map_types_t>>{}
+        );
+    }
+    
+    template<std::size_t... Is>
+    auto check_periodic_impl(
+        patch_direction_t const& d, 
+        std::index_sequence<Is...>
+    ) const -> bool
+    {
+        // Return true if ANY field is periodic in this direction
+        return ((check_field_periodic<
+            std::tuple_element_t<Is, deconstructed_raw_map_types_t>
+        >(d)) || ...);
+    }
+    
+    template<typename FieldType>
+auto check_field_periodic(patch_direction_t const& d) const -> bool
+{
+    auto bc_type = m_bc_set.template get_bc_type<FieldType>(d.index());
+    return bc_type == amr::ndt::solver::bc_type::Periodic;
+}
 
 public:
     [[nodiscard]]
@@ -263,6 +316,7 @@ public:
                 {
                     // TODO: Handle boundaries
                     // utility::error_handling::assert_unreachable();
+                    
                     return ret_t{};
                 },
                 [this](typename neighbor_patch_index_variant_t::same const& n)
@@ -301,7 +355,7 @@ public:
             assert(!find_index(child_id).has_value());
 
             const auto neighbor_array =
-                neighbor_utils_t::compute_child_neighbors(node_id, m_neighbors[from], i);
+                neighbor_utils_t::compute_child_neighbors(node_id, m_neighbors[from], i, m_bc_dir_types);
             append(child_id, neighbor_array);
             assert(m_index_map[child_id] == back_idx());
             assert(m_linear_index_map[back_idx()] == child_id);
@@ -954,7 +1008,7 @@ public:
         for (linear_index_t i = 0; i != m_size; ++i)
         {
             utils::patches::halo_apply<halo_exchange_operator_impl_t, patch_direction_t>(
-                *this, i
+                *this, i, m_bc_set 
             );
         }
     }
@@ -1001,7 +1055,7 @@ private:
 
     auto compact() noexcept -> void
     {
-        DEFAULT_SOURCE_LOG_TRACE("Comacting tree");
+        DEFAULT_SOURCE_LOG_TRACE("Compacting tree");
         size_t tail = 0;
         for (linear_index_t head = 0; head < m_size; ++head)
         {
@@ -1082,9 +1136,11 @@ private:
     linear_index_array_t       m_reorder_buffer;
     flat_refine_status_array_t m_refine_status_buffer;
     neighbor_buffer_t          m_neighbors;
+    BoundaryConditionSet       m_bc_set;
     size_type                  m_size;
     std::vector<patch_index_t> m_to_refine;
     std::vector<patch_index_t> m_to_coarsen;
+    
 };
 
 } // namespace amr::ndt::tree
