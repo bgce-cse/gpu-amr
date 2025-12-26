@@ -49,7 +49,9 @@ struct S2
 struct cell
 {
     using deconstructed_types_map_t = std::tuple<S1, S2>;
-
+    
+    static constexpr std::size_t n_fields = std::tuple_size_v<deconstructed_types_map_t>;
+    
     cell(typename S1::type v1 = 0, typename S2::type v2 = 0)
     {
         std::get<S1>(m_data).value = v1;
@@ -96,11 +98,17 @@ int main()
 
     using patch_index_t  = amr::ndt::morton::morton_id<9u, 2u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
-    using tree_t         = amr::ndt::tree::ndtree<cell, patch_index_t, patch_layout_t>;
+    
     using physics_t =
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
-    tree_t tree(100000);
+    amr::ndt::solver::boundary_condition_set<physics_t, cell> bcs{};
+    bcs.set_bc_all<S1>(amr::ndt::solver::bc_type::Periodic);
+    bcs.set_bc_all<S2>(amr::ndt::solver::bc_type::Periodic);
+
+    using tree_t         = amr::ndt::tree::ndtree<cell, patch_index_t, patch_layout_t,decltype(bcs) >;
+
+    tree_t tree(100000, bcs);
 
     amr::ndt::print::structured_print     p(std::cout);
     amr::ndt::print::vtk_print<physics_t> vtk_printer("test");
