@@ -123,6 +123,8 @@ struct E3D
 struct EulerCell2D
 {
     using deconstructed_types_map_t = std::tuple<Rho, Rhou, Rhov, E2D>;
+    
+    static constexpr std::size_t n_fields = std::tuple_size_v<deconstructed_types_map_t>;
 
     EulerCell2D(double rho, double rhou, double rhov, double e2d)
     {
