@@ -52,24 +52,14 @@ int main()
               << ", Dim=" << amr::config::GlobalConfigPolicy::Dim
               << ", DOFs=" << amr::config::GlobalConfigPolicy::DOFs << "\n";
 
-    // --- DEBUG: Print mass matrix and its inverse for Order=2 ---
-    using global_t = GlobalConfig<amr::config::GlobalConfigPolicy>;
-    std::cout << "\n[DEBUG] Mass matrix (volume_mass):\n";
-    std::cout << global_t::volume_mass << "\n";
-    std::cout << "[DEBUG] Inverse mass matrix (inv_volume_mass):\n";
-    std::cout << global_t::inv_volume_mass << "\n";
-    std::cout << "[DEBUG] Quadrature weights (1D):\n";
-    std::cout << global_t::quad_weights << "\n";
-    std::cout << "[DEBUG] Quadrature points (1D):\n";
-    std::cout << global_t::quad_points << "\n\n";
-
     using global_t = GlobalConfig<amr::config::GlobalConfigPolicy>;
     using RHS      = amr::rhs::RHSEvaluator<global_t, amr::config::GlobalConfigPolicy>;
     using dg_tree  = amr::dg_tree::TreeBuilder<global_t, amr::config::GlobalConfigPolicy>;
     using S1       = dg_tree::S1;
     using S2       = dg_tree::S2;
     using S3       = dg_tree::S3;
-    // using S4      = dg_tree::S4;
+    using patch_index_t = typename dg_tree::patch_index_t;
+
     dg_tree tree_builder;
     auto&   tree = tree_builder.tree;
 
@@ -82,20 +72,52 @@ int main()
 
     typename IntegratorTraits::type integrator;
 
-    // Setup tree mesh
-    // Time-stepping loop
     double time         = 0.0;
     double dt           = 0.01;
     auto   max_eigenval = -std::numeric_limits<double>::infinity();
     int    timestep     = 0;
+    double next_plotted = 0.0; // Start plotting at time 0
+
+    // Define AMR refinement condition
+    auto amr_condition = [&time](
+                             const patch_index_t& idx,
+                             [[maybe_unused]] int step,
+                             [[maybe_unused]]
+                             int max_step
+                         )
+    {
+        auto [coords, level] = patch_index_t::decode(idx.id());
+        auto max_size        = 1u << idx.max_depth();
+        auto patch_size      = 1u << (idx.max_depth() - level);
+
+        double start_x = coords[0]; // Convert to absolute coords
+        double end_x   = start_x + patch_size;
+
+        double step_x = max_size * (time / 1.0); // Normalize by end time
+
+        bool in_interval_1 = step_x < end_x + patch_size && step_x > start_x - patch_size;
+        bool in_interval_2 =
+            step_x < end_x + 2 * patch_size && step_x > start_x - 2 * patch_size;
+
+        bool refine  = in_interval_1 && level < idx.max_depth();
+        bool coarsen = !in_interval_2 && level > 0;
+
+        if (refine)
+        {
+            return dg_tree::tree_t::refine_status_t::Refine;
+        }
+
+        if (coarsen)
+        {
+            return dg_tree::tree_t::refine_status_t::Coarsen;
+        }
+
+        return dg_tree::tree_t::refine_status_t::Stable;
+    };
 
     try
     {
-        std::cout << "\n====================================\n";
-        std::cout << "  Initializing DG Tree Printer (Refactored)\n";
-        std::cout << "====================================\n\n";
         ndt::print::dg_tree_printer_2d<global_t, GlobalConfigPolicy> printer("dg_tree");
-        std::cout << "DG tree printer created successfully\n";
 
         std::cout << "\n====================================\n";
         std::cout << "  Starting Time Integration\n";
@@ -103,18 +125,27 @@ int main()
         std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
         printer.template print<S1>(tree, time_extension);
         std::cout << "  Output: " << time_extension << " (timestep " << timestep << ")\n";
-        std::cout << "points: " << global_t::quad_points << "\n";
-        std::cout << "derivative" << global_t::derivative_tensor << "\n";
-        auto risultato = amr::containers::algorithms::tensor::derivative_contraction(
-            global_t::derivative_tensor, global_t::derivative_tensor, 1
-        );
-        std::cout << "dxf" << risultato << "\n";
+
+        double plot_step = 0.1; // Plot every 0.1 time units
+        next_plotted     = 0.0;
+        int amr_step     = 0;
+
         while (time < amr::config::GlobalConfigPolicy::EndTime)
         {
+            // Apply mesh refinement/coarsening
+            auto amr_condition_with_time =
+                [&amr_condition, &amr_step, &time](const patch_index_t& idx)
+            {
+                return amr_condition(
+                    idx,
+                    amr_step,
+                    static_cast<int>(amr::config::GlobalConfigPolicy::EndTime * 10)
+                );
+            };
+            tree.reconstruct_tree(amr_condition_with_time);
+
             // Initialize halo cells with periodic boundary conditions
             tree.halo_exchange_update();
-
-            // Reset maxeigenval for this time step
 
             // Apply time integrator to each patch in the tree
             for (std::size_t idx = 0; idx < tree.size(); ++idx)
@@ -127,11 +158,15 @@ int main()
                 auto  surface          = global_t::cell_area(edge);
                 auto  inverse_jacobian = 1 / edge;
 
-                dt = 1 /
-                     (amr::config::GlobalConfigPolicy::Order *
-                          amr::config::GlobalConfigPolicy::Order +
-                      1.0) *
-                     amr::config::CourantNumber * edge / max_eigenval;
+                // Skip dt calc on first step or when max_eigenval is invalid
+                if (max_eigenval > 0)
+                {
+                    dt = 1 /
+                         (amr::config::GlobalConfigPolicy::Order *
+                              amr::config::GlobalConfigPolicy::Order +
+                          1.0) *
+                         amr::config::CourantNumber * edge / max_eigenval;
+                }
 
                 auto residual_callback = [&](
                                              patch_container_t&       patch_update,
@@ -153,19 +188,20 @@ int main()
                 };
 
                 integrator.step(residual_callback, dof_patch.data(), time, dt);
-                // std::cout << "dt = " << dt << "\n";
-            }
-
-            if (timestep % 2 == 1)
-            {
-                time_extension = "_t" + std::to_string(timestep) + ".vtk";
-                printer.template print<S1>(tree, time_extension);
-                std::cout << "  Output: " << time_extension << " (timestep " << timestep
-                          << ")\n";
             }
 
             time += dt;
             ++timestep;
+            ++amr_step;
+
+            if (time >= next_plotted - 1e-10)
+            {
+                time_extension = "_t" + std::to_string(timestep) + ".vtk";
+                printer.template print<S1>(tree, time_extension);
+                std::cout << "  Output: " << time_extension << " (timestep " << timestep
+                          << ", time=" << time << ")\n";
+                next_plotted += plot_step;
+            }
         }
         std::cout << "dt: " << dt << "\n";
     }

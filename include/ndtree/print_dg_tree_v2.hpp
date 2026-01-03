@@ -15,6 +15,46 @@
 namespace ndt::print
 {
 
+// Helper function to map (i, j) to VTK Lagrange quadrilateral point index
+// Following VTK's Lagrange quad ordering: vertices, then edge points, then face points
+inline std::size_t
+    point_idx_lagrange_quad(std::size_t i, std::size_t j, std::size_t order)
+{
+    bool is_i_boundary = (i == 0 || i == order);
+    bool is_j_boundary = (j == 0 || j == order);
+    int  n_boundary = static_cast<int>(is_i_boundary) + static_cast<int>(is_j_boundary);
+
+    bool i_pos = i > 0;
+    bool j_pos = j > 0;
+
+    if (n_boundary == 2)
+    {
+        // Vertex DOF (4 corners)
+        return (i_pos ? (j_pos ? 2 : 1) : (j_pos ? 3 : 0));
+    }
+
+    std::size_t offset = 4;
+    if (n_boundary == 1)
+    {
+        // Edge DOF
+        if (!is_i_boundary)
+        {
+            // On i-axis (bottom or top edge)
+            return (i - 1) + (j_pos ? (order - 1) + (order - 1) : 0) + offset;
+        }
+        if (!is_j_boundary)
+        {
+            // On j-axis (left or right edge)
+            return (j - 1) + (i_pos ? (order - 1) : 2 * (order - 1) + (order - 1)) +
+                   offset;
+        }
+    }
+
+    // Interior points (face DOF)
+    offset += 2 * ((order - 1) + (order - 1));
+    return offset + (i - 1) + (order - 1) * (j - 1);
+}
+
 template <typename GlobalConfigType, typename Policy>
 struct dg_tree_printer_2d
 {
@@ -110,59 +150,56 @@ private:
         std::vector<std::vector<double>>&       point_dofs
     ) const
     {
-        // constexpr std::size_t Np = Order + 1;
+        constexpr std::size_t Np = Order + 1;
 
-        // Create sub-quads from the high-order element for better visualization
-        // This breaks each DG cell into Order x Order linear quads
-        for (std::size_t jj = 0; jj < Order; ++jj)
+        // Create (Order+1) x (Order+1) points in VTK Lagrange quad order
+        std::vector<unsigned int> conn;
+        conn.reserve(Np * Np);
+
+        // Build points in VTK Lagrange quad ordering
+        for (std::size_t jj = 0; jj <= Order; ++jj)
         {
-            for (std::size_t ii = 0; ii < Order; ++ii)
+            for (std::size_t ii = 0; ii <= Order; ++ii)
             {
-                std::vector<unsigned int> conn;
-                conn.reserve(4);
+                double xi  = double(ii) / double(Order);
+                double eta = double(jj) / double(Order);
 
-                // Four corners of this sub-quad in reference space
-                std::array<std::array<std::size_t, 2>, 4> corners = {
-                    {
-                     { ii, jj },         // bottom-left
-                        { ii + 1, jj },     // bottom-right
-                        { ii + 1, jj + 1 }, // top-right
-                        { ii, jj + 1 }      // top-left
-                    }
-                };
+                // map to physical coordinates
+                double x = cx + (2.0 * xi - 1.0) * (0.5 * h);
+                double y = cy + (2.0 * eta - 1.0) * (0.5 * h);
 
-                for (const auto& [i, j] : corners)
+                unsigned int pid = static_cast<unsigned int>(points.size());
+                points.push_back({ x, y, 0.0 });
+
+                // Get the correct VTK index for this (i, j) position
+                std::size_t vtk_idx = point_idx_lagrange_quad(ii, jj, Order);
+
+                // Ensure conn is large enough
+                if (conn.size() <= vtk_idx)
                 {
-                    double xi  = double(i) / double(Order);
-                    double eta = double(j) / double(Order);
-
-                    // map to physical coordinates
-                    double x = cx + (2.0 * xi - 1.0) * (0.5 * h);
-                    double y = cy + (2.0 * eta - 1.0) * (0.5 * h);
-
-                    unsigned int pid = static_cast<unsigned int>(points.size());
-                    points.push_back({ x, y, 0.0 });
-                    conn.push_back(pid);
-
-                    typename GlobalConfigType::Basis::vector_t pos;
-                    pos[0] = xi;
-                    pos[1] = eta;
-
-                    auto value = GlobalConfigType::Basis::evaluate_basis(cell_dofs, pos);
-
-                    std::vector<double> vals(NumDOFs, 0.0);
-                    for (std::size_t k = 0;
-                         k < std::min<std::size_t>(NumDOFs, value.flat_size());
-                         ++k)
-                    {
-                        vals[k] = value[k];
-                    }
-                    point_dofs.push_back(vals);
+                    conn.resize(vtk_idx + 1);
                 }
 
-                cells.push_back(conn);
+                conn[vtk_idx] = pid;
+
+                typename GlobalConfigType::Basis::vector_t pos;
+                pos[0] = xi;
+                pos[1] = eta;
+
+                auto value = GlobalConfigType::Basis::evaluate_basis(cell_dofs, pos);
+
+                std::vector<double> vals(NumDOFs, 0.0);
+                for (std::size_t k = 0;
+                     k < std::min<std::size_t>(NumDOFs, value.flat_size());
+                     ++k)
+                {
+                    vals[k] = value[k];
+                }
+                point_dofs.push_back(vals);
             }
         }
+
+        cells.push_back(conn);
     }
 
     void write_points(
@@ -201,7 +238,7 @@ private:
     {
         file << "CELL_TYPES " << n << "\n";
         for (std::size_t i = 0; i < n; ++i)
-            file << 9 << "\n"; // VTK_QUAD (standard linear quad)
+            file << 70 << "\n"; // VTK_LAGRANGE_QUADRILATERAL
     }
 
     void write_point_data(
