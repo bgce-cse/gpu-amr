@@ -127,25 +127,12 @@ int main()
                 auto  surface          = global_t::cell_area(edge);
                 auto  inverse_jacobian = 1 / edge;
 
-                for (size_t linear_idx = 0; linear_idx < patch_layout_t::flat_size();
-                     ++linear_idx)
-                {
-                    flux_patch[linear_idx] =
-                        global_t::EquationImpl::evaluate_flux(dof_patch[linear_idx]);
-                }
-                // Compute time step based on maximum eigenvalue
-                if (timestep > 0 && max_eigenval > 0.0)
-                {
-                    dt = std::min(
-                        1 /
-                            (amr::config::GlobalConfigPolicy::Order *
-                                 amr::config::GlobalConfigPolicy::Order +
-                             1.0) *
-                            amr::config::CourantNumber * global_t::cell_edge(idx) /
-                            max_eigenval,
-                        dt
-                    );
-                }
+                dt = 1 /
+                     (amr::config::GlobalConfigPolicy::Order *
+                          amr::config::GlobalConfigPolicy::Order +
+                      1.0) *
+                     amr::config::CourantNumber * edge / max_eigenval;
+
                 auto residual_callback = [&](
                                              patch_container_t&       patch_update,
                                              const patch_container_t& current_dofs,

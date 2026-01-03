@@ -106,7 +106,7 @@ struct RHSEvaluator
         typename CenterType>
     inline static void evaluate(
         const DOFTensorType&               dof_patch,    // const: read-only
-        const FluxVectorType&              flux_patch,   // written inside
+        FluxVectorType&                    flux_patch,   // written inside
         DOFTensorType&                     patch_update, // output
         [[maybe_unused]] const CenterType& cell_center,  // read-only
         [[maybe_unused]] double const&     dt,
@@ -116,7 +116,23 @@ struct RHSEvaluator
         const double&                      inverse_jacobian
     )
     {
-        // Loop over each cell in the patch (including halos)
+        for (size_t linear_idx = 0; linear_idx < patch_layout_t::flat_size();
+             ++linear_idx)
+        {
+            flux_patch[linear_idx] =
+                global_t::EquationImpl::evaluate_flux(dof_patch[linear_idx]);
+            if (Policy::Order > 1 &&
+                !amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
+            {
+                volume_t::evaluate_volume_integral(
+                    patch_update[linear_idx],
+                    flux_patch[linear_idx],
+                    volume,
+                    inverse_jacobian
+                );
+            }
+        }
+
         for (size_t linear_idx = 0; linear_idx < patch_layout_t::flat_size();
              ++linear_idx)
         {
@@ -125,13 +141,6 @@ struct RHSEvaluator
             if (amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(idx))
             {
                 continue;
-            }
-
-            if (Policy::Order > 1)
-            {
-                volume_t::evaluate_volume_integral(
-                    patch_update[idx], flux_patch[idx], volume, inverse_jacobian
-                );
             }
 
             for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
