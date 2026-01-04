@@ -78,8 +78,11 @@ int main()
     int    timestep     = 0;
     double next_plotted = 0.0; // Start plotting at time 0
 
-    // Define AMR refinement condition
-    auto amr_condition = [&time](
+    // Track the current level being refined for selective bottom-left refinement
+    int current_refine_level = 0; // Start refining from the root (level 0)
+
+    // Define AMR refinement condition: refine only bottom-left patch (0,0) progressively
+    auto amr_condition = [&current_refine_level](
                              const patch_index_t& idx,
                              [[maybe_unused]] int step,
                              [[maybe_unused]]
@@ -87,31 +90,18 @@ int main()
                          )
     {
         auto [coords, level] = patch_index_t::decode(idx.id());
-        auto max_size        = 1u << idx.max_depth();
-        auto patch_size      = 1u << (idx.max_depth() - level);
+        auto max_depth       = idx.max_depth();
 
-        double start_x = coords[0]; // Convert to absolute coords
-        double end_x   = start_x + patch_size;
+        // Only refine the (0,0) patch at the current level
+        bool is_bottom_left = (coords[0] == 0 && coords[1] == 0);
 
-        double step_x = max_size * (time / 1.0); // Normalize by end time
-
-        bool in_interval_1 = step_x < end_x + patch_size && step_x > start_x - patch_size;
-        bool in_interval_2 =
-            step_x < end_x + 2 * patch_size && step_x > start_x - 2 * patch_size;
-
-        bool refine  = in_interval_1 && level < idx.max_depth();
-        bool coarsen = !in_interval_2 && level > 0;
-
-        if (refine)
+        // Refine only if this patch is at the current level being refined
+        if (is_bottom_left && level == current_refine_level && level < max_depth)
         {
             return dg_tree::tree_t::refine_status_t::Refine;
         }
 
-        if (coarsen)
-        {
-            return dg_tree::tree_t::refine_status_t::Coarsen;
-        }
-
+        // All other patches remain stable, no coarsening
         return dg_tree::tree_t::refine_status_t::Stable;
     };
 
@@ -122,19 +112,20 @@ int main()
         std::cout << "\n====================================\n";
         std::cout << "  Starting Time Integration\n";
         std::cout << "====================================\n\n";
+
         std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
         printer.template print<S1>(tree, time_extension);
         std::cout << "  Output: " << time_extension << " (timestep " << timestep << ")\n";
 
-        double plot_step = 0.1; // Plot every 0.1 time units
+        double plot_step = 0.01; // Plot every 0.1 time units
         next_plotted     = 0.0;
         int amr_step     = 0;
 
         while (time < amr::config::GlobalConfigPolicy::EndTime)
         {
-            // Apply mesh refinement/coarsening
+            // Apply mesh refinement/coarsening once per timestep (like dynamic_amr)
             auto amr_condition_with_time =
-                [&amr_condition, &amr_step, &time](const patch_index_t& idx)
+                [&amr_condition, &amr_step](const patch_index_t& idx)
             {
                 return amr_condition(
                     idx,
@@ -142,7 +133,17 @@ int main()
                     static_cast<int>(amr::config::GlobalConfigPolicy::EndTime * 10)
                 );
             };
+
+            std::size_t tree_size_before = tree.size();
             tree.reconstruct_tree(amr_condition_with_time);
+            std::size_t tree_size_after = tree.size();
+
+            // If tree was refined, move to next level for selective refinement
+            if (tree_size_after > tree_size_before &&
+                current_refine_level < static_cast<int>(patch_index_t::max_depth()))
+            {
+                current_refine_level++;
+            }
 
             // Initialize halo cells with periodic boundary conditions
             tree.halo_exchange_update();

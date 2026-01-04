@@ -6,7 +6,7 @@ simulation:
   end_time: 1.0                    # Total simulation time
   grid_elements: 10       # Number of elements per dimension
   grid_size: 1.0
-  MaxDepth: 1.0                   # Physical domain size
+  MaxDepth: 5                   # Maximum refinement depth (levels 0 to 5)
   offset: [0.0, 0.0]               # Domain offset
 
 # Solver configuration

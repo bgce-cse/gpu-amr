@@ -103,14 +103,36 @@ private:
         std::vector<std::vector<double>>       point_dofs;
 
         const auto max_depth = IndexType::max_depth();
-        double     cell_size = 1.0 / static_cast<double>(1u << max_depth);
 
         for (std::size_t patch_idx = 0; patch_idx < tree.size(); ++patch_idx)
         {
-            const auto& dof_patch = tree.template get_patch<S1Tag>(patch_idx);
+            // Get the actual patch ID from the tree using the proper tree accessor
+            auto patch_id = tree.get_node_index_at(patch_idx);
 
-            auto patch_id                    = IndexType(patch_idx);
-            auto [patch_coords, patch_level] = IndexType::decode(patch_id.id());
+            // Now get the patch using the actual linear index that corresponds to this
+            // patch_id The tree stores patches internally, and we need to get the right
+            // one
+            const auto& dof_patch   = tree.template get_patch<S1Tag>(patch_idx);
+            auto        patch_level = patch_id.level();
+            auto [patch_coords, _]  = IndexType::decode(patch_id.id());
+
+
+            // At level L, patch_coords from decode() are already in finest-level grid
+            // space They represent the position in a 2^max_depth × 2^max_depth grid Each
+            // patch spans 2^(max_depth - L) finest cells
+            std::size_t patch_scale = 1u << (max_depth - patch_level);
+
+            // Patch base position is directly from decoded coordinates (already in finest
+            // grid space)
+            std::size_t max_grid_coord = 1u << max_depth;
+            std::size_t patch_base_x_grid =
+                std::min(static_cast<std::size_t>(patch_coords[0]), max_grid_coord - 1);
+            std::size_t patch_base_y_grid =
+                std::min(static_cast<std::size_t>(patch_coords[1]), max_grid_coord - 1);
+
+            // Size of each cell in grid coordinates
+            double cell_size_grid =
+                static_cast<double>(patch_scale) / static_cast<double>(PatchSize);
 
             for (std::size_t local_y = 0; local_y < PatchSize; ++local_y)
             {
@@ -121,14 +143,23 @@ private:
 
                     const auto& cell_dofs = dof_patch[linear_idx];
 
-                    double cx = (static_cast<double>(patch_coords[0]) * PatchSize +
-                                 static_cast<double>(local_x) + 0.5) *
-                                cell_size;
-                    double cy = (static_cast<double>(patch_coords[1]) * PatchSize +
-                                 static_cast<double>(local_y) + 0.5) *
-                                cell_size;
+                    // Cell center in grid coordinates
+                    double cell_x_grid =
+                        static_cast<double>(patch_base_x_grid) +
+                        (static_cast<double>(local_x) + 0.5) * cell_size_grid;
+                    double cell_y_grid =
+                        static_cast<double>(patch_base_y_grid) +
+                        (static_cast<double>(local_y) + 0.5) * cell_size_grid;
 
-                    add_cell_2d(cell_dofs, cx, cy, cell_size, points, cells, point_dofs);
+                    // Normalize to [0,1] physical domain
+                    double normalization_factor = static_cast<double>(1u << max_depth);
+                    double cell_x               = cell_x_grid / normalization_factor;
+                    double cell_y               = cell_y_grid / normalization_factor;
+                    double cell_h               = cell_size_grid / normalization_factor;
+
+                    add_cell_2d(
+                        cell_dofs, cell_x, cell_y, cell_h, points, cells, point_dofs
+                    );
                 }
             }
         }
