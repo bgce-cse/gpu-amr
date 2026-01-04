@@ -116,7 +116,6 @@ private:
             auto        patch_level = patch_id.level();
             auto [patch_coords, _]  = IndexType::decode(patch_id.id());
 
-
             // At level L, patch_coords from decode() are already in finest-level grid
             // space They represent the position in a 2^max_depth × 2^max_depth grid Each
             // patch spans 2^(max_depth - L) finest cells
@@ -225,6 +224,11 @@ private:
                      ++k)
                 {
                     vals[k] = value[k];
+                    // Safeguard against NaN values
+                    if (std::isnan(vals[k]))
+                    {
+                        vals[k] = 0.0;
+                    }
                 }
                 point_dofs.push_back(vals);
             }
