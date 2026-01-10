@@ -92,7 +92,6 @@ int main()
         auto [coords, level] = patch_index_t::decode(idx.id());
         auto max_depth       = idx.max_depth();
 
-        // Only refine the (0,0) patch at the current level
         bool is_bottom_left = (coords[0] == 0 && coords[1] == 0);
 
         // Refine only if this patch is at the current level being refined
@@ -117,38 +116,15 @@ int main()
         printer.template print<S1>(tree, time_extension);
         std::cout << "  Output: " << time_extension << " (timestep " << timestep << ")\n";
 
-        double plot_step = 0.01; // Plot every 0.1 time units
+        double plot_step = 0.01; // Plot every 0.01 time units
         next_plotted     = 0.0;
         int amr_step     = 0;
 
         while (time < amr::config::GlobalConfigPolicy::EndTime)
         {
-            // Apply mesh refinement/coarsening once per timestep (like dynamic_amr)
-            auto amr_condition_with_time =
-                [&amr_condition, &amr_step](const patch_index_t& idx)
-            {
-                return amr_condition(
-                    idx,
-                    amr_step,
-                    static_cast<int>(amr::config::GlobalConfigPolicy::EndTime * 10)
-                );
-            };
-
-            std::size_t tree_size_before = tree.size();
-            tree.reconstruct_tree(amr_condition_with_time);
-            std::size_t tree_size_after = tree.size();
-
-            // If tree was refined, move to next level for selective refinement
-            if (tree_size_after > tree_size_before &&
-                current_refine_level < static_cast<int>(patch_index_t::max_depth()))
-            {
-                current_refine_level++;
-            }
-
             // Initialize halo cells with periodic boundary conditions
             tree.halo_exchange_update();
 
-            // Apply time integrator to each patch in the tree
             for (std::size_t idx = 0; idx < tree.size(); ++idx)
             {
                 auto& dof_patch        = tree.template get_patch<S1>(idx);
@@ -159,7 +135,6 @@ int main()
                 auto  surface          = global_t::cell_area(edge);
                 auto  inverse_jacobian = 1 / edge;
 
-                // Skip dt calc on first step or when max_eigenval is invalid
                 if (max_eigenval > 0)
                 {
                     dt = 1 /
@@ -193,10 +168,29 @@ int main()
 
             time += dt;
             ++timestep;
-            ++amr_step;
 
             if (time >= next_plotted - 1e-10)
             {
+                auto amr_condition_with_time =
+                    [&amr_condition, &amr_step](const patch_index_t& idx)
+                {
+                    return amr_condition(
+                        idx,
+                        amr_step,
+                        static_cast<int>(amr::config::GlobalConfigPolicy::EndTime * 10)
+                    );
+                };
+                ++amr_step;
+                std::size_t tree_size_before = tree.size();
+                tree.reconstruct_tree(amr_condition_with_time);
+                std::size_t tree_size_after = tree.size();
+
+                // If tree was refined, move to next level for selective refinement
+                if (tree_size_after > tree_size_before &&
+                    current_refine_level < static_cast<int>(patch_index_t::max_depth()))
+                {
+                    current_refine_level++;
+                }
                 time_extension = "_t" + std::to_string(timestep) + ".vtk";
                 printer.template print<S1>(tree, time_extension);
                 std::cout << "  Output: " << time_extension << " (timestep " << timestep
