@@ -21,7 +21,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <limits> // for std::numeric_limits
+#include <limits>
 #include <random>
 #include <tuple>
 #include <utility>
@@ -32,25 +32,11 @@ using namespace amr::config;
 using namespace amr::global;
 using namespace amr::time_integration;
 
-/**
- * @brief DG Solver with Adaptive Mesh Refinement
- *
- * Demonstrates:
- * - Configuration-driven equation and mesh setup
- * - Tree-based AMR with Morton indexing
- * - Per-cell DOF storage and time-stepping
- * - RHS evaluation using finite volume/DG approach
- * - VTK output of DG field data
- */
 int main()
 {
     std::cout << "====================================\n";
     std::cout << "  DG Solver - AMR Main Loop\n";
     std::cout << "====================================\n\n";
-    std::cout << "Configuration:\n";
-    std::cout << "  Order=" << amr::config::GlobalConfigPolicy::Order
-              << ", Dim=" << amr::config::GlobalConfigPolicy::Dim
-              << ", DOFs=" << amr::config::GlobalConfigPolicy::DOFs << "\n";
 
     using global_t = GlobalConfig<amr::config::GlobalConfigPolicy>;
     using RHS      = amr::rhs::RHSEvaluator<global_t, amr::config::GlobalConfigPolicy>;
@@ -72,17 +58,20 @@ int main()
 
     typename IntegratorTraits::type integrator;
 
-    double time         = 0.0;
-    double dt           = 0.01;
-    auto   max_eigenval = -std::numeric_limits<double>::infinity();
-    int    timestep     = 0;
-    double next_plotted = 0.0; // Start plotting at time 0
+    double time     = 0.0;
+    double dt       = 0.01;
+    double dt_patch = dt;
+    int    timestep = 0;
 
-    // Track the current level being refined for selective bottom-left refinement
-    int current_refine_level = 0; // Start refining from the root (level 0)
+    double plot_step    = 0.01;
+    double next_plotted = 0.0;
 
-    // Define AMR refinement condition: refine only bottom-left patch (0,0) progressively
-    auto amr_condition = [&current_refine_level](
+    // CFL-scaled AMR schedule
+    int  amr_interval         = 10;
+    int  next_amr_step        = 0;
+    int  amr_step             = 0;
+    int  current_refine_level = 0;
+    auto amr_condition        = [&current_refine_level](
                              const patch_index_t& idx,
                              [[maybe_unused]] int step,
                              [[maybe_unused]]
@@ -108,47 +97,28 @@ int main()
     {
         ndt::print::dg_tree_printer_2d<global_t, GlobalConfigPolicy> printer("dg_tree");
 
-        std::cout << "\n====================================\n";
-        std::cout << "  Starting Time Integration\n";
-        std::cout << "====================================\n\n";
-
         std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
         printer.template print<S1>(tree, time_extension);
-        std::cout << "  Output: " << time_extension << " (timestep " << timestep << ")\n";
-
-        double plot_step = 0.01; // Plot every 0.01 time units
-        next_plotted     = 0.0;
-        int amr_step     = 0;
 
         while (time < amr::config::GlobalConfigPolicy::EndTime)
         {
-            // Initialize halo cells with periodic boundary conditions
             tree.halo_exchange_update();
 
             for (std::size_t idx = 0; idx < tree.size(); ++idx)
             {
+                auto max_eigenval = -std::numeric_limits<double>::infinity();
+
                 auto& dof_patch        = tree.template get_patch<S1>(idx);
                 auto& flux_patch       = tree.template get_patch<S2>(idx);
                 auto& center_patch     = tree.template get_patch<S3>(idx);
                 auto  edge             = global_t::cell_edge(idx);
                 auto  volume           = global_t::cell_volume(edge);
                 auto  surface          = global_t::cell_area(edge);
-                auto  inverse_jacobian = 1 / edge;
+                auto  inverse_jacobian = 1.0 / edge;
 
-                if (max_eigenval > 0)
-                {
-                    dt = 1 /
-                         (amr::config::GlobalConfigPolicy::Order *
-                              amr::config::GlobalConfigPolicy::Order +
-                          1.0) *
-                         amr::config::CourantNumber * edge / max_eigenval;
-                }
-
-                auto residual_callback = [&](
-                                             patch_container_t&       patch_update,
+                auto residual_callback = [&](patch_container_t&       patch_update,
                                              const patch_container_t& current_dofs,
-                                             double /*t*/
-                                         )
+                                             double)
                 {
                     RHS::evaluate(
                         current_dofs,
@@ -164,12 +134,39 @@ int main()
                 };
 
                 integrator.step(residual_callback, dof_patch.data(), time, dt);
+
+                if (max_eigenval > 0)
+                {
+                    double new_dt = 1.0 /
+                                    (amr::config::GlobalConfigPolicy::Order *
+                                         amr::config::GlobalConfigPolicy::Order +
+                                     1.0) *
+                                    amr::config::CourantNumber * edge / max_eigenval;
+                    dt_patch = std::min(dt_patch, new_dt);
+                }
+
+                // if (timestep >= 40 && timestep <= 50)
+                // {
+                //     std::cout << "dioschifosocane" << dof_patch.data() << "\n\n";
+                // }
             }
+            dt = std::min(dt, dt_patch);
+
+            // // Debug: Check for anomalies
+            // if (timestep >= 40 && timestep <= 50)
+            // {
+            //     std::cout << "[DEBUG] Step " << timestep << ": dt=" << dt
+            //               << ", max_eigenval=" << max_eigenval
+            //               << ", tree.size()=" << tree.size() << std::endl;
+            // }
 
             time += dt;
             ++timestep;
 
-            if (time >= next_plotted - 1e-10)
+            // ================================
+            // CFL-scaled AMR
+            // ================================
+            if (timestep >= next_amr_step)
             {
                 auto amr_condition_with_time =
                     [&amr_condition, &amr_step](const patch_index_t& idx)
@@ -180,29 +177,39 @@ int main()
                         static_cast<int>(amr::config::GlobalConfigPolicy::EndTime * 10)
                     );
                 };
-                ++amr_step;
-                std::size_t tree_size_before = tree.size();
-                tree.reconstruct_tree(amr_condition_with_time);
-                std::size_t tree_size_after = tree.size();
 
-                // If tree was refined, move to next level for selective refinement
-                if (tree_size_after > tree_size_before &&
+                ++amr_step;
+
+                tree.reconstruct_tree(amr_condition_with_time);
+
+                // Increment refine level every 2 AMR cycles for progressive refinement
+                if (amr_step % 2 == 0 &&
                     current_refine_level < static_cast<int>(patch_index_t::max_depth()))
                 {
                     current_refine_level++;
+                    std::cout << "AMR step " << amr_step
+                              << ": increasing target level to " << current_refine_level
+                              << std::endl;
                 }
+
+                next_amr_step = timestep + amr_interval;
+            }
+
+            // ================================
+            // Output (independent of AMR)
+            // ================================
+            if (true)
+            {
                 time_extension = "_t" + std::to_string(timestep) + ".vtk";
                 printer.template print<S1>(tree, time_extension);
-                std::cout << "  Output: " << time_extension << " (timestep " << timestep
-                          << ", time=" << time << ")\n";
+                std::cout << "Output " << time_extension << " time=" << time << "\n";
                 next_plotted += plot_step;
             }
         }
-        std::cout << "dt: " << dt << "\n";
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Exception caught: " << e.what() << "\n";
+        std::cerr << "Exception: " << e.what() << "\n";
     }
 
     return 0;

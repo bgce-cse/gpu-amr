@@ -13,6 +13,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <numeric>
 #include <ranges>
 #include <tuple>
@@ -168,6 +169,11 @@ public:
             root_neighbors[d.index()] = periodic_neighbor;
         }
         append(patch_index_t::root(), root_neighbors);
+    }
+
+    ndtree(size_type size, auto&& refinement, auto&& coarsening)
+        : ndtree(size)
+    {
     }
 
     ~ndtree() noexcept
@@ -683,6 +689,7 @@ public:
     template <typename Fn>
     auto reconstruct_tree(Fn&& fn) noexcept(noexcept(fn(std::declval<linear_index_t&>())))
         -> void
+
     {
         update_refine_flags(fn);
         apply_refine_coarsen();
@@ -723,6 +730,20 @@ private:
         patch_neighbors_t const& neighbor_array
     ) noexcept -> void
     {
+        // Zero-initialize new patch data to prevent NaN from uninitialized memory
+        std::apply(
+            [this](auto&... b)
+            {
+                ((void)(std::memset(
+                     b + m_size,
+                     0,
+                     patch_layout_t::flat_size() * sizeof(value_t<decltype(b)>)
+                 )),
+                 ...);
+            },
+            m_data_buffers
+        );
+
         m_linear_index_map[m_size] = node_id;
         m_index_map[node_id]       = m_size;
         m_neighbors[m_size]        = neighbor_array;
@@ -900,12 +921,31 @@ public:
         linear_index_t const start_to
     ) noexcept -> void
     {
-        static constexpr auto num_patch_types =
-            std::tuple_size_v<deconstructed_buffers_t>;
-
+        std::cout << "refine " << from << "\n";
         for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
         {
             const auto child_patch_index = start_to + patch_idx;
+
+            // First, zero out ALL cells (including halo) for buffers 1+ (flux, centers,
+            // etc.)
+            for (linear_index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
+                 ++linear_idx)
+            {
+                [child_patch_index,
+                 linear_idx,
+                 this]<std::size_t... I>(std::index_sequence<I...>)
+                {
+                    ((I > 0 ? (std::get<I>(
+                                   m_data_buffers
+                               )[child_patch_index][linear_idx] = {},
+                               void())
+                            : void()),
+                     ...);
+                }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
+            }
+
+            // Then interpolate buffer 0 (DOFs) for non-halo cells only
+            // Do NOT zero halo cells for DOFs - let halo exchange fill them
             for (linear_index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
                  ++linear_idx)
             {
@@ -916,19 +956,9 @@ public:
                 const auto from_linear_idx =
                     s_fragmentation_patch_maps[patch_idx][linear_idx];
 
-                // Copy all patches from parent to children
-                [&]<std::size_t... Is>(std::index_sequence<Is...>)
-                {
-                    (
-                        [&]()
-                        {
-                            auto& patches = std::get<Is>(m_data_buffers);
-                            patches[child_patch_index][linear_idx] =
-                                patches[from][from_linear_idx];
-                        }(),
-                        ...
-                    );
-                }(std::make_index_sequence<num_patch_types>{});
+                // Interpolate buffer 0 (DOFs) from parent
+                std::get<0>(m_data_buffers)[child_patch_index][linear_idx] =
+                    std::get<0>(m_data_buffers)[from][from_linear_idx];
             }
         }
     }

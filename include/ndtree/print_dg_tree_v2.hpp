@@ -3,8 +3,10 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -14,6 +16,45 @@
 
 namespace ndt::print
 {
+
+// Byte swap for big-endian output (VTK binary format requirement)
+template <typename T>
+inline T swap_endian(T value)
+{
+    if constexpr (sizeof(T) == 4)
+    {
+        uint32_t v;
+        std::memcpy(&v, &value, sizeof(T));
+        v = ((v & 0xFF000000) >> 24) | ((v & 0x00FF0000) >> 8) | ((v & 0x0000FF00) << 8) |
+            ((v & 0x000000FF) << 24);
+        T result;
+        std::memcpy(&result, &v, sizeof(T));
+        return result;
+    }
+    else if constexpr (sizeof(T) == 8)
+    {
+        uint64_t v;
+        std::memcpy(&v, &value, sizeof(T));
+        v = ((v & 0xFF00000000000000ULL) >> 56) | ((v & 0x00FF000000000000ULL) >> 40) |
+            ((v & 0x0000FF0000000000ULL) >> 24) | ((v & 0x000000FF00000000ULL) >> 8) |
+            ((v & 0x00000000FF000000ULL) << 8) | ((v & 0x0000000000FF0000ULL) << 24) |
+            ((v & 0x000000000000FF00ULL) << 40) | ((v & 0x00000000000000FFULL) << 56);
+        T result;
+        std::memcpy(&result, &v, sizeof(T));
+        return result;
+    }
+    return value;
+}
+
+template <typename T>
+inline void write_binary(std::ofstream& file, T value)
+{
+    if constexpr (std::endian::native == std::endian::little)
+    {
+        value = swap_endian(value);
+    }
+    file.write(reinterpret_cast<const char*>(&value), sizeof(T));
+}
 
 // Helper function to map (i, j) to VTK Lagrange quadrilateral point index
 // Following VTK's Lagrange quad ordering: vertices, then edge points, then face points
@@ -76,7 +117,7 @@ struct dg_tree_printer_2d
     {
         std::string full_filename = "vtk_output/" + m_base_filename + "_Order" +
                                     std::to_string(Order) + filename_extension;
-        std::ofstream file(full_filename);
+        std::ofstream file(full_filename, std::ios::binary);
         if (!file.is_open())
             throw std::runtime_error("Cannot open file: " + full_filename);
 
@@ -89,7 +130,7 @@ private:
     {
         file << "# vtk DataFile Version 3.0\n";
         file << "DG 2D Printer (Order=" << Order << ")\n";
-        file << "ASCII\n";
+        file << "BINARY\n";
         file << "DATASET UNSTRUCTURED_GRID\n";
     }
 
@@ -224,12 +265,9 @@ private:
                      ++k)
                 {
                     vals[k] = value[k];
-                    // Safeguard against NaN values
-                    if (std::isnan(vals[k]))
-                    {
-                        vals[k] = 0.0;
-                    }
+                    // Binary VTK handles NaN/Inf natively - no conversion needed
                 }
+
                 point_dofs.push_back(vals);
             }
         }
@@ -245,8 +283,9 @@ private:
         file << "POINTS " << points.size() << " double\n";
         for (const auto& pt : points)
         {
-            file << std::scientific << std::setprecision(16) << pt[0] << " " << pt[1]
-                 << " " << pt[2] << "\n";
+            write_binary(file, pt[0]);
+            write_binary(file, pt[1]);
+            write_binary(file, pt[2]);
         }
     }
 
@@ -262,10 +301,9 @@ private:
         file << "CELLS " << cells.size() << " " << total << "\n";
         for (const auto& c : cells)
         {
-            file << c.size();
+            write_binary(file, static_cast<int>(c.size()));
             for (auto pt : c)
-                file << " " << pt;
-            file << "\n";
+                write_binary(file, static_cast<int>(pt));
         }
     }
 
@@ -273,7 +311,7 @@ private:
     {
         file << "CELL_TYPES " << n << "\n";
         for (std::size_t i = 0; i < n; ++i)
-            file << 70 << "\n"; // VTK_LAGRANGE_QUADRILATERAL
+            write_binary(file, static_cast<int>(70)); // VTK_LAGRANGE_QUADRILATERAL
     }
 
     void write_point_data(
@@ -290,9 +328,8 @@ private:
             file << "LOOKUP_TABLE default\n";
             for (const auto& vals : point_dofs)
             {
-                if (comp < vals.size())
-                    file << std::scientific << std::setprecision(16) << vals[comp]
-                         << "\n";
+                double value = (comp < vals.size()) ? vals[comp] : 0.0;
+                write_binary(file, value);
             }
         }
     }
