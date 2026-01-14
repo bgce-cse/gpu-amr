@@ -108,13 +108,14 @@ int main()
             {
                 auto& dof_patch        = tree.template get_patch<S1>(idx);
                 auto& flux_patch       = tree.template get_patch<S2>(idx);
-                auto  edge             = global_t::cell_edge(idx);
+                auto  edge             = global_t::cell_edge(tree.get_node_index_at(idx));
                 auto  volume           = global_t::cell_volume(edge);
                 auto  surface          = global_t::cell_area(edge);
                 auto  inverse_jacobian = 1.0 / edge;
 
                 std::cout << "dt = " << dt << " for patch = " << idx
-                          << " eig = " << max_eigenval << "\n";
+                          << " eig = " << max_eigenval << " edge = " << edge
+                          << " volume = " << volume << "\n";
 
                 auto residual_callback = [&](patch_container_t&       patch_update,
                                              const patch_container_t& current_dofs,

@@ -55,17 +55,12 @@ constexpr auto global_to_reference(
     return (global_coords - cell_center) / cell_size;
 }
 
-constexpr auto edge(std::integral auto& idx)
+template <typename PatchIndexType, std::size_t PatchSize>
+constexpr auto edge(const PatchIndexType& patch_id)
 {
-    using patch_index_t = amr::ndt::morton::morton_id<
-        amr::config::GlobalConfigPolicy::MaxDepth,
-        static_cast<unsigned int>(amr::config::GlobalConfigPolicy::Dim)>;
-    auto patch_id                    = patch_index_t(idx);
-    auto [patch_coords, patch_level] = patch_index_t::decode(patch_id.id());
-    double patch_level_size          = 1.0 / static_cast<double>(1u << patch_level);
-    double cell_size                 = patch_level_size /
-                       static_cast<double>(amr::config::GlobalConfigPolicy::PatchSize);
-    return cell_size;
+    auto [patch_coords, patch_level] = PatchIndexType::decode(patch_id.id());
+    double patch_size                = 1.0 / static_cast<double>(1u << patch_level);
+    return patch_size / PatchSize;
 }
 
 template <typename SizeType>

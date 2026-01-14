@@ -85,9 +85,10 @@ struct CoordinateMixin
         return global_to_reference(c, g, s);
     }
 
-    static auto cell_edge(std::integral auto& idx)
+    template <typename IndexType>
+    static auto cell_edge(const IndexType& idx)
     {
-        return edge(idx);
+        return edge<IndexType, Policy::PatchSize>(idx);
     }
 
     template <typename SizeType>
