@@ -4,6 +4,8 @@
 #include "containers/container_utils.hpp"
 #include "containers/static_vector.hpp"
 #include "ndconcepts.hpp"
+#include "utility/logging.hpp"
+#include "../solver/boundary.hpp"
 #include <cstddef>
 #include <type_traits>
 #include <variant>
@@ -192,6 +194,7 @@ class neighbor_utils
 public:
     using patch_index_t  = Patch_Index;
     using patch_layout_t = Patch_Layout;
+    
 
 private:
     static constexpr auto s_1d_fanout = patch_index_t::fanout();
@@ -210,6 +213,8 @@ public:
     // TODO: This should be provided by the patch index
     using direction_t =
         direction<index_t{ s_rank }>; // typename patch_index_t::direction_t;
+    
+    using bc_type_array_t = std::array<amr::ndt::solver::bc_type, direction_t::elements()>;
 
 public:
     template <typename T>
@@ -305,9 +310,15 @@ public:
     static auto compute_child_neighbors(
         patch_index_t const&     parent_id,
         patch_neighbors_t const& parent_neighbor_array,
-        index_t const&           local_child_id
+        index_t const&           local_child_id,
+        bc_type_array_t          bc_types
     ) -> patch_neighbors_t
     {
+        DEFAULT_SOURCE_LOG_TRACE(
+            std::string("Computing child neighbors for parent ") + parent_id.repr() + 
+            ", child index " + std::to_string(local_child_id)
+        );
+        
         const auto child_multiindex =
             child_expansion_t::layout_t::multi_index(local_child_id);
         const auto        relations = s_neighbor_relation_maps[local_child_id];
@@ -316,12 +327,22 @@ public:
         for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
         {
             const auto directional_relation = relations[d.index()];
+            
+            DEFAULT_SOURCE_LOG_TRACE(
+                std::string("  Direction ") + std::to_string(d.index()) + ": " +
+                (directional_relation == NeighborRelation::Sibling ? "Sibling" : "ParentNeighbor")
+            );
+            
             if (directional_relation == NeighborRelation::Sibling ||
-                parent_id == patch_index_t::root())
+                (parent_id == patch_index_t::root() &&
+                 bc_types[d.index()] == amr::ndt::solver::bc_type::Periodic))
             {
                 const auto sibling_offset = get_sibling_offset(child_multiindex, d);
                 const auto sibling_id =
                     patch_index_t::child_of(parent_id, sibling_offset);
+                DEFAULT_SOURCE_LOG_TRACE(
+                    std::string("    Setting sibling neighbor: ") + sibling_id.repr()
+                );
                 neighbor_variant_t nb;
                 nb.data = typename neighbor_variant_t::same{ sibling_id };
                 child_neighbor_array[d.index()] = nb;
@@ -334,12 +355,14 @@ public:
 
                     if constexpr (std::is_same_v<T, typename neighbor_variant_t::none>)
                     {
+                        DEFAULT_SOURCE_LOG_TRACE("    Parent has none -> child has none");
                         return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                     }
                     else if constexpr (std::is_same_v<
                                            T,
                                            typename neighbor_variant_t::same>)
                     {
+                        DEFAULT_SOURCE_LOG_TRACE("    Parent has same -> child has coarser");
                         return neighbor_variant_t{
                             typename neighbor_variant_t::coarser{
                                                                  neighbor.id,
@@ -354,6 +377,7 @@ public:
                                            T,
                                            typename neighbor_variant_t::finer>)
                     {
+                        DEFAULT_SOURCE_LOG_TRACE("    Parent has finer -> child has same");
                         const auto fine_index = compute_fine_boundary_linear_index(
                             child_multiindex, d.dimension()
                         );
@@ -365,6 +389,7 @@ public:
                                            T,
                                            typename neighbor_variant_t::coarser>)
                     {
+                        DEFAULT_SOURCE_LOG_TRACE("    Parent has coarser -> child has none");
                         return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                     }
                 };
@@ -373,6 +398,8 @@ public:
                     std::visit(visitor, parent_neighbor_array[d.index()].data);
             }
         }
+        
+        DEFAULT_SOURCE_LOG_TRACE("Child neighbor computation complete");
         return child_neighbor_array;
     }
 

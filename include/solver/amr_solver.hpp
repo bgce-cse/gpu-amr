@@ -22,8 +22,9 @@ public:
     using EulerPhysicsSolver = EulerPhysics<DIM>;
     static constexpr int NVAR = EulerPhysicsSolver::NVAR;
 
-    amr_solver(size_t capacity, double gamma_ = 1.4, double cfl_ = 0.3)
-        : m_tree(capacity), gamma(gamma_), cfl(cfl_) {
+    template<typename BCSet>
+    amr_solver(size_t capacity, BCSet bc_set, double gamma_ = 1.4, double cfl_ = 0.3)
+        : m_tree(capacity, std::move(bc_set)), gamma(gamma_), cfl(cfl_) {
         // Dummy dimensions were removed from new EulerPhysics.hpp
         static_assert(DIM == 2 || DIM == 3, "Error: Wrong dimensions");
         }

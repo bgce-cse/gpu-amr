@@ -7,6 +7,8 @@
 #include "ndtree/patch_layout.hpp"
 #include "solver/amr_solver.hpp"
 #include "solver/cell_types.hpp"
+#include "solver/physics_system.hpp"
+#include "solver/boundary.hpp"
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -26,26 +28,30 @@ int main()
     constexpr double physics_x = 1000;
     constexpr double physics_y = 1000;
 
-
     constexpr std::array<double, 2> physics_lengths = {physics_x, physics_y};
 
     using shape_t  = amr::containers::static_shape<N, M>;
     using layout_t = amr::containers::static_layout<shape_t>;
-    // using index_t         = typename layout_t::index_t;
 
     using patch_index_t  = amr::ndt::morton::morton_id<8u, 2u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
-    using tree_t =
-        amr::ndt::tree::ndtree<amr::cell::EulerCell2D, patch_index_t, patch_layout_t>;
 
     using physics_t = amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
-    double            tmax          = 400;
+    amr::ndt::solver::boundary_condition_set<physics_t, amr::cell::EulerCell2D> bcs{};
+    bcs.set_bc_all<amr::cell::Rho>(amr::ndt::solver::bc_type::Periodic);
+    bcs.set_bc_all<amr::cell::Rhou>(amr::ndt::solver::bc_type::Periodic);
+    bcs.set_bc_all<amr::cell::Rhov>(amr::ndt::solver::bc_type::Periodic);
+    bcs.set_bc_all<amr::cell::E2D>(amr::ndt::solver::bc_type::Periodic);
 
+    using tree_t =
+        amr::ndt::tree::ndtree<amr::cell::EulerCell2D, patch_index_t, patch_layout_t, decltype(bcs)>;
+
+    double tmax = 400;
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t,physics_t, 2> solver(1000000); // Provide initial capacity for tree
+    amr_solver<tree_t, physics_t, 2> solver(1000000, bcs);
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)

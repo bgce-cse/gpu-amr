@@ -9,6 +9,7 @@
 #include "solver/amr_solver.hpp"
 #include "solver/cell_types.hpp"
 #include "solver/physics_system.hpp"
+#include "solver/boundary.hpp"
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -33,13 +34,20 @@ int main()
 
     using patch_index_t  = amr::ndt::morton::morton_id<7u, 2u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
-    using tree_t =
-        amr::ndt::tree::ndtree<amr::cell::EulerCell2D, patch_index_t, patch_layout_t>;
 
     using physics_t =
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
     amr::ndt::print::vtk_print<physics_t> printer("euler_print");
+
+    amr::ndt::solver::boundary_condition_set<physics_t, amr::cell::EulerCell2D> bcs{};
+    bcs.set_bc_all<amr::cell::Rho>(amr::ndt::solver::bc_type::Periodic);
+    bcs.set_bc_all<amr::cell::Rhou>(amr::ndt::solver::bc_type::Periodic);
+    bcs.set_bc_all<amr::cell::Rhov>(amr::ndt::solver::bc_type::Periodic);
+    bcs.set_bc_all<amr::cell::E2D>(amr::ndt::solver::bc_type::Periodic);
+
+    using tree_t =
+        amr::ndt::tree::ndtree<amr::cell::EulerCell2D, patch_index_t, patch_layout_t, decltype(bcs)>;
 
     double            tmax            = 400;  // Example tmax, adjust as needed
     double            print_frequency = 10.0; // Print every 10 seconds
@@ -48,7 +56,7 @@ int main()
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t, physics_t, 2> solver(1000000); // Provide initial capacity for tree
+    amr_solver<tree_t, physics_t, 2> solver(1000000, bcs); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
