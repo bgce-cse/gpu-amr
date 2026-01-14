@@ -11,13 +11,13 @@ simulation:
 
 # Solver configuration
 solver:
-  order: 1                # Polynomial order for basis functions (Order)
+  order: 2                # Polynomial order for basis functions (Order)
   courant: 0.5                      # CFL number for time stepping
   timeintegrator: SSPRK1            # Time integration scheme
 
 # Equation and scenario selection
 equation:
-  equation: euler               # Options: "advection", "euler"
+  equation: advection               # Options: "advection", "euler"
   scenario: gaussian_wave           # Scenario selection
 
 # Output configuration

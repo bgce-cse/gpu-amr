@@ -66,16 +66,11 @@ int main()
     double next_plotted = 0.0;
 
     // CFL-scaled AMR schedule
-    int  amr_interval         = 10;
+    int  amr_interval         = 20;
     int  next_amr_step        = 0;
     int  amr_step             = 0;
     int  current_refine_level = 0;
-    auto amr_condition        = [&current_refine_level](
-                             const patch_index_t& idx,
-                             [[maybe_unused]] int step,
-                             [[maybe_unused]]
-                             int max_step
-                         )
+    auto amr_condition        = [&current_refine_level](const patch_index_t& idx)
     {
         auto [coords, level] = patch_index_t::decode(idx.id());
         auto max_depth       = idx.max_depth();
@@ -99,10 +94,10 @@ int main()
         std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
         printer.template print<S1>(tree, time_extension);
 
+        auto max_eigenval = -std::numeric_limits<double>::infinity();
         while (time < amr::config::GlobalConfigPolicy::EndTime)
         {
             tree.halo_exchange_update();
-            auto max_eigenval = -std::numeric_limits<double>::infinity();
 
             for (std::size_t idx = 0; idx < tree.size(); ++idx)
             {
@@ -113,9 +108,9 @@ int main()
                 auto  surface          = global_t::cell_area(edge);
                 auto  inverse_jacobian = 1.0 / edge;
 
-                std::cout << "dt = " << dt << " for patch = " << idx
-                          << " eig = " << max_eigenval << " edge = " << edge
-                          << " volume = " << volume << "\n";
+                // std::cout << "dt = " << dt << " for patch = " << idx
+                //           << " eig = " << max_eigenval << " edge = " << edge
+                //           << " volume = " << volume << "\n";
 
                 auto residual_callback = [&](patch_container_t&       patch_update,
                                              const patch_container_t& current_dofs,
@@ -168,37 +163,26 @@ int main()
             // ================================
             if (timestep >= next_amr_step)
             {
-                auto amr_condition_with_time =
-                    [&amr_condition, &amr_step](const patch_index_t& idx)
-                {
-                    return amr_condition(
-                        idx,
-                        amr_step,
-                        static_cast<int>(amr::config::GlobalConfigPolicy::EndTime * 10)
-                    );
-                };
-
                 ++amr_step;
 
-                tree.reconstruct_tree(amr_condition_with_time);
+                tree.reconstruct_tree(amr_condition);
 
-                // Increment refine level every 2 AMR cycles for progressive refinement
-                if (amr_step % 2 == 0 &&
-                    current_refine_level < static_cast<int>(patch_index_t::max_depth()))
+                // Progress to next refinement level
+                if (current_refine_level < static_cast<int>(patch_index_t::max_depth()))
                 {
                     current_refine_level++;
-                    std::cout << "AMR step " << amr_step
-                              << ": increasing target level to " << current_refine_level
-                              << std::endl;
+                    std::cout << "Advanced refinement target to level "
+                              << current_refine_level << std::endl;
                 }
 
                 next_amr_step = timestep + amr_interval;
+                tree.halo_exchange_update();
             }
 
             // ================================
             // Output (independent of AMR)
             // ================================
-            if (true)
+            if (time > next_plotted)
             {
                 time_extension = "_t" + std::to_string(timestep) + ".vtk";
                 printer.template print<S1>(tree, time_extension);
