@@ -20,9 +20,9 @@
 int main()
 {
     std::cout << "Hello AMR world\n";
-    constexpr std::size_t N         = 10;
-    constexpr std::size_t M         = 10;
-    constexpr std::size_t O         = 10;
+    constexpr std::size_t N         = 6;
+    constexpr std::size_t M         = 6;
+    constexpr std::size_t O         = 6;
     constexpr std::size_t Halo      = 1;
     constexpr double      physics_x = 1000;
     constexpr double      physics_y = 1000;
@@ -44,13 +44,13 @@ int main()
     amr::ndt::print::vtk_print<physics_t> printer("euler_print_3d");
 
     double            tmax            = 400;  // Example tmax, adjust as needed
-    double            print_frequency = 10.0; // Print every 10 seconds
+    double            print_frequency = 4.0; // Print every 10 seconds
     const std::string output_prefix   = "solver_integration_test_3d_refine";
 
-    int inital_refinement = 2;
+    int inital_refinement = 3;
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t, physics_t, 3> solver(100000); // Provide initial capacity for tree
+    amr_solver<tree_t, physics_t, 3> solver(1000000); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
@@ -64,7 +64,7 @@ int main()
         // Define Thresholds and Limits
         constexpr double REFINE_RHO_THRESHOLD  = 19.7;
         constexpr double COARSEN_RHO_THRESHOLD = 19.3;
-        constexpr int    MAX_LEVEL             = 6;
+        constexpr int    MAX_LEVEL             = 4;
         constexpr int    MIN_LEVEL             = 1;
 
         int level = idx.level();
@@ -140,61 +140,6 @@ int main()
         solver.get_tree().halo_exchange_update();
     }
 
-
-    //print all neighbor array stored in the tree here 
-    std::cout << "\n=== ALL NEIGHBOR ARRAYS IN TREE ===" << std::endl;
-    std::cout << "Tree size: " << solver.get_tree().size() << std::endl;
-
-    for (std::size_t linear_idx = 0; linear_idx < solver.get_tree().size(); ++linear_idx)
-    {
-        auto node_id = solver.get_tree().get_node_index_at(linear_idx);
-        std::cout << "\n--- Patch " << linear_idx << " (ID: " << node_id.id() 
-                  << ", Level: " << node_id.level() << ") ---" << std::endl;
-        
-        using direction_t = typename tree_t::patch_direction_t;
-        for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
-        {
-            auto neighbor = solver.get_tree().get_neighbor_at(linear_idx, d);
-            std::string neighbor_info = "  Direction " + std::to_string(d.index()) + ": ";
-            
-            std::visit(
-                [&](auto&& neighbor_data)
-                {
-                    using neighbor_category_t = std::decay_t<decltype(neighbor_data)>;
-                    using neighbor_variant_t = typename tree_t::neighbor_patch_index_variant_t;
-                    
-                    if constexpr (std::is_same_v<neighbor_category_t, typename neighbor_variant_t::none>)
-                    {
-                        neighbor_info += "NONE";
-                    }
-                    else if constexpr (std::is_same_v<neighbor_category_t, typename neighbor_variant_t::same>)
-                    {
-                        neighbor_info += "SAME - " + std::to_string(neighbor_data.id.id());
-                    }
-                    else if constexpr (std::is_same_v<neighbor_category_t, typename neighbor_variant_t::finer>)
-                    {
-                        neighbor_info += "FINER - [";
-                        for (size_t k = 0; k < neighbor_data.ids.size(); ++k)
-                        {
-                            neighbor_info += std::to_string(neighbor_data.ids[k].id());
-                            if (k + 1 < neighbor_data.ids.size()) neighbor_info += ", ";
-                        }
-                        neighbor_info += "]";
-                    }
-                    else if constexpr (std::is_same_v<neighbor_category_t, typename neighbor_variant_t::coarser>)
-                    {
-                        neighbor_info += "COARSER - " + std::to_string(neighbor_data.id.id()) + 
-                                       " (offset: " + std::to_string(neighbor_data.dim_offset) + ")";
-                    }
-                },
-                neighbor.data
-            );
-            std::cout << neighbor_info << std::endl;
-        }
-    }
-
-    std::cout << "\n=== END NEIGHBOR ARRAYS ===" << std::endl;
-
     solver.initialize(acousticPulseIC_3D);
     solver.get_tree().halo_exchange_update();
 
@@ -217,10 +162,8 @@ int main()
 
         solver.time_step(dt);
         solver.get_tree().halo_exchange_update();
-        //  printer.print(solver.get_tree(), "_iteration_1.vtk");
-        //  assert(false);
 
-        if (step % 100000 == 0)
+        if (step % 5 == 0)
         {
             solver.get_tree().reconstruct_tree(acousticWaveCriterion3D);
             solver.get_tree().halo_exchange_update();

@@ -48,7 +48,7 @@ int main()
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t, physics_t, 2> solver(1000000); // Provide initial capacity for tree
+    amr_solver<tree_t, physics_t, 2> solver(1000000,1.4,0.3); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
