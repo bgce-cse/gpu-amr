@@ -59,18 +59,11 @@ private:
 
         constexpr auto dim = std::remove_cvref_t<decltype(tree)>::rank();
         constexpr auto box_points =
-            static_cast<index_t>(utility::cx_functions::pow(dim, 2));
+            static_cast<index_t>(utility::cx_functions::pow(2, dim)); // Changed from pow(dim, 2)
         static_assert(dim == 2 || dim == 3);
         constexpr auto halo_width = patch_layout_t::halo_width();
         const auto     tree_size  = tree.size();
         const auto     cell_count = tree_size * data_layout_t::elements();
-
-        if constexpr (dim > 2)
-        {
-            // TODO: Implement 3D
-            DEFAULT_SOURCE_LOG_FATAL("3D printer not implemened");
-            utility::error_handling::assert_unreachable();
-        }
 
         static constexpr auto type_repr = []<utility::concepts::Arithmetic T>
         {
@@ -91,40 +84,78 @@ private:
 
         file << "POINTS " << cell_count * box_points << ' '
              << type_repr.template operator()<typename value_type::type::type>() << '\n';
-        for (std::size_t i = 0; i != tree_size; ++i)
+
+        if constexpr (dim == 2)
         {
-            const auto patch_id     = tree.get_node_index_at(i);
-            const auto patch_origin = physics_system_t::patch_coord(patch_id);
-            const auto cell_size    = physics_system_t::cell_sizes(patch_id);
+            for (std::size_t i = 0; i != tree_size; ++i)
+            {
+                const auto patch_id     = tree.get_node_index_at(i);
+                const auto patch_origin = physics_system_t::patch_coord(patch_id);
+                const auto cell_size    = physics_system_t::cell_sizes(patch_id);
 
-            amr::containers::manipulators::shaped_for<lc_interior_t>(
-                [&file, &cell_size, &patch_origin, halo_width](auto const& idxs)
-                {
-                    // @Miguel TODO: Indices are flipped unfortunately: Look
-                    // into it
-                    const auto cell_x =
-                        patch_origin[0] +
-                        static_cast<double>(idxs[1] - halo_width) * cell_size[0];
-                    const auto cell_y =
-                        patch_origin[1] +
-                        static_cast<double>(idxs[0] - halo_width) * cell_size[1];
+                amr::containers::manipulators::shaped_for<lc_interior_t>(
+                    [&file, &cell_size, &patch_origin, halo_width](auto const& idxs)
+                    {
+                        const auto cell_x =
+                            patch_origin[0] +
+                            static_cast<double>(idxs[1] - halo_width) * cell_size[0];
+                        const auto cell_y =
+                            patch_origin[1] +
+                            static_cast<double>(idxs[0] - halo_width) * cell_size[1];
 
-                    file << cell_x << ' ' << cell_y << ' ' << 0.0 << '\n';
-                    file << cell_x + cell_size[0] << ' ' << cell_y << ' ' << 0 << '\n';
-                    file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1] << ' '
-                         << 0.0 << '\n';
-                    file << cell_x << ' ' << cell_y + cell_size[1] << ' ' << 0 << '\n';
-                }
-            );
+                        file << cell_x << ' ' << cell_y << ' ' << 0.0 << '\n';
+                        file << cell_x + cell_size[0] << ' ' << cell_y << ' ' << 0 << '\n';
+                        file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1] << ' '
+                             << 0.0 << '\n';
+                        file << cell_x << ' ' << cell_y + cell_size[1] << ' ' << 0 << '\n';
+                    }
+                );
+            }
+        }
+        else // dim == 3
+        {
+               
+            for (std::size_t i = 0; i != tree_size; ++i)
+            {
+              
+                const auto patch_id     = tree.get_node_index_at(i);
+                const auto patch_origin = physics_system_t::patch_coord(patch_id);
+                const auto cell_size    = physics_system_t::cell_sizes(patch_id);
+                
+                amr::containers::manipulators::shaped_for<lc_interior_t>(
+                    [&](auto const& idxs)
+                    {
+                        const auto cell_x =
+                            patch_origin[0] +
+                            static_cast<double>(idxs[2] - halo_width) * cell_size[0];
+                        const auto cell_y =
+                            patch_origin[1] +
+                            static_cast<double>(idxs[1] - halo_width) * cell_size[1];
+                        const auto cell_z =
+                            patch_origin[2] +
+                            static_cast<double>(idxs[0] - halo_width) * cell_size[2];
+
+                        // 8 corners of a hexahedron (VTK_VOXEL ordering)
+                        file << cell_x << ' ' << cell_y << ' ' << cell_z << '\n';
+                        file << cell_x + cell_size[0] << ' ' << cell_y << ' ' << cell_z << '\n';
+                        file << cell_x << ' ' << cell_y + cell_size[1] << ' ' << cell_z << '\n';
+                        file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1] << ' ' << cell_z << '\n';
+                        file << cell_x << ' ' << cell_y << ' ' << cell_z + cell_size[2] << '\n';
+                        file << cell_x + cell_size[0] << ' ' << cell_y << ' ' << cell_z + cell_size[2] << '\n';
+                        file << cell_x << ' ' << cell_y + cell_size[1] << ' ' << cell_z + cell_size[2] << '\n';
+                        file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1] << ' ' << cell_z + cell_size[2] << '\n';
+                    }
+                );
+            }
         }
 
-        file << "CELLS " << cell_count << ' ' << cell_count * 5 << '\n';
-        for (std::size_t i = 0; i != cell_count * box_points; i += box_points)
+        file << "CELLS " << cell_count << ' ' << cell_count * (box_points + 1) << '\n';
+        for (std::size_t i = 0; i != cell_count; ++i)
         {
             file << box_points;
             for (auto j = index_t{}; j != box_points; ++j)
             {
-                file << ' ' << i + j;
+                file << ' ' << i * box_points + j;
             }
             file << '\n';
         }
@@ -132,7 +163,14 @@ private:
         file << "CELL_TYPES " << cell_count << '\n';
         for (std::size_t i = 0; i != cell_count; ++i)
         {
-            file << "9\n";
+            if constexpr (dim == 2)
+            {
+                file << "9\n";  // VTK_QUAD
+            }
+            else // dim == 3
+            {
+                file << "11\n"; // VTK_VOXEL
+            }
         }
 
         file << "CELL_DATA " << cell_count << '\n';
