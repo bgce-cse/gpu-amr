@@ -156,7 +156,7 @@ constexpr auto halo_apply_section_impl(
 
     std::visit(
         utils::overloads{
-            // None impl
+
             [&p_i, &args...](typename n_linear_idx_varant_t::none const&)
             {
                 containers::manipulators::for_each<
@@ -167,7 +167,7 @@ constexpr auto halo_apply_section_impl(
                     std::forward<decltype(args)>(args)...
                 );
             },
-            // Same impl
+
             [&tree, &p_i, &args...](typename n_linear_idx_varant_t::same const& neighbor)
             {
                 const auto& p_n =
@@ -182,7 +182,7 @@ constexpr auto halo_apply_section_impl(
                     std::forward<decltype(args)>(args)...
                 );
             },
-            // Finer impl
+
             [&tree, &p_i, &n_idx, &args...](
                 [[maybe_unused]] typename n_linear_idx_varant_t::finer const& neighbor
             )
@@ -295,7 +295,10 @@ constexpr auto halo_apply(
     );
 }
 
-template <concepts::PatchIndex Patch_Index, concepts::PatchLayout Patch_Layout>
+template <
+    concepts::PatchIndex  Patch_Index,
+    concepts::PatchLayout Patch_Layout,
+    typename AMRPolicy = void>
 struct halo_exchange_impl_t
 {
     using patch_layout_t = Patch_Layout;
@@ -391,20 +394,38 @@ struct halo_exchange_impl_t
                     s_halo_width;
             }
 
-            value_t sum{};
-            for (index_t fine_offset = 0; fine_offset < s_nd_fanout; ++fine_offset)
+            if constexpr (!std::is_void_v<AMRPolicy>)
             {
-                auto    fine_cell_idxs = base_fine_idxs;
-                index_t remaining      = fine_offset;
-                for (index_t d = 0; d < s_dimension; ++d)
+                std::vector<value_t> fine_values;
+                for (index_t fine_offset = 0; fine_offset < s_nd_fanout; ++fine_offset)
                 {
-                    fine_cell_idxs[d] += remaining % s_1d_fanout;
-                    remaining /= s_1d_fanout;
+                    auto    fine_cell_idxs = base_fine_idxs;
+                    index_t remaining      = fine_offset;
+                    for (index_t d = 0; d < s_dimension; ++d)
+                    {
+                        fine_cell_idxs[d] += remaining % s_1d_fanout;
+                        remaining /= s_1d_fanout;
+                    }
+                    fine_values.push_back(fine_patch[fine_cell_idxs]);
                 }
-                sum += fine_patch[fine_cell_idxs];
+                current_patch[idxs] = AMRPolicy::restrict(fine_values);
             }
-
-            current_patch[idxs] = sum / static_cast<value_t>(s_nd_fanout);
+            else
+            {
+                value_t sum{};
+                for (index_t fine_offset = 0; fine_offset < s_nd_fanout; ++fine_offset)
+                {
+                    auto    fine_cell_idxs = base_fine_idxs;
+                    index_t remaining      = fine_offset;
+                    for (index_t d = 0; d < s_dimension; ++d)
+                    {
+                        fine_cell_idxs[d] += remaining % s_1d_fanout;
+                        remaining /= s_1d_fanout;
+                    }
+                    sum += fine_patch[fine_cell_idxs];
+                }
+                current_patch[idxs] = sum / static_cast<value_t>(s_nd_fanout);
+            }
         }
     };
 
@@ -448,7 +469,24 @@ struct halo_exchange_impl_t
                 coarse_idxs[d] = coarse_coord + child_base_offset + s_halo_width;
             }
 
-            self_patch[idxs] = other_patch[coarse_idxs];
+            if constexpr (!std::is_void_v<AMRPolicy>)
+            {
+                std::size_t child_offset = 0;
+                for (index_t d = 0; d < s_dimension; ++d)
+                {
+                    auto local_fine     = from_idxs[d] - s_halo_width;
+                    auto local_coarse   = local_fine / s_1d_fanout;
+                    auto fine_in_coarse = local_fine - local_coarse * s_1d_fanout;
+
+                    child_offset = child_offset * s_1d_fanout + fine_in_coarse;
+                }
+                self_patch[idxs] =
+                    AMRPolicy::interpolate(other_patch[coarse_idxs], child_offset);
+            }
+            else
+            {
+                self_patch[idxs] = other_patch[coarse_idxs];
+            }
         }
     };
 

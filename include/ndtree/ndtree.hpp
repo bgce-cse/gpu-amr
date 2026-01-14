@@ -35,7 +35,8 @@ namespace amr::ndt::tree
 template <
     concepts::DeconstructibleType T,
     concepts::PatchIndex          Patch_Index,
-    concepts::PatchLayout         Patch_Layout>
+    concepts::PatchLayout         Patch_Layout,
+    typename AMRPolicy = void>
 class ndtree
 {
 public:
@@ -55,7 +56,7 @@ public:
     using neighbor_linear_index_variant_t = neighbor_variant_base_t<linear_index_t>;
     using patch_neighbors_t               = typename neighbor_utils_t::patch_neighbors_t;
     using halo_exchange_operator_impl_t =
-        utils::patches::halo_exchange_impl_t<patch_index_t, patch_layout_t>;
+        utils::patches::halo_exchange_impl_t<patch_index_t, patch_layout_t, AMRPolicy>;
     static_assert(std::is_same_v<
                   typename neighbor_utils_t::neighbor_variant_t,
                   neighbor_patch_index_variant_t>);
@@ -798,7 +799,6 @@ public:
             backup_refine_status = m_refine_status_buffer[i];
             backup_neighbors     = m_neighbors[i];
 
-            // Backup entire patch
             [this, i, &backup_patch]<std::size_t... I>(std::index_sequence<I...>)
             {
                 ((void)(std::get<I>(backup_patch) = std::get<I>(m_data_buffers)[i]), ...);
@@ -811,7 +811,6 @@ public:
                 m_refine_status_buffer[dst] = m_refine_status_buffer[src];
                 m_neighbors[dst]            = m_neighbors[src];
 
-                // Copy entire patches
                 std::apply(
                     [dst, src](auto&... b) { ((void)(b[dst] = b[src]), ...); },
                     m_data_buffers
@@ -828,7 +827,6 @@ public:
             m_refine_status_buffer[dst] = backup_refine_status;
             m_neighbors[dst]            = backup_neighbors;
 
-            // Restore backed up patch
             [this, dst, &backup_patch]<std::size_t... I>(std::index_sequence<I...>)
             {
                 ((void)(std::get<I>(m_data_buffers)[dst] = std::get<I>(backup_patch)),
@@ -872,10 +870,8 @@ public:
         static constexpr auto num_patch_types =
             std::tuple_size_v<deconstructed_buffers_t>;
 
-        // Initialize all patches to zero state and accumulate S1
         [&]<std::size_t... Is>(std::index_sequence<Is...>)
         {
-            // Initialize all patches to zero
             (
                 [&]()
                 {
@@ -889,28 +885,42 @@ public:
                 ...
             );
 
-            // Accumulate S1 (index 0) from all children
             if constexpr (num_patch_types > 0)
             {
                 auto& s1_patches = std::get<0>(m_data_buffers);
-                for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
+                for (linear_index_t linear_idx = 0; linear_idx != patch_size;
+                     ++linear_idx)
                 {
-                    const auto child_patch_index = start_from + patch_idx;
-                    for (linear_index_t linear_idx = 0; linear_idx != patch_size;
-                         ++linear_idx)
-                    {
-                        const auto to_linear_idx =
-                            s_fragmentation_patch_maps[patch_idx][linear_idx];
-                        s1_patches[to][to_linear_idx] =
-                            s1_patches[to][to_linear_idx] +
-                            s1_patches[child_patch_index][linear_idx];
-                    }
-                }
+                    std::vector<std::remove_reference_t<decltype(s1_patches[0][0])>>
+                        children_vec;
 
-                // Average S1 by dividing by number of children
-                for (linear_index_t k = 0; k != patch_size; k++)
-                {
-                    s1_patches[to][k] = s1_patches[to][k] * (1 / s_nd_fanout);
+                    for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
+                    {
+                        const auto child_patch_index = start_from + patch_idx;
+                        const auto from_linear_idx =
+                            s_fragmentation_patch_maps[patch_idx][linear_idx];
+                        children_vec.push_back(
+                            s1_patches[child_patch_index][from_linear_idx]
+                        );
+                    }
+
+                    if constexpr (!std::is_void_v<AMRPolicy>)
+                    {
+                        s1_patches[to][linear_idx] = AMRPolicy::restrict(children_vec);
+                    }
+                    else
+                    {
+                        using value_type =
+                            std::remove_reference_t<decltype(s1_patches[0][0])>;
+                        value_type sum{};
+                        for (const auto& child : children_vec)
+                        {
+                            sum = sum + child;
+                        }
+                        constexpr double weight = 1.0 / static_cast<double>(s_nd_fanout);
+                        s1_patches[to][linear_idx] =
+                            sum * static_cast<value_type>(weight);
+                    }
                 }
             }
         }(std::make_index_sequence<num_patch_types>{});
@@ -933,15 +943,35 @@ public:
                 }
                 const auto from_linear_idx =
                     s_fragmentation_patch_maps[patch_idx][linear_idx];
-                std::apply(
-                    [child_patch_index, from, from_linear_idx, linear_idx](auto&... b)
-                    {
-                        ((void)(b[child_patch_index][linear_idx] =
-                                    b[from][from_linear_idx]),
-                         ...);
-                    },
-                    m_data_buffers
-                );
+
+                if constexpr (!std::is_void_v<AMRPolicy>)
+                {
+                    std::apply(
+                        [child_patch_index, from, from_linear_idx, linear_idx, patch_idx](
+                            auto&... b
+                        )
+                        {
+                            ((void)(b[child_patch_index][linear_idx] =
+                                        AMRPolicy::interpolate(
+                                            b[from][from_linear_idx], patch_idx
+                                        )),
+                             ...);
+                        },
+                        m_data_buffers
+                    );
+                }
+                else
+                {
+                    std::apply(
+                        [child_patch_index, from, from_linear_idx, linear_idx](auto&... b)
+                        {
+                            ((void)(b[child_patch_index][linear_idx] =
+                                        b[from][from_linear_idx]),
+                             ...);
+                        },
+                        m_data_buffers
+                    );
+                }
             }
         }
     }

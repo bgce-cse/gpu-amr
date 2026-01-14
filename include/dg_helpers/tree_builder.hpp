@@ -20,6 +20,48 @@
 
 namespace amr::dg_tree
 {
+
+/**
+ * @brief Default AMR policy for refinement and coarsening
+ * Provides prolongation and restriction operations for adaptive mesh refinement
+ */
+struct DefaultAMRPolicy
+{
+    /**
+     * @brief Refinement (Prolongation): multiply parent value by (child_offset + 1)
+     * When a parent cell is refined into children:
+     * - Child 0: parent_value * 1
+     * - Child 1: parent_value * 2
+     * - Child 2: parent_value * 3
+     * - Child 3: parent_value * 4
+     */
+    template <typename Value>
+    static Value interpolate(const Value& parent_val, std::size_t child_offset)
+    {
+        return parent_val * static_cast<double>(child_offset + 1);
+    }
+
+    /**
+     * @brief Coarsening (Restriction): compute coarse value from fine children
+     * When children cells are coarsened into a parent:
+     * parent = child[0]*1 + child[1]*(1/2) + child[2]*(1/3) + child[3]*(1/4) + ...
+     * Each child is weighted by 1/(i+1) where i is the child index
+     */
+    template <typename Container>
+    static auto restrict(const Container& fine_children)
+    {
+        using value_type = typename Container::value_type;
+        value_type  coarse_val{};
+        std::size_t idx = 0;
+        for (const auto& child : fine_children)
+        {
+            coarse_val = coarse_val + child * (1.0 / static_cast<double>(idx + 1));
+            idx++;
+        }
+        return coarse_val;
+    }
+};
+
 template <typename global_t, typename Policy>
 struct TreeBuilder
 {
@@ -106,7 +148,8 @@ struct TreeBuilder
         static_cast<unsigned int>(Policy::Dim)>; // Morton 2D with depth 1
     using patch_layout_t =
         amr::ndt::patches::patch_layout<layout_t, 1>; // HaloWidth literal
-    using tree_t = amr::ndt::tree::ndtree<MarkerCell, patch_index_t, patch_layout_t>;
+    using tree_t = amr::ndt::tree::
+        ndtree<MarkerCell, patch_index_t, patch_layout_t, DefaultAMRPolicy>;
 
     tree_t tree{ 100000 };
 
