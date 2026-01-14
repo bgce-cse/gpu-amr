@@ -102,18 +102,16 @@ struct RHSEvaluator
 
     template <
         typename DOFTensorType,
-        typename FluxVectorType,
-        typename CenterType>
+        typename FluxVectorType>
     inline static void evaluate(
-        const DOFTensorType&               dof_patch,    // const: read-only
-        FluxVectorType&                    flux_patch,   // written inside
-        DOFTensorType&                     patch_update, // output
-        [[maybe_unused]] const CenterType& cell_center,  // read-only
-        [[maybe_unused]] double const&     dt,
-        const double&                      volume,
-        const double&                      surface,
-        double&                            max_eigenval,
-        const double&                      inverse_jacobian
+        const DOFTensorType&           dof_patch,    // const: read-only
+        FluxVectorType&                flux_patch,   // written inside
+        DOFTensorType&                 patch_update, // output
+        [[maybe_unused]] double const& dt,
+        const double&                  volume,
+        const double&                  surface,
+        double&                        max_eigenval,
+        const double&                  inverse_jacobian
     )
     {
         for (size_t linear_idx = 0; linear_idx < patch_layout_t::flat_size();
@@ -133,11 +131,8 @@ struct RHSEvaluator
             }
         }
 
-        for (size_t linear_idx = 0; linear_idx < patch_layout_t::flat_size();
-             ++linear_idx)
+        for (size_t idx = 0; idx < patch_layout_t::flat_size(); ++idx)
         {
-            auto idx = static_cast<int>(linear_idx);
-
             if (amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(idx))
             {
                 continue;
@@ -156,31 +151,21 @@ struct RHSEvaluator
                 int  sign     = is_neg ? -1 : 1;
                 int  sign_idx = is_neg ? 0 : 1;
 
-                // Compute neighbor
                 auto neighbor_coords = current_coords;
                 neighbor_coords[dim_idx] += sign;
 
                 auto neighbor_linear_idx = padded_layout_t::linear_index(neighbor_coords);
 
-                // Bounds check using padded layout size
-                if (neighbor_linear_idx >= padded_layout_t::flat_size())
-                {
-                    std::cout << "[BOUNDS] OUT OF BOUNDS\n";
-                    continue;
-                }
+                size_t actual_dim = Policy::Dim - dim_idx - 1;
 
-                auto actual_dim    = Policy::Dim - dim_idx - 1;
-                auto actual_dim_sz = static_cast<size_type>(actual_dim);
-
-                // project to face (caller supplies face_kernels via global_t)
                 auto [dofs_face, flux_face] = dispatch_project_to_faces<Policy::Dim>(
-                    dof_patch[idx], flux_patch[idx][actual_dim_sz], sign_idx, actual_dim
+                    dof_patch[idx], flux_patch[idx][actual_dim], sign_idx, actual_dim
                 );
 
                 auto [dofs_face_neigh, flux_face_neigh] =
                     dispatch_project_to_faces<Policy::Dim>(
                         dof_patch[neighbor_linear_idx],
-                        flux_patch[neighbor_linear_idx][actual_dim_sz],
+                        flux_patch[neighbor_linear_idx][actual_dim],
                         1 - sign_idx,
                         actual_dim
                     );
@@ -210,10 +195,11 @@ struct RHSEvaluator
             patch_update[idx] = amr::containers::algorithms::tensor::tensor_dot(
                 patch_update[idx], global_t::inv_volume_mass / volume
             );
-            // std::cout << "final du at cell center " << cell_center[idx] << " = "
-            //           << patch_update[idx] << "\n\n";
-            // std::cout << "inverse volume" << global_t::inv_volume_mass / volume <<
-            // "\n";
+            // if (idx == 130 || idx == 13)
+            // {
+            //     std::cout << "final du at cell center " << cell_center[idx] << " = "
+            //               << patch_update[idx] << "\n\n";
+            // }
         }
     }
 };

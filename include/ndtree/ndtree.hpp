@@ -921,31 +921,9 @@ public:
         linear_index_t const start_to
     ) noexcept -> void
     {
-        std::cout << "refine " << from << "\n";
         for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
         {
             const auto child_patch_index = start_to + patch_idx;
-
-            // First, zero out ALL cells (including halo) for buffers 1+ (flux, centers,
-            // etc.)
-            for (linear_index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
-                 ++linear_idx)
-            {
-                [child_patch_index,
-                 linear_idx,
-                 this]<std::size_t... I>(std::index_sequence<I...>)
-                {
-                    ((I > 0 ? (std::get<I>(
-                                   m_data_buffers
-                               )[child_patch_index][linear_idx] = {},
-                               void())
-                            : void()),
-                     ...);
-                }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
-            }
-
-            // Then interpolate buffer 0 (DOFs) for non-halo cells only
-            // Do NOT zero halo cells for DOFs - let halo exchange fill them
             for (linear_index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
                  ++linear_idx)
             {
@@ -955,10 +933,15 @@ public:
                 }
                 const auto from_linear_idx =
                     s_fragmentation_patch_maps[patch_idx][linear_idx];
-
-                // Interpolate buffer 0 (DOFs) from parent
-                std::get<0>(m_data_buffers)[child_patch_index][linear_idx] =
-                    std::get<0>(m_data_buffers)[from][from_linear_idx];
+                std::apply(
+                    [child_patch_index, from, from_linear_idx, linear_idx](auto&... b)
+                    {
+                        ((void)(b[child_patch_index][linear_idx] =
+                                    b[from][from_linear_idx]),
+                         ...);
+                    },
+                    m_data_buffers
+                );
             }
         }
     }

@@ -43,7 +43,6 @@ int main()
     using dg_tree  = amr::dg_tree::TreeBuilder<global_t, amr::config::GlobalConfigPolicy>;
     using S1       = dg_tree::S1;
     using S2       = dg_tree::S2;
-    using S3       = dg_tree::S3;
     using patch_index_t = typename dg_tree::patch_index_t;
 
     dg_tree tree_builder;
@@ -103,18 +102,19 @@ int main()
         while (time < amr::config::GlobalConfigPolicy::EndTime)
         {
             tree.halo_exchange_update();
+            auto max_eigenval = -std::numeric_limits<double>::infinity();
 
             for (std::size_t idx = 0; idx < tree.size(); ++idx)
             {
-                auto max_eigenval = -std::numeric_limits<double>::infinity();
-
                 auto& dof_patch        = tree.template get_patch<S1>(idx);
                 auto& flux_patch       = tree.template get_patch<S2>(idx);
-                auto& center_patch     = tree.template get_patch<S3>(idx);
                 auto  edge             = global_t::cell_edge(idx);
                 auto  volume           = global_t::cell_volume(edge);
                 auto  surface          = global_t::cell_area(edge);
                 auto  inverse_jacobian = 1.0 / edge;
+
+                std::cout << "dt = " << dt << " for patch = " << idx
+                          << " eig = " << max_eigenval << "\n";
 
                 auto residual_callback = [&](patch_container_t&       patch_update,
                                              const patch_container_t& current_dofs,
@@ -124,7 +124,6 @@ int main()
                         current_dofs,
                         flux_patch.data(),
                         patch_update,
-                        center_patch.data(),
                         dt,
                         volume,
                         surface,
