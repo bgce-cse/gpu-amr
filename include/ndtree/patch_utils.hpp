@@ -396,7 +396,8 @@ struct halo_exchange_impl_t
 
             if constexpr (!std::is_void_v<AMRPolicy>)
             {
-                std::vector<value_t> fine_values;
+                // Collect all fine children
+                std::array<value_t, s_nd_fanout> fine_children;
                 for (index_t fine_offset = 0; fine_offset < s_nd_fanout; ++fine_offset)
                 {
                     auto    fine_cell_idxs = base_fine_idxs;
@@ -406,9 +407,9 @@ struct halo_exchange_impl_t
                         fine_cell_idxs[d] += remaining % s_1d_fanout;
                         remaining /= s_1d_fanout;
                     }
-                    fine_values.push_back(fine_patch[fine_cell_idxs]);
+                    fine_children[fine_offset] = fine_patch[fine_cell_idxs];
                 }
-                current_patch[idxs] = AMRPolicy::restrict(fine_values);
+                current_patch[idxs] = AMRPolicy::restrict(fine_children);
             }
             else
             {

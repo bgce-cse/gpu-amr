@@ -891,31 +891,37 @@ public:
                 for (linear_index_t linear_idx = 0; linear_idx != patch_size;
                      ++linear_idx)
                 {
-                    std::vector<std::remove_reference_t<decltype(s1_patches[0][0])>>
-                        children_vec;
-
-                    for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
-                    {
-                        const auto child_patch_index = start_from + patch_idx;
-                        const auto from_linear_idx =
-                            s_fragmentation_patch_maps[patch_idx][linear_idx];
-                        children_vec.push_back(
-                            s1_patches[child_patch_index][from_linear_idx]
-                        );
-                    }
-
                     if constexpr (!std::is_void_v<AMRPolicy>)
                     {
-                        s1_patches[to][linear_idx] = AMRPolicy::restrict(children_vec);
+                        // Collect all children
+                        std::array<
+                            std::remove_reference_t<decltype(s1_patches[0][0])>,
+                            s_nd_fanout>
+                            children;
+                        for (size_type patch_idx = 0; patch_idx != s_nd_fanout;
+                             ++patch_idx)
+                        {
+                            const auto child_patch_index = start_from + patch_idx;
+                            const auto from_linear_idx =
+                                s_fragmentation_patch_maps[patch_idx][linear_idx];
+                            children[patch_idx] =
+                                s1_patches[child_patch_index][from_linear_idx];
+                        }
+                        // Pass array of all children to restrict
+                        s1_patches[to][linear_idx] = AMRPolicy::restrict(children);
                     }
                     else
                     {
                         using value_type =
                             std::remove_reference_t<decltype(s1_patches[0][0])>;
                         value_type sum{};
-                        for (const auto& child : children_vec)
+                        for (size_type patch_idx = 0; patch_idx != s_nd_fanout;
+                             ++patch_idx)
                         {
-                            sum = sum + child;
+                            const auto child_patch_index = start_from + patch_idx;
+                            const auto from_linear_idx =
+                                s_fragmentation_patch_maps[patch_idx][linear_idx];
+                            sum = sum + s1_patches[child_patch_index][from_linear_idx];
                         }
                         constexpr double weight = 1.0 / static_cast<double>(s_nd_fanout);
                         s1_patches[to][linear_idx] =

@@ -133,37 +133,108 @@ struct DefaultAMRPolicy
             return result;
         }
         // Case 2: Vector of DG tensors (S2 flux) → recursively interpolate each component
-        else if constexpr (is_static_vector_v<Value> &&
-                           is_dg_tensor_v<typename Value::value_type>)
+        else
         {
             Value result{};
             return result;
         }
-        // Case 3: Everything else (S3, S4) → zero-initialize (copy parent values)
-        else
-        {
-            return parent_val;
-        }
+    }
+
+    /**
+     * @brief Helper: compute child offset from parent point coordinates
+     * Determines which child quadrant the point falls into based on >= 0.5
+     */
+    template <std::size_t... Is>
+    static constexpr std::size_t compute_child_offset_impl(
+        std::index_sequence<Is...>,
+        const amr::containers::static_vector<double, Dim>& parent_point
+    )
+    {
+        return ((parent_point[Is] >= 0.5 ? (1u << Is) : 0u) | ...);
+    }
+
+    static constexpr std::size_t compute_child_offset(
+        const amr::containers::static_vector<double, Dim>& parent_point
+    )
+    {
+        return compute_child_offset_impl(std::make_index_sequence<Dim>{}, parent_point);
+    }
+
+    /**
+     * @brief Helper: map parent point to child point using offset table
+     * Scales by 2.0 and shifts based on offset (subtracts 1 if offset > 0)
+     */
+    template <std::size_t... Is>
+    static constexpr amr::containers::static_vector<double, Dim> map_to_child_point_impl(
+        std::index_sequence<Is...>,
+        const amr::containers::static_vector<double, Dim>& parent_point,
+        const amr::containers::static_vector<double, Dim>& offset
+    )
+    {
+        return amr::containers::static_vector<double, Dim>{
+            (2.0 * parent_point[Is] - (offset[Is] > 0.0 ? 1.0 : 0.0))...
+        };
+    }
+
+    static constexpr amr::containers::static_vector<double, Dim> map_to_child_point(
+        const amr::containers::static_vector<double, Dim>& parent_point,
+        const amr::containers::static_vector<double, Dim>& offset
+    )
+    {
+        return map_to_child_point_impl(
+            std::make_index_sequence<Dim>{}, parent_point, offset
+        );
     }
 
     /**
      * @brief Coarsening (Restriction): compute coarse value from fine children
-     * When children cells are coarsened into a parent:
-     * parent = child[0]*1 + child[1]*(1/2) + child[2]*(1/3) + child[3]*(1/4) + ...
-     * Each child is weighted by 1/(i+1) where i is the child index
+     * Mirrors the prolongation/interpolation pattern:
+     * - Iterate over each tensor point in the parent
+     * - For each point, evaluate basis using the appropriate child based on coordinates
+     * - Use same map and mask for interpolation as prolongate
      */
-    template <typename Container>
-    static auto restrict(const Container& fine_children)
+    // Overload for single child value (backward compatibility)
+    // Overload for array of children: select appropriate child based on parent point
+    // coordinates
+    template <typename Value, std::size_t NumChildren>
+    static constexpr Value restrict(const std::array<Value, NumChildren>& children)
     {
-        using value_type = typename Container::value_type;
-        value_type  coarse_val{};
-        std::size_t idx = 0;
-        for (const auto& child : fine_children)
+        // Case 1: DG tensor (S1) → real restriction via basis evaluation
+        if constexpr (is_dg_tensor_v<Value>)
         {
-            coarse_val = coarse_val + child * (1.0 / static_cast<double>(idx + 1));
-            idx++;
+            using tensor_t      = Value;
+            using multi_index_t = typename tensor_t::multi_index_t;
+            using vector_t      = amr::containers::static_vector<double, Dim>;
+
+            Value result{};
+
+            // Iterate over each element in tensor point
+            multi_index_t parent_idx{};
+            do
+            {
+                vector_t parent_point = global_t::Quadrature::tensor_point(parent_idx);
+
+                // Determine which child this point belongs to based on coordinates >= 0.5
+                std::size_t  child_offset = compute_child_offset(parent_point);
+                const Value& child_val    = children[child_offset];
+
+                // Map parent point to child point (scale by 2 and shift)
+                vector_t child_point =
+                    map_to_child_point(parent_point, offset_table[child_offset]);
+
+                // Evaluate basis at the child point using child data
+                result[parent_idx] =
+                    global_t::Basis::evaluate_basis(child_val, child_point);
+            } while (parent_idx.increment());
+
+            return result;
         }
-        return coarse_val;
+        // Case 2: Vector of DG tensors (S2 flux) → recursively restrict each component
+        else
+        {
+            Value result{};
+            return result;
+        }
     }
 };
 

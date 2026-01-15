@@ -94,6 +94,39 @@ int main()
         std::string time_extension = "_t" + std::to_string(timestep) + ".vtk";
         printer.template print<S1>(tree, time_extension);
 
+        // ================================
+        // Refinement/Coarsening operations helpers
+        // ================================
+        auto refine_all_condition = [](const patch_index_t& idx)
+        {
+            auto [coords, level] = patch_index_t::decode(idx.id());
+            auto max_depth       = idx.max_depth();
+
+            // Refine all patches if not at max depth
+            if (level < max_depth)
+            {
+                return dg_tree::tree_t::refine_status_t::Refine;
+            }
+
+            return dg_tree::tree_t::refine_status_t::Stable;
+        };
+
+        auto coarsen_all_but_root = [](const patch_index_t& idx)
+        {
+            auto [coords, level] = patch_index_t::decode(idx.id());
+
+            // Coarsen all patches except root (level 0)
+            if (level > 0)
+            {
+                return dg_tree::tree_t::refine_status_t::Coarsen;
+            }
+
+            return dg_tree::tree_t::refine_status_t::Stable;
+        };
+
+        std::cout << "Testing refinement and coarsening across first 4 timesteps:\n";
+        std::cout << "Initial tree size: " << tree.size() << "\n";
+
         auto max_eigenval = -std::numeric_limits<double>::infinity();
         while (time < amr::config::GlobalConfigPolicy::EndTime)
         {
@@ -159,6 +192,40 @@ int main()
             ++timestep;
 
             // ================================
+            // Test refinement/coarsening across first 4 timesteps
+            // ================================
+            if (timestep == 1)
+            {
+                std::cout << "\n[Timestep " << timestep << "] First refine...\n";
+                tree.reconstruct_tree(refine_all_condition);
+                tree.halo_exchange_update();
+                std::cout << "After refine 1: tree size = " << tree.size() << "\n";
+            }
+            else if (timestep == 2)
+            {
+                std::cout << "\n[Timestep " << timestep << "] Second refine...\n";
+                tree.reconstruct_tree(refine_all_condition);
+                tree.halo_exchange_update();
+                std::cout << "After refine 2: tree size = " << tree.size() << "\n";
+            }
+            else if (timestep == 3)
+            {
+                std::cout << "\n[Timestep " << timestep << "] Third refine...\n";
+                tree.reconstruct_tree(refine_all_condition);
+                tree.halo_exchange_update();
+                std::cout << "After refine 3: tree size = " << tree.size() << "\n";
+            }
+            else if (timestep == 4)
+            {
+                std::cout << "\n[Timestep " << timestep
+                          << "] Coarsen back to level 0...\n";
+                tree.reconstruct_tree(coarsen_all_but_root);
+                tree.halo_exchange_update();
+                std::cout << "After coarsening: tree size = " << tree.size() << "\n";
+                std::cout << "Refinement/coarsening test complete.\n\n";
+            }
+
+            // ================================
             // CFL-scaled AMR
             // ================================
             if (timestep >= next_amr_step)
@@ -182,7 +249,7 @@ int main()
             // ================================
             // Output (independent of AMR)
             // ================================
-            if (time > next_plotted)
+            if (true)
             {
                 time_extension = "_t" + std::to_string(timestep) + ".vtk";
                 printer.template print<S1>(tree, time_extension);
