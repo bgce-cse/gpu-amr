@@ -20,6 +20,38 @@ struct QuadratureMixin
     static constexpr auto& quad_points = amr::basis::GaussLegendre<Policy::Order>::points;
     static constexpr auto& quad_weights =
         amr::basis::GaussLegendre<Policy::Order>::weights;
+
+    static constexpr std::size_t Order = Policy::Order;
+    static constexpr std::size_t Dim   = Policy::Dim;
+
+    // === tensor-product gather ===
+
+    template <typename MultiIndex, std::size_t... Is>
+    static constexpr amr::containers::static_vector<double, Dim>
+        gather_points_impl(const MultiIndex& idx, std::index_sequence<Is...>)
+    {
+        return { quad_points[idx[Is]]... };
+    }
+
+    template <typename MultiIndex>
+    static constexpr amr::containers::static_vector<double, Dim>
+        tensor_point(const MultiIndex& idx)
+    {
+        return gather_points_impl(idx, std::make_index_sequence<Dim>{});
+    }
+
+    template <typename MultiIndex, std::size_t... Is>
+    static constexpr double
+        gather_weight_impl(const MultiIndex& idx, std::index_sequence<Is...>)
+    {
+        return (quad_weights[idx[Is]] * ...);
+    }
+
+    template <typename MultiIndex>
+    static constexpr double tensor_weight(const MultiIndex& idx)
+    {
+        return gather_weight_impl(idx, std::make_index_sequence<Dim>{});
+    }
 };
 
 template <typename Policy>
@@ -166,6 +198,7 @@ struct GlobalConfig :
 {
     // Bring in types from mixins for easier access
     using Basis              = typename BasisMixin<Policy>::Basis;
+    using Quadrature         = QuadratureMixin<Policy>;
     using Lagrange           = typename BasisMixin<Policy>::Lagrange;
     using EquationImpl       = typename EquationMixin<Policy>::EquationImpl;
     using MassTensors        = typename TensorMixin<Policy>::MassTensors;

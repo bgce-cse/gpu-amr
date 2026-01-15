@@ -65,7 +65,7 @@ private:
     static constexpr size_type s_halo_width = patch_layout_t::halo_width();
     static constexpr size_type s_1d_fanout  = patch_index_t::fanout();
     static constexpr size_type s_nd_fanout  = patch_index_t::nd_fanout();
-    static constexpr size_type s_dimension  = patch_layout_t::dimension();
+    static constexpr size_type s_dimension  = patch_layout_t::rank();
 
     static_assert(s_1d_fanout > 1);
     static_assert(s_nd_fanout > 1);
@@ -944,16 +944,31 @@ public:
                 const auto from_linear_idx =
                     s_fragmentation_patch_maps[patch_idx][linear_idx];
 
+                linear_index_t child_offset = 0;
+                {
+                    auto const& strides = patch_layout_t::padded_layout_t::strides();
+                    auto const& sizes   = patch_layout_t::data_layout_t::sizes();
+                    for (int d = 0; d < static_cast<int>(s_dimension); ++d)
+                    {
+                        const auto coord          = (linear_idx / strides[d]) % sizes[d];
+                        const auto fine_in_coarse = coord % s_1d_fanout;
+                        child_offset = child_offset * s_1d_fanout + fine_in_coarse;
+                    }
+                    child_offset = (s_nd_fanout - 1) - child_offset;
+                }
+
                 if constexpr (!std::is_void_v<AMRPolicy>)
                 {
                     std::apply(
-                        [child_patch_index, from, from_linear_idx, linear_idx, patch_idx](
-                            auto&... b
-                        )
+                        [child_patch_index,
+                         from,
+                         from_linear_idx,
+                         linear_idx,
+                         child_offset](auto&... b)
                         {
                             ((void)(b[child_patch_index][linear_idx] =
                                         AMRPolicy::interpolate(
-                                            b[from][from_linear_idx], patch_idx
+                                            b[from][from_linear_idx], child_offset
                                         )),
                              ...);
                         },

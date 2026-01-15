@@ -480,12 +480,19 @@ struct halo_exchange_impl_t
 
                     child_offset = child_offset * s_1d_fanout + fine_in_coarse;
                 }
-                self_patch[idxs] =
-                    AMRPolicy::interpolate(other_patch[coarse_idxs], child_offset);
-            }
-            else
-            {
-                self_patch[idxs] = other_patch[coarse_idxs];
+                // Only interpolate if the type has multi_index_t (tensor types like S1)
+                if constexpr (requires {
+                                  typename std::remove_cvref_t<
+                                      decltype(other_patch[coarse_idxs])>::multi_index_t;
+                              })
+                {
+                    self_patch[idxs] =
+                        AMRPolicy::interpolate(other_patch[coarse_idxs], child_offset);
+                }
+                else
+                {
+                    self_patch[idxs] = other_patch[coarse_idxs];
+                }
             }
         }
     };

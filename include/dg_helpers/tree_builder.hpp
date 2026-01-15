@@ -22,23 +22,128 @@ namespace amr::dg_tree
 {
 
 /**
+ * @brief Detect DG tensors at compile time
+ * A DG tensor is a static_tensor with any element type and layout
+ */
+template <typename T>
+struct is_dg_tensor : std::false_type
+{
+};
+
+template <typename V, typename Layout>
+struct is_dg_tensor<amr::containers::static_tensor<V, Layout>> : std::true_type
+{
+};
+
+template <typename T>
+inline constexpr bool is_dg_tensor_v = is_dg_tensor<T>::value;
+
+/**
+ * @brief Detect static vectors at compile time
+ */
+template <typename T>
+struct is_static_vector : std::false_type
+{
+};
+
+template <typename V, std::integral auto N>
+struct is_static_vector<amr::containers::static_vector<V, N>> : std::true_type
+{
+};
+
+template <typename T>
+inline constexpr bool is_static_vector_v = is_static_vector<T>::value;
+
+/**
  * @brief Default AMR policy for refinement and coarsening
  * Provides prolongation and restriction operations for adaptive mesh refinement
  */
+template <typename global_t, typename Policy>
 struct DefaultAMRPolicy
 {
+    static constexpr std::size_t Dim         = Policy::Dim;
+    static constexpr std::size_t NumChildren = (1 << Dim);
+
     /**
-     * @brief Refinement (Prolongation): multiply parent value by (child_offset + 1)
-     * When a parent cell is refined into children:
-     * - Child 0: parent_value * 1
-     * - Child 1: parent_value * 2
-     * - Child 2: parent_value * 3
-     * - Child 3: parent_value * 4
+     * @brief Compile-time helper: make offset vector for a given child_offset
+     */
+    template <std::size_t ChildOffset, std::size_t... Is>
+    static constexpr amr::containers::static_vector<double, Dim>
+        make_offset_vector_impl(std::index_sequence<Is...>)
+    {
+        return amr::containers::static_vector<double, Dim>{
+            ((ChildOffset >> Is) & 1 ? 0.5 : 0.0)...
+        };
+    }
+
+    template <std::size_t ChildOffset>
+    static constexpr amr::containers::static_vector<double, Dim> make_offset_vector()
+    {
+        return make_offset_vector_impl<ChildOffset>(std::make_index_sequence<Dim>{});
+    }
+
+    /**
+     * @brief Compile-time map of all child_offset → offset_vector
+     */
+    template <std::size_t... Is>
+    static constexpr auto make_offset_table_impl(std::index_sequence<Is...>)
+    {
+        return std::array<amr::containers::static_vector<double, Dim>, NumChildren>{
+            make_offset_vector<Is>()...
+        };
+    }
+
+    static constexpr auto make_offset_table()
+    {
+        return make_offset_table_impl(std::make_index_sequence<NumChildren>{});
+    }
+
+    // The table itself, compile-time
+    static constexpr auto offset_table = make_offset_table();
+
+    /**
+     * @brief Interpolate values during AMR prolongation
+     * Handles three cases: DG tensors, vectors of DG tensors, and everything else
      */
     template <typename Value>
-    static Value interpolate(const Value& parent_val, std::size_t child_offset)
+    static constexpr Value interpolate(const Value& parent_val, std::size_t child_offset)
     {
-        return parent_val * static_cast<double>(child_offset + 1);
+        // Case 1: DG tensor (S1) → real prolongation via basis evaluation
+        if constexpr (is_dg_tensor_v<Value>)
+        {
+            using tensor_t      = Value;
+            using multi_index_t = typename tensor_t::multi_index_t;
+            using vector_t      = amr::containers::static_vector<double, Dim>;
+
+            Value result{};
+
+            const vector_t& offset = offset_table[child_offset];
+
+            multi_index_t idx{};
+            do
+            {
+                vector_t x{};
+                // std::cout << global_t::Quadrature::tensor_point(idx) << " " << offset
+                //           << "\n";
+                x = 0.5 * global_t::Quadrature::tensor_point(idx) + offset;
+
+                result[idx] = global_t::Basis::evaluate_basis(parent_val, x);
+            } while (idx.increment());
+
+            return result;
+        }
+        // Case 2: Vector of DG tensors (S2 flux) → recursively interpolate each component
+        else if constexpr (is_static_vector_v<Value> &&
+                           is_dg_tensor_v<typename Value::value_type>)
+        {
+            Value result{};
+            return result;
+        }
+        // Case 3: Everything else (S3, S4) → zero-initialize (copy parent values)
+        else
+        {
+            return parent_val;
+        }
     }
 
     /**
@@ -148,8 +253,11 @@ struct TreeBuilder
         static_cast<unsigned int>(Policy::Dim)>; // Morton 2D with depth 1
     using patch_layout_t =
         amr::ndt::patches::patch_layout<layout_t, 1>; // HaloWidth literal
-    using tree_t = amr::ndt::tree::
-        ndtree<MarkerCell, patch_index_t, patch_layout_t, DefaultAMRPolicy>;
+    using tree_t = amr::ndt::tree::ndtree<
+        MarkerCell,
+        patch_index_t,
+        patch_layout_t,
+        DefaultAMRPolicy<global_t, Policy>>;
 
     tree_t tree{ 100000 };
 
@@ -183,11 +291,11 @@ struct TreeBuilder
                 dof_patch[linear_idx] =
                     global_t::interpolate_initial_dofs(cell_center, cell_size);
 
+                // Zero out S2, S3, S4 - only S1 (dof_patch) is interpolated
                 flux_patch[linear_idx] =
-                    global_t::EquationImpl::evaluate_flux(dof_patch[linear_idx]);
-
-                size_patch[linear_idx] = { cell_size,
-                                           cell_size }; // TODO generalize for ND
+                    typename std::remove_reference_t<decltype(flux_patch)>::value_type{};
+                size_patch[linear_idx] =
+                    typename std::remove_reference_t<decltype(size_patch)>::value_type{};
             }
         }
     };
