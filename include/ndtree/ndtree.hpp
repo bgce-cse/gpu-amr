@@ -861,77 +861,6 @@ public:
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
     }
 
-    auto restrict_patches(
-        linear_index_t const start_from,
-        linear_index_t const to
-    ) noexcept -> void
-    {
-        static constexpr auto patch_size = patch_layout_t::flat_size();
-        static constexpr auto num_patch_types =
-            std::tuple_size_v<deconstructed_buffers_t>;
-
-        [&]<std::size_t... Is>(std::index_sequence<Is...>)
-        {
-            (
-                [&]()
-                {
-                    auto& patches = std::get<Is>(m_data_buffers);
-                    for (linear_index_t k = 0; k != patch_size; k++)
-                    {
-                        patches[to][k] =
-                            std::remove_reference_t<decltype(patches[to][k])>();
-                    }
-                }(),
-                ...
-            );
-
-            if constexpr (num_patch_types > 0)
-            {
-                auto& s1_patches = std::get<0>(m_data_buffers);
-                for (linear_index_t linear_idx = 0; linear_idx != patch_size;
-                     ++linear_idx)
-                {
-                    if constexpr (!std::is_void_v<AMRPolicy>)
-                    {
-                        // Collect all children
-                        std::array<
-                            std::remove_reference_t<decltype(s1_patches[0][0])>,
-                            s_nd_fanout>
-                            children;
-                        for (size_type patch_idx = 0; patch_idx != s_nd_fanout;
-                             ++patch_idx)
-                        {
-                            const auto child_patch_index = start_from + patch_idx;
-                            const auto from_linear_idx =
-                                s_fragmentation_patch_maps[patch_idx][linear_idx];
-                            children[patch_idx] =
-                                s1_patches[child_patch_index][from_linear_idx];
-                        }
-                        // Pass array of all children to restrict
-                        s1_patches[to][linear_idx] = AMRPolicy::restrict(children);
-                    }
-                    else
-                    {
-                        using value_type =
-                            std::remove_reference_t<decltype(s1_patches[0][0])>;
-                        value_type sum{};
-                        for (size_type patch_idx = 0; patch_idx != s_nd_fanout;
-                             ++patch_idx)
-                        {
-                            const auto child_patch_index = start_from + patch_idx;
-                            const auto from_linear_idx =
-                                s_fragmentation_patch_maps[patch_idx][linear_idx];
-                            sum = sum + s1_patches[child_patch_index][from_linear_idx];
-                        }
-                        constexpr double weight = 1.0 / static_cast<double>(s_nd_fanout);
-                        s1_patches[to][linear_idx] =
-                            sum * static_cast<value_type>(weight);
-                    }
-                }
-            }
-        }(std::make_index_sequence<num_patch_types>{});
-    }
-
     auto interpolate_patch(
         linear_index_t const from,
         linear_index_t const start_to
@@ -989,6 +918,72 @@ public:
                             ((void)(b[child_patch_index][linear_idx] =
                                         b[from][from_linear_idx]),
                              ...);
+                        },
+                        m_data_buffers
+                    );
+                }
+            }
+        }
+    }
+
+    auto restrict_patches(
+        linear_index_t const start_from,
+        linear_index_t const to
+    ) noexcept -> void
+    {
+        static constexpr auto patch_size = patch_layout_t::flat_size();
+
+        // Iterate through children and accumulate/restrict values
+        for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
+        {
+            for (linear_index_t linear_idx = 0; linear_idx != patch_size; ++linear_idx)
+            {
+                if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
+                {
+                    continue;
+                }
+                const auto to_linear_idx =
+                    s_fragmentation_patch_maps[patch_idx][linear_idx];
+
+                if constexpr (!std::is_void_v<AMRPolicy>)
+                {
+                    // For DG tensors (S1), use proper restriction via AMRPolicy
+                    auto& s1_from_patch = std::get<0>(m_data_buffers);
+                    auto& s1_to_patch   = std::get<0>(m_data_buffers);
+
+                    // Collect children values
+                    amr::containers::static_vector<
+                        std::remove_reference_t<decltype(s1_from_patch[0][0])>,
+                        s_nd_fanout>
+                        children;
+                    for (size_type child_idx = 0; child_idx != s_nd_fanout; ++child_idx)
+                    {
+                        const auto child_patch_idx = start_from + child_idx;
+                        const auto child_linear_idx =
+                            s_fragmentation_patch_maps[child_idx][linear_idx];
+                        children[child_idx] =
+                            s1_from_patch[child_patch_idx][child_linear_idx];
+                    }
+                    std::cout << "children:" << children << "\n\n";
+
+                    // Restrict using AMRPolicy
+                    s1_to_patch[to][to_linear_idx] = AMRPolicy::restrict(children);
+                }
+                else
+                {
+                    std::apply(
+                        [to](auto&... b)
+                        {
+                            for (linear_index_t k = 0; k != patch_size; k++)
+                            {
+                                if (utils::patches::is_halo_cell<patch_layout_t>(k))
+                                {
+                                    continue;
+                                }
+                                ((b[to][k] /=
+                                  static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)),
+                                 ...);
+                            }
                         },
                         m_data_buffers
                     );

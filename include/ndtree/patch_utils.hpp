@@ -8,6 +8,7 @@
 #include "ndutils.hpp"
 #include "neighbor.hpp"
 #include "utility/compile_time_utility.hpp"
+#include "utility/logging.hpp"
 #include <algorithm>
 
 namespace amr::ndt::utils
@@ -156,7 +157,7 @@ constexpr auto halo_apply_section_impl(
 
     std::visit(
         utils::overloads{
-
+            // None impl
             [&p_i, &args...](typename n_linear_idx_varant_t::none const&)
             {
                 containers::manipulators::for_each<
@@ -167,7 +168,7 @@ constexpr auto halo_apply_section_impl(
                     std::forward<decltype(args)>(args)...
                 );
             },
-
+            // Same impl
             [&tree, &p_i, &args...](typename n_linear_idx_varant_t::same const& neighbor)
             {
                 const auto& p_n =
@@ -182,38 +183,37 @@ constexpr auto halo_apply_section_impl(
                     std::forward<decltype(args)>(args)...
                 );
             },
-
+            // Finer impl
             [&tree, &p_i, &n_idx, &args...](
-                [[maybe_unused]] typename n_linear_idx_varant_t::finer const& neighbor
+                typename n_linear_idx_varant_t::finer const& neighbor
             )
             {
-                // TODO: finer_t implementation needs fixing for tensor types
-                // using neighbor_t = std::remove_cvref_t<decltype(neighbor)>;
-                // using patch_t =
-                //     typename std::remove_cvref_t<decltype(tree)>::template patch_t<T>;
-                //
-                // const auto p_neighbors = utility::compile_time_utility::array_factory<
-                //     std::reference_wrapper<typename patch_t::container_t>,
-                //     neighbor_t::num_neighbors()>(
-                //     [&tree](auto const i, auto const& ids)
-                //     {
-                //         return std::ref(
-                //             std::forward<decltype(tree)>(tree)
-                //                 .template get_patch<T>(ids[i])
-                //                 .data()
-                //         );
-                //     },
-                //     neighbor.ids
-                // );
-                //
-                // containers::manipulators::for_each<
-                //     typename patch_layout_t::template halo_iteration_control_t<D>>(
-                //     p_i.data(),
-                //     Halo_Exchange_Operator::finer,
-                //     p_neighbors,
-                //     D,
-                //     std::forward<decltype(args)>(args)...
-                // );
+                using neighbor_t = std::remove_cvref_t<decltype(neighbor)>;
+                using patch_t =
+                    typename std::remove_cvref_t<decltype(tree)>::template patch_t<T>;
+
+                const auto p_neighbors = utility::compile_time_utility::array_factory<
+                    std::reference_wrapper<typename patch_t::container_t>,
+                    neighbor_t::num_neighbors()>(
+                    [&tree](auto const i, auto const& ids)
+                    {
+                        return std::ref(
+                            std::forward<decltype(tree)>(tree)
+                                .template get_patch<T>(ids[i])
+                                .data()
+                        );
+                    },
+                    neighbor.ids
+                );
+
+                containers::manipulators::for_each<
+                    typename patch_layout_t::template halo_iteration_control_t<D>>(
+                    p_i.data(),
+                    Halo_Exchange_Operator::finer,
+                    p_neighbors,
+                    D,
+                    std::forward<decltype(args)>(args)...
+                );
             },
             // Coarser impl
             [&tree,
@@ -319,6 +319,11 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            // DEFAULT_SOURCE_LOG_TRACE(
+            //     std::string("Boundary halo exchange in direction ") +
+            //     std::to_string(direction.index())
+            // );
+            // DEFAULT_SOURCE_LOG_DEBUG("Boundary halo exchange not implemented");
         }
     };
 
@@ -332,6 +337,10 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            // DEFAULT_SOURCE_LOG_TRACE(
+            //     std::string("Same halo exchange in direction ") +
+            //     std::to_string(direction.index())
+            // );
             using direction_t   = std::remove_cvref_t<decltype(direction)>;
             const auto dim      = direction.dimension();
             const auto positive = direction_t::is_positive(direction);
@@ -396,20 +405,32 @@ struct halo_exchange_impl_t
 
             if constexpr (!std::is_void_v<AMRPolicy>)
             {
-                // Collect all fine children
-                std::array<value_t, s_nd_fanout> fine_children;
-                for (index_t fine_offset = 0; fine_offset < s_nd_fanout; ++fine_offset)
+                // Collect all fine children - use s_nd_fanout explicitly cast to
+                // std::size_t
+                constexpr std::size_t num_children =
+                    static_cast<std::size_t>(s_nd_fanout);
+                amr::containers::static_vector<value_t, num_children> fine_children;
+                // std::cout << "[FINER] Collecting " << num_children
+                //           << " fine children for halo exchange\n";
+                for (std::size_t fine_offset = 0; fine_offset < num_children;
+                     ++fine_offset)
                 {
                     auto    fine_cell_idxs = base_fine_idxs;
-                    index_t remaining      = fine_offset;
+                    index_t remaining      = static_cast<index_t>(fine_offset);
                     for (index_t d = 0; d < s_dimension; ++d)
                     {
                         fine_cell_idxs[d] += remaining % s_1d_fanout;
                         remaining /= s_1d_fanout;
                     }
                     fine_children[fine_offset] = fine_patch[fine_cell_idxs];
+                    // std::cout << "  [FINER] Child " << fine_offset << " collected\n";
                 }
+                // // Call restrict with the collected fine children
+                // std::cout << "[FINER] Calling AMRPolicy::restrict with " <<
+                // num_children
+                //           << " children\n";
                 current_patch[idxs] = AMRPolicy::restrict(fine_children);
+                // std::cout << "[FINER] Restrict complete, coarse value set\n";
             }
             else
             {
