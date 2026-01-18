@@ -320,7 +320,7 @@ struct halo_exchange_impl_t
                 std::string("Boundary halo exchange in direction ") +
                 std::to_string(direction.index())
             );
-            DEFAULT_SOURCE_LOG_DEBUG("Boundary halo exchange not implemented");
+            DEFAULT_SOURCE_LOG_WARNING("Boundary halo exchange not implemented");
         }
     };
 
@@ -341,6 +341,7 @@ struct halo_exchange_impl_t
             using direction_t   = std::remove_cvref_t<decltype(direction)>;
             const auto dim      = direction.dimension();
             const auto positive = direction_t::is_positive(direction);
+            assert(idxs[dim] >= s_halo_width);
             [[assume(idxs[dim] >= s_halo_width)]];
             auto from_idxs = idxs;
             from_idxs[dim] +=
@@ -369,7 +370,7 @@ struct halo_exchange_impl_t
             const auto dim      = direction.dimension();
             const auto positive = direction_t::is_positive(direction);
 
-            auto compute_fine_patch_index = [&]() -> index_t
+            const auto compute_fine_patch_index = [&idxs, &dim]() -> index_t
             {
                 index_t patch_linear_idx = 0;
                 index_t stride           = 1;

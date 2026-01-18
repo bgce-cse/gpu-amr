@@ -64,13 +64,20 @@ private:
     static constexpr size_type s_halo_width = patch_layout_t::halo_width();
     static constexpr size_type s_1d_fanout  = patch_index_t::fanout();
     static constexpr size_type s_nd_fanout  = patch_index_t::nd_fanout();
-    static constexpr size_type s_rank  = patch_layout_t::rank();
+    static constexpr size_type s_rank       = patch_layout_t::rank();
 
     static_assert(s_1d_fanout > 1);
     static_assert(s_nd_fanout > 1);
     static_assert(
         utils::patches::multiples_of(patch_layout_t::data_layout_t::sizes(), s_1d_fanout),
         "All patch dimensions must be multiples of the fanout"
+    );
+    static_assert(
+        std::ranges::all_of(
+            patch_layout_t::data_layout_t::sizes(),
+            [](auto const& e) { return e >= s_halo_width * s_1d_fanout; }
+        ),
+        "The halo must not span more than one finer neighbor cell"
     );
 
     template <typename Type>
@@ -519,7 +526,7 @@ public:
             const auto& neighbor   = parent_neighbor[d.index()];
 
             std::visit(
-                [&](auto&& neighbor_data)
+                [&](auto const& neighbor_data)
                 {
                     using neighbor_category_t = std::decay_t<decltype(neighbor_data)>;
 
@@ -588,7 +595,7 @@ public:
                 const auto  neighbor_array = m_neighbors[m_index_map.at(node_id)];
                 auto const& neighbor       = neighbor_array[d.index()];
                 std::visit(
-                    [&](auto&& neighbor_data)
+                    [&](auto const& neighbor_data)
                     {
                         using neighbor_category_t = std::decay_t<decltype(neighbor_data)>;
                         if constexpr (std::is_same_v<
@@ -708,7 +715,9 @@ public:
         assert(it != nullptr && it != m_index_map.end());
         if (it == nullptr)
         {
-            DEFAULT_SOURCE_LOG_FATAL("Patch index " + node_id.repr() + " not found in index map");
+            DEFAULT_SOURCE_LOG_FATAL(
+                "Patch index " + node_id.repr() + " not found in index map"
+            );
             utility::error_handling::assert_unreachable();
         }
         return it->second;

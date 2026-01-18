@@ -119,9 +119,10 @@ public:
     [[nodiscard]]
     static constexpr auto is_negative(direction const& d) noexcept -> bool
     {
-        return d.index() % s_neighbors_per_dim == 0;
+        return dimension_offset() == 0;
     }
 
+:Wa
     [[nodiscard]]
     static constexpr auto is_positive(direction const& d) noexcept -> bool
     {
