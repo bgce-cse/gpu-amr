@@ -876,7 +876,7 @@ public:
                     {
                         continue;
                     }
-                    ((b[to][k] = static_cast<unwrap_value_t<decltype(b)>>(0)), ...);
+                    ((b[to][k] = unwrap_value_t<decltype(b)>()), ...);
                 }
             },
             m_data_buffers
@@ -937,12 +937,20 @@ public:
                 for (linear_index_t linear_idx = 0; linear_idx != patch_size;
                      ++linear_idx)
                 {
-                    if (utils::patches::is_halo_cell<patch_layout_t>(k))
-                    {
+                    if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
                         continue;
-                    }
-                    ((b[to][k] /= static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)),
-                     ...);
+
+                    const auto to_linear_idx =
+                        s_fragmentation_patch_maps[patch_idx][linear_idx];
+
+                    std::apply(
+                        [to, to_linear_idx, child_patch_idx, linear_idx](auto&... b)
+                        {
+                            ((b[to][to_linear_idx] += b[child_patch_idx][linear_idx]),
+                             ...);
+                        },
+                        m_data_buffers
+                    );
                 }
             }
 
@@ -986,7 +994,7 @@ public:
                 {
                     auto const& strides = patch_layout_t::padded_layout_t::strides();
                     auto const& sizes   = patch_layout_t::data_layout_t::sizes();
-                    for (int d = 0; d < static_cast<int>(s_dimension); ++d)
+                    for (int d = 0; d < static_cast<int>(patch_layout_t::rank()); ++d)
                     {
                         const auto coord          = (linear_idx / strides[d]) % sizes[d];
                         const auto fine_in_coarse = coord % s_1d_fanout;

@@ -57,10 +57,11 @@ struct cell
 };
 
 auto operator<<(std::ostream& os, cell const& c) -> std::ostream&
+
 {
     return os << "S1: " << std::get<S1>(c.data_tuple()).value
               << ", S2: " << std::get<S2>(c.data_tuple()).value;
-};
+}
 
 int main()
 {

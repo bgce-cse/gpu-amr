@@ -17,6 +17,7 @@
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
+#include <string_view>
 
 namespace amr::dg_tree
 {
@@ -258,6 +259,11 @@ struct TreeBuilder
             return 0;
         }
 
+        static constexpr auto name() noexcept -> std::string_view
+        {
+            return "S1";
+        }
+
         type value;
     };
 
@@ -273,12 +279,22 @@ struct TreeBuilder
             return 1;
         }
 
+        static constexpr auto name() noexcept -> std::string_view
+        {
+            return "S2";
+        }
+
         type value;
     };
 
     struct S3
     {
         using type = amr::containers::static_vector<double, Policy::Dim>;
+
+        static constexpr auto name() noexcept -> std::string_view
+        {
+            return "S3";
+        }
 
         static constexpr auto index() noexcept -> std::size_t
         {
@@ -295,6 +311,11 @@ struct TreeBuilder
         static constexpr auto index() noexcept -> std::size_t
         {
             return 3;
+        }
+
+        static constexpr auto name() noexcept -> std::string_view
+        {
+            return "S4";
         }
 
         type value;

@@ -43,7 +43,9 @@ int main()
     using dg_tree  = amr::dg_tree::TreeBuilder<global_t, amr::config::GlobalConfigPolicy>;
     using S1       = dg_tree::S1;
     using S2       = dg_tree::S2;
+
     using patch_index_t = typename dg_tree::patch_index_t;
+    using tree_type_t   = typename dg_tree::tree_t;
 
     dg_tree tree_builder;
     auto&   tree = tree_builder.tree;
@@ -78,7 +80,7 @@ int main()
         // Between timestep 20 and 50: coarsen all patches
         if (timestep >= 20 && timestep <= 50 && level > 0)
         {
-            return dg_tree::tree_t::refine_status_t::Coarsen;
+            return tree_type_t::refine_status_t::Coarsen;
         }
 
         // Outside the coarsening window: refine normally, but only if not in coarsening
@@ -90,12 +92,12 @@ int main()
             // Refine only if this patch is at the current level being refined
             if (is_bottom_left && level == current_refine_level && level < max_depth)
             {
-                return dg_tree::tree_t::refine_status_t::Refine;
+                return tree_type_t::refine_status_t::Refine;
             }
         }
 
         // All other patches remain stable
-        return dg_tree::tree_t::refine_status_t::Stable;
+        return tree_type_t::refine_status_t::Stable;
     };
 
     try
