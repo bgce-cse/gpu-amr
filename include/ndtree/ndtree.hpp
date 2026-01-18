@@ -79,6 +79,9 @@ private:
         ),
         "The halo must not span more than one finer neighbor cell"
     );
+    static_assert(std::is_same_v<
+                  typename neighbor_patch_index_variant_t::index_t,
+                  typename neighbor_utils_t::index_t>);
 
     template <typename Type>
     using value_t = std::remove_pointer_t<std::remove_cvref_t<Type>>;
@@ -286,7 +289,8 @@ public:
                 [this](typename neighbor_patch_index_variant_t::coarser const& n)
                 {
                     return ret_t{
-                        typename ret_t::coarser{ get_linear_index_at(n.id), n.dim_offset }
+                        typename ret_t::coarser{ get_linear_index_at(n.id),
+                                                n.contact_quadrant }
                     };
                 } },
             neighbor.data
@@ -556,12 +560,12 @@ public:
                         // Finer neighbors now see the parent as a coarser neighbor
                         for (size_type i = 0; i != neighbor_data.num_neighbors(); i++)
                         {
-                            neighbor_patch_index_variant_t new_neighbor{
-                                typename neighbor_patch_index_variant_t::coarser{
-                                                                                 parent_node_id,
-                                                                                 static_cast<typename neighbor_patch_index_variant_t::
-                                                    fanout_t>(i) }
-                            };
+                            neighbor_patch_index_variant_t new_neighbor;
+                            new_neighbor.data =
+                                typename neighbor_patch_index_variant_t::coarser(
+                                    parent_node_id,
+                                    neighbor_utils_t::compute_contact_quadrant(i, d)
+                                );
                             m_neighbors[m_index_map.at(neighbor_data.ids[i])]
                                        [opposite_d.index()] = new_neighbor;
                         }
@@ -1069,20 +1073,20 @@ private:
             return true;
         }
         DEFAULT_SOURCE_LOG_ERROR("linear index is not sorted");
-        
+
         return false;
     }
 
 #ifdef AMR_NDTREE_ENABLE_CHECKS
     auto check_index_map() const noexcept -> void
-    {   
+    {
         if (m_index_map.size() > m_size)
         {
             DEFAULT_SOURCE_LOG_ERROR("morton index map size exceeds tree size");
             assert(false);
             return;
         }
-        
+
         for (const auto& [node_idx, linear_idx] : m_index_map)
         {
             if (m_linear_index_map[linear_idx] != node_idx)

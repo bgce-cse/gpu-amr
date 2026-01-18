@@ -158,6 +158,12 @@ public:
     }
 
     [[nodiscard]]
+    constexpr auto data() const noexcept -> auto const&
+    {
+        return value_;
+    }
+
+    [[nodiscard]]
     constexpr auto operator<=>(static_multi_index const&) const noexcept = default;
 
 private:

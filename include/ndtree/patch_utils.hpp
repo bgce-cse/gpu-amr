@@ -229,7 +229,7 @@ constexpr auto halo_apply_section_impl(
                     Halo_Exchange_Operator::coarser,
                     p_n.data(),
                     D,
-                    neighbor.dim_offset,
+                    neighbor.contact_quadrant,
                     std::forward<decltype(args)>(args)...
                 );
             } },
@@ -338,12 +338,10 @@ struct halo_exchange_impl_t
                 std::string("Same halo exchange in direction ") +
                 std::to_string(direction.index())
             );
-            using direction_t   = std::remove_cvref_t<decltype(direction)>;
-            const auto dim      = direction.dimension();
-            const auto positive = direction_t::is_positive(direction);
-            assert(idxs[dim] >= s_halo_width);
-            [[assume(idxs[dim] >= s_halo_width)]];
-            auto from_idxs = idxs;
+            using direction_t    = std::remove_cvref_t<decltype(direction)>;
+            const auto dim       = direction.dimension();
+            const auto positive  = direction_t::is_positive(direction);
+            auto       from_idxs = idxs;
             from_idxs[dim] +=
                 positive ? -index_t{ s_sizes[dim] } : index_t{ s_sizes[dim] };
             self_patch[idxs] = other_patch[from_idxs];
@@ -425,11 +423,11 @@ struct halo_exchange_impl_t
     struct coarser_t
     {
         static constexpr auto operator()(
-            auto&       self_patch,
-            auto const& other_patch,
-            auto const& direction,
-            auto const& dim_offset,
-            auto const& idxs,
+            auto&                        self_patch,
+            [[maybe_unused]] auto const& other_patch,
+            [[maybe_unused]] auto const& direction,
+            [[maybe_unused]] auto const& contact_quadrant,
+            [[maybe_unused]] auto const& idxs,
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
@@ -438,35 +436,59 @@ struct halo_exchange_impl_t
                 std::to_string(direction.index())
             );
             using direction_t = std::remove_cvref_t<decltype(direction)>;
-
-            const auto dim      = direction.dimension();
-            const auto positive = direction_t::is_positive(direction);
-
-            auto from_idxs = idxs;
-            from_idxs[dim] +=
-                positive ? -index_t{ s_sizes[dim] } : index_t{ s_sizes[dim] };
-
-            auto coarse_idxs = from_idxs;
-            for (index_t d = 0; d < s_dimension; ++d)
+            // std::cout << "\nDSizes:\t";
+            // for (auto const& e : s_sizes)
+            //     std::cout << e << ' ';
+            // std::cout << "\nIdxs:\t";
+            // for (auto const& e : idxs)
+            //     std::cout << e << ' ';
+            // std::cout << "\nQ:\t";
+            // for (auto const& e : contact_quadrant)
+            //     std::cout << e << ' ';
+            // std::cout << '\n';
+            const auto from_idxs = [&idxs, &quadrant = contact_quadrant, &direction]()
             {
-                const auto fine_coord       = from_idxs[d] - s_halo_width;
-                const auto local_fine_coord = fine_coord % s_sizes[d];
-                const auto coarse_coord     = local_fine_coord / s_1d_fanout;
-
-                index_t child_base_offset;
-                if (d == dim)
+                auto coarse_cell_coords = std::array<index_t, s_dimension>{};
+                for (index_t i = 0; i != s_dimension; ++i)
                 {
-                    child_base_offset = positive ? 0 : (s_sizes[d] / s_1d_fanout);
+                    const auto cells_per_block = (s_sizes[i] / s_1d_fanout);
+                    const auto dim_offset =
+                        (i == direction.dimension() &&
+                         direction_t::is_negative(direction))
+                            ? (cells_per_block - s_halo_width / s_1d_fanout)
+                            : index_t{};
+                    const auto offset =
+                        i == direction.dimension()
+                            ? (direction_t::is_positive(direction) ? s_sizes[i]
+                                                                   : index_t{})
+                            : s_halo_width;
+                    assert(quadrant[i] < s_1d_fanout);
+                    // std::cout << (quadrant[i] * cells_per_block) << '\n';
+                    coarse_cell_coords[i] = s_halo_width +
+                                            (quadrant[i] * cells_per_block) + dim_offset +
+                                            (idxs[i] - offset) / s_1d_fanout;
+                    // std::cout << "hw:\t" << s_halo_width << '\n';
+                    // std::cout << "dim:\t" << direction.dimension() << '\n';
+                    // std::cout << "cpb:\t" << cells_per_block << '\n';
+                    // std::cout << "do:\t" << dim_offset << '\n';
+                    // std::cout << "o:\t" << offset << '\n';
+                    // std::cout << "1df:\t" << s_1d_fanout << '\n';
+                    // std::cout << "From:\t";
+                    // for (auto const& e : coarse_cell_coords)
+                    //     std::cout << e << ' ';
+                    // std::cout << '\n';
+                    assert(coarse_cell_coords[i] >= s_halo_width);
+                    assert(coarse_cell_coords[i] < s_sizes[i] + s_halo_width);
                 }
-                else
-                {
-                    child_base_offset = dim_offset * (s_sizes[d] / s_1d_fanout);
-                }
+                return coarse_cell_coords;
+            }();
 
-                coarse_idxs[d] = coarse_coord + child_base_offset + s_halo_width;
-            }
+            // std::cout << "\nFrom:\t";
+            // for (auto const& e : from_idxs)
+            //     std::cout << e << ' ';
+            // std::cout << '\n';
 
-            self_patch[idxs] = other_patch[coarse_idxs];
+            self_patch[idxs] = other_patch[from_idxs];
         }
     };
 

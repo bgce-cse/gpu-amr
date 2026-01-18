@@ -4,6 +4,7 @@
 #include "containers/container_utils.hpp"
 #include "containers/static_vector.hpp"
 #include "ndconcepts.hpp"
+#include "utility/constexpr_functions.hpp"
 #include <cstddef>
 #include <type_traits>
 #include <variant>
@@ -17,16 +18,18 @@ enum class NeighborRelation : std::uint8_t
     ParentNeighbor,
 };
 
-template <auto Fanout_1D, auto Fanout_ND, typename Identifier>
+template <auto Fanout_1D, auto Rank, typename Identifier>
 struct neighbor_variant
 {
-    static_assert(std::is_same_v<decltype(Fanout_1D), decltype(Fanout_ND)>);
     using identifier_t = Identifier;
     using fanout_t     = decltype(Fanout_1D);
-    static_assert(std::is_same_v<decltype(Fanout_1D), decltype(Fanout_ND)>);
+    using index_t      = fanout_t;
+    using rank_t       = decltype(Rank);
 
+    static constexpr rank_t   s_rank      = Rank;
     static constexpr fanout_t s_1d_fanout = Fanout_1D;
-    static constexpr fanout_t s_nd_fanout = Fanout_ND;
+    static constexpr fanout_t s_nd_fanout =
+        utility::cx_functions::pow(s_1d_fanout, s_rank);
 
     struct none
     {
@@ -34,13 +37,28 @@ struct neighbor_variant
 
     struct same
     {
+        same(identifier_t i)
+            : id{ i }
+        {
+        }
+
         identifier_t id;
     };
 
     struct coarser
     {
+        template <typename T>
+        using container_type_t = std::array<T, s_rank>;
+        using container_t      = container_type_t<index_t>;
+
+        coarser(identifier_t i, container_t const& c)
+            : id{ i }
+            , contact_quadrant{ c }
+        {
+        }
+
         identifier_t id;
-        fanout_t     dim_offset;
+        container_t  contact_quadrant;
     };
 
     struct finer
@@ -55,6 +73,12 @@ struct neighbor_variant
         template <typename T>
         using container_type_t = std::array<T, num_neighbors()>;
         using container_t      = container_type_t<identifier_t>;
+
+        finer(container_t const& c)
+            : ids{ c }
+        {
+        }
+
         container_t ids;
     };
 
@@ -119,10 +143,9 @@ public:
     [[nodiscard]]
     static constexpr auto is_negative(direction const& d) noexcept -> bool
     {
-        return dimension_offset() == 0;
+        return dimension_offset(d) == 0;
     }
 
-:Wa
     [[nodiscard]]
     static constexpr auto is_positive(direction const& d) noexcept -> bool
     {
@@ -200,12 +223,13 @@ private:
     static constexpr auto s_rank      = patch_index_t::rank();
 
 public:
+    using size_type = patch_layout_t::size_type;
+    using index_t   = patch_layout_t::index_t;
+    using rank_t    = patch_layout_t::rank_t;
     template <typename Id_Type>
-    using neighbor_variant_base_t = neighbor_variant<s_1d_fanout, s_nd_fanout, Id_Type>;
-    using neighbor_variant_t      = neighbor_variant_base_t<patch_index_t>;
-    using size_type               = patch_layout_t::size_type;
-    using index_t                 = patch_layout_t::index_t;
-    using rank_t                  = patch_layout_t::rank_t;
+    using neighbor_variant_base_t =
+        neighbor_variant<index_t{ s_1d_fanout }, s_rank, Id_Type>;
+    using neighbor_variant_t = neighbor_variant_base_t<patch_index_t>;
 
 public:
     // TODO: This should be provided by the patch index
@@ -266,6 +290,33 @@ public:
             multiplier *= s_1d_fanout;
         }
         return linear_idx;
+    }
+
+    // Compute the neighbor quadrant index in the coarse volume
+    static constexpr auto compute_contact_quadrant(
+        index_t const&     neighbor_linear_index,
+        direction_t const& d
+    ) -> std::array<index_t, s_rank>
+    {
+        static_assert(s_rank > rank_t{ 1 });
+        auto const& sizes = patch_layout_t::data_layout_t::sizes();
+        return [&d](index_t idx)
+        {
+            auto ret = std::array<index_t, s_rank>{};
+            for (rank_t i = 0; i != s_rank; ++i)
+            {
+                if (i == d.dimension())
+                {
+                    ret[i] = direction_t::is_negative(d) ? index_t{} : sizes[i] - 1;
+                }
+                else
+                {
+                    ret[i] = idx % sizes[i];
+                    idx /= sizes[i];
+                }
+            }
+            return ret;
+        }(neighbor_linear_index);
     }
 
     // TODO: Are there any preconditions to the coords?
@@ -341,15 +392,9 @@ public:
                                            T,
                                            typename neighbor_variant_t::same>)
                     {
-                        return neighbor_variant_t{
-                            typename neighbor_variant_t::coarser{
-                                                                 neighbor.id,
-                                                                 static_cast<typename neighbor_variant_t::fanout_t>(
-                                    compute_fine_boundary_linear_index(
-                                        child_multiindex, d.dimension()
-                                    )
-                                ) }
-                        };
+                        return neighbor_variant_t{ typename neighbor_variant_t::coarser(
+                            neighbor.id, child_multiindex.data()
+                        ) };
                     }
                     else if constexpr (std::is_same_v<
                                            T,
