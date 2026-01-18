@@ -68,10 +68,12 @@ int main()
     double next_plotted = 0.0;
 
     // CFL-scaled AMR schedule
-    int  amr_interval         = 10;
-    int  next_amr_step        = 0;
-    int  amr_step             = 0;
-    int  current_refine_level = 0;
+    int amr_interval  = 10;
+    int next_amr_step = 0;
+    int amr_step      = 0;
+    // Target refinement depth for the refinement phase.
+    // We start at 1 so level-0 patches refine on the first AMR step.
+    int  current_refine_level = 1;
     auto amr_condition = [&current_refine_level, &timestep](const patch_index_t& idx)
     {
         auto [coords, level] = patch_index_t::decode(idx.id());
@@ -83,14 +85,12 @@ int main()
             return tree_type_t::refine_status_t::Coarsen;
         }
 
-        // Outside the coarsening window: refine normally, but only if not in coarsening
-        // phase
+        // Outside the coarsening window: refine back up towards the target depth.
         if (timestep < 20 || timestep > 50)
         {
             bool is_bottom_left = (coords[0] == 0 && coords[1] == 0);
 
-            // Refine only if this patch is at the current level being refined
-            if (is_bottom_left && level == current_refine_level && level < max_depth)
+            if (is_bottom_left && level < current_refine_level && level < max_depth)
             {
                 return tree_type_t::refine_status_t::Refine;
             }
@@ -179,8 +179,9 @@ int main()
 
                 tree.reconstruct_tree(amr_condition);
 
-                // Progress to next refinement level
-                if (current_refine_level < static_cast<int>(patch_index_t::max_depth()))
+                // Progress to next refinement level (only during the refinement phase).
+                if ((timestep < 20 || timestep > 50) &&
+                    current_refine_level < static_cast<int>(patch_index_t::max_depth()))
                 {
                     current_refine_level++;
                 }
@@ -191,7 +192,7 @@ int main()
             // ================================
             // Output (independent of AMR)
             // ================================
-            if (true)
+            if (time > next_plotted)
             {
                 time_extension = "_t" + std::to_string(timestep) + ".vtk";
                 printer.template print<S1>(tree, time_extension);
