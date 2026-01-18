@@ -16,6 +16,7 @@
 #include <cstring>
 #include <numeric>
 #include <ranges>
+#include <set>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -933,62 +934,107 @@ public:
     {
         static constexpr auto patch_size = patch_layout_t::flat_size();
 
-        // Iterate through children and accumulate/restrict values
-        for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
-        {
-            for (linear_index_t linear_idx = 0; linear_idx != patch_size; ++linear_idx)
+        /*------------------------------------------------------------
+         * 1. Zero / init parent patch
+         *------------------------------------------------------------*/
+        std::apply(
+            [to](auto&... b)
             {
-                if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
+                for (linear_index_t k = 0; k != patch_size; ++k)
                 {
-                    continue;
+                    if (utils::patches::is_halo_cell<patch_layout_t>(k)) continue;
+                    ((b[to][k] = {}), ...);
                 }
-                const auto to_linear_idx =
-                    s_fragmentation_patch_maps[patch_idx][linear_idx];
+            },
+            m_data_buffers
+        );
 
-                if constexpr (!std::is_void_v<AMRPolicy>)
+        /*------------------------------------------------------------
+         * 2. AMR-policy restriction: SAME LOOPS AS VANILLA
+         *------------------------------------------------------------*/
+        if constexpr (!std::is_void_v<AMRPolicy>)
+        {
+            auto& s1            = std::get<0>(m_data_buffers);
+            using patch_value_t = std::remove_reference_t<decltype(s1[0][0])>;
+            constexpr std::size_t num_children = static_cast<std::size_t>(s_nd_fanout);
+
+            // Fixed-size containers for children and counters
+            amr::containers::static_vector<patch_value_t, num_children>
+                                                children[patch_size];
+            std::array<std::size_t, patch_size> child_counts{};
+
+            // IDENTICAL to vanilla accumulation loops
+            for (std::size_t patch_idx = 0; patch_idx != num_children; ++patch_idx)
+            {
+                const auto child_patch_idx = start_from + patch_idx;
+
+                for (linear_index_t child_linear_idx = 0; child_linear_idx != patch_size;
+                     ++child_linear_idx)
                 {
-                    // For DG tensors (S1), use proper restriction via AMRPolicy
-                    auto& s1_from_patch = std::get<0>(m_data_buffers);
-                    auto& s1_to_patch   = std::get<0>(m_data_buffers);
+                    if (utils::patches::is_halo_cell<patch_layout_t>(child_linear_idx))
+                        continue;
 
-                    // Collect children values
-                    amr::containers::static_vector<
-                        std::remove_reference_t<decltype(s1_from_patch[0][0])>,
-                        s_nd_fanout>
-                        children;
-                    for (size_type child_idx = 0; child_idx != s_nd_fanout; ++child_idx)
-                    {
-                        const auto child_patch_idx = start_from + child_idx;
-                        const auto child_linear_idx =
-                            s_fragmentation_patch_maps[child_idx][linear_idx];
-                        children[child_idx] =
-                            s1_from_patch[child_patch_idx][child_linear_idx];
-                    }
-                    std::cout << "children:" << children << "\n\n";
+                    const auto parent_linear_idx =
+                        s_fragmentation_patch_maps[patch_idx][child_linear_idx];
 
-                    // Restrict using AMRPolicy
-                    s1_to_patch[to][to_linear_idx] = AMRPolicy::restrict(children);
+                    // store child at appropriate position
+                    children[parent_linear_idx][child_counts[parent_linear_idx]++] =
+                        s1[child_patch_idx][child_linear_idx];
                 }
-                else
+            }
+
+            // apply restriction exactly once per parent cell
+            for (linear_index_t k = 0; k != patch_size; ++k)
+            {
+                if (utils::patches::is_halo_cell<patch_layout_t>(k)) continue;
+
+                // invariant: child_counts[k] == s_nd_fanout
+                s1[to][k] = AMRPolicy::restrict(children[k]);
+            }
+        }
+        /*------------------------------------------------------------
+         * 3. Vanilla restriction (unchanged)
+         *------------------------------------------------------------*/
+        else
+        {
+            for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
+            {
+                const auto child_patch_idx = start_from + patch_idx;
+
+                for (linear_index_t linear_idx = 0; linear_idx != patch_size;
+                     ++linear_idx)
                 {
+                    if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
+                        continue;
+
+                    const auto to_linear_idx =
+                        s_fragmentation_patch_maps[patch_idx][linear_idx];
+
                     std::apply(
-                        [to](auto&... b)
+                        [to, to_linear_idx, child_patch_idx, linear_idx](auto&... b)
                         {
-                            for (linear_index_t k = 0; k != patch_size; k++)
-                            {
-                                if (utils::patches::is_halo_cell<patch_layout_t>(k))
-                                {
-                                    continue;
-                                }
-                                ((b[to][k] /=
-                                  static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)),
-                                 ...);
-                            }
+                            ((b[to][to_linear_idx] += b[child_patch_idx][linear_idx]),
+                             ...);
                         },
                         m_data_buffers
                     );
                 }
             }
+
+            std::apply(
+                [to](auto&... b)
+                {
+                    for (linear_index_t k = 0; k != patch_size; ++k)
+                    {
+                        if (utils::patches::is_halo_cell<patch_layout_t>(k)) continue;
+
+                        ((b[to][k] /=
+                          static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)),
+                         ...);
+                    }
+                },
+                m_data_buffers
+            );
         }
     }
 
