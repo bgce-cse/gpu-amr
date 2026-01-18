@@ -10,6 +10,9 @@
 #include "utility/compile_time_utility.hpp"
 #include "utility/error_handling.hpp"
 #include "utility/logging.hpp"
+#ifdef AMR_DG_COARSEN_DEBUG
+#    include <iostream>
+#endif
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -322,28 +325,29 @@ public:
         using offset_t = typename patch_index_t::offset_t;
         assert(!find_index(parent_node_id).has_value());
 
-        const auto child_0    = patch_index_t::child_of(parent_node_id, 0);
-        const auto child_0_it = find_index(child_0);
-        assert(child_0_it.has_value());
-
+        // IMPORTANT: children are not guaranteed to be stored contiguously in the
+        // buffers. Cache the real linear indices in child-offset order.
+        std::array<linear_index_t, s_nd_fanout>    child_linear_indices{};
         std::array<patch_neighbors_t, s_nd_fanout> child_neighbor_arrays{};
         for (auto i = offset_t{}; i != offset_t{ s_nd_fanout }; ++i)
         {
             const auto child_i    = patch_index_t::child_of(parent_node_id, i);
             const auto child_i_it = find_index(child_i);
             assert(child_i_it.has_value());
-            // assert(child_i_it.value()->second == start + i);
-            child_neighbor_arrays[i] = m_neighbors[m_index_map.at(child_i)];
+
+            const auto child_linear_idx = child_i_it.value()->second;
+            child_linear_indices[i]     = child_linear_idx;
+            child_neighbor_arrays[i]    = m_neighbors[child_linear_idx];
+
             m_index_map.erase(child_i_it.value());
         }
 
         patch_neighbors_t neighbor_array =
             neighbor_utils_t::compute_parent_neighbors(child_neighbor_arrays);
-        const auto start = child_0_it.value()->second;
-        const auto to    = m_size;
+        const auto to = m_size;
         append(parent_node_id, neighbor_array);
         assert(m_linear_index_map[back_idx()] == parent_node_id);
-        restrict_patches(start, to);
+        restrict_patches(child_linear_indices, to, parent_node_id);
 
         enforce_symmetry_after_recombining(parent_node_id, neighbor_array);
     }
@@ -902,12 +906,27 @@ public:
     }
 
     auto restrict_patches(
-        linear_index_t const start_from,
-        linear_index_t const to
+        std::array<linear_index_t, s_nd_fanout> const& child_linear_indices,
+        linear_index_t const                           to,
+        [[maybe_unused]] patch_index_t const           parent_node_id
     ) noexcept -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Patch restriction");
         static constexpr auto patch_size = patch_layout_t::flat_size();
+
+#ifdef AMR_DG_COARSEN_DEBUG
+        static bool s_printed_once = false;
+        const bool  do_print       = !s_printed_once;
+        if (do_print)
+        {
+            s_printed_once = true;
+            std::cerr << "[DG_COARSEN_DEBUG] parent=" << parent_node_id.repr()
+                      << " to=" << to << "\n";
+        }
+#else
+        [[maybe_unused]]
+        constexpr bool do_print = false;
+#endif
 
         /*------------------------------------------------------------
          * 1. Zero / init parent patch
@@ -930,6 +949,8 @@ public:
         /*------------------------------------------------------------
          * 2. AMR-policy restriction: SAME LOOPS AS VANILLA
          *------------------------------------------------------------*/
+        // Allow forcing vanilla restriction for A/B testing.
+#if !defined(AMR_FORCE_VANILLA_RESTRICTION)
         if constexpr (!std::is_void_v<AMRPolicy>)
         {
             auto& s1            = std::get<0>(m_data_buffers);
@@ -938,13 +959,23 @@ public:
 
             // Fixed-size containers for children and counters
             amr::containers::static_vector<patch_value_t, num_children>
-                                                children[patch_size];
+                                                children[patch_size]{};
             std::array<std::size_t, patch_size> child_counts{};
 
-            // IDENTICAL to vanilla accumulation loops
+            // Gather children per parent cell. Each parent cell receives fanout^rank
+            // subcells; those are ordered by `child_offset`.
             for (std::size_t patch_idx = 0; patch_idx != num_children; ++patch_idx)
             {
-                const auto child_patch_idx = start_from + patch_idx;
+                const auto child_patch_idx = child_linear_indices[patch_idx];
+
+#    ifdef AMR_DG_COARSEN_DEBUG
+                if (do_print)
+                {
+                    std::cerr << "  child_patch[" << patch_idx
+                              << "]=" << m_linear_index_map[child_patch_idx].repr()
+                              << " (linear=" << child_patch_idx << ")\n";
+                }
+#    endif
 
                 for (linear_index_t child_linear_idx = 0; child_linear_idx != patch_size;
                      ++child_linear_idx)
@@ -955,9 +986,43 @@ public:
                     const auto parent_linear_idx =
                         s_fragmentation_patch_maps[patch_idx][child_linear_idx];
 
-                    // store child at appropriate position
-                    children[parent_linear_idx][child_counts[parent_linear_idx]++] =
+                    linear_index_t child_offset = 0;
+                    {
+                        auto const& strides = patch_layout_t::padded_layout_t::strides();
+                        auto const& sizes   = patch_layout_t::data_layout_t::sizes();
+                        for (int d = 0; d < static_cast<int>(patch_layout_t::rank()); ++d)
+                        {
+                            const auto coord = (child_linear_idx / strides[d]) % sizes[d];
+                            const auto fine_in_coarse = coord % s_1d_fanout;
+                            child_offset = child_offset * s_1d_fanout + fine_in_coarse;
+                        }
+                        child_offset = (s_nd_fanout - 1) - child_offset;
+                    }
+
+                    children[parent_linear_idx][static_cast<std::size_t>(child_offset)] =
                         s1[child_patch_idx][child_linear_idx];
+                    ++child_counts[parent_linear_idx];
+
+#    ifdef AMR_DG_COARSEN_DEBUG
+                    if (do_print && patch_idx < 2 && child_linear_idx < 5)
+                    {
+                        std::cerr << "    map: patch_idx=" << patch_idx
+                                  << " child_linear=" << child_linear_idx
+                                  << " -> parent_linear=" << parent_linear_idx
+                                  << " child_offset=" << child_offset;
+
+                        if constexpr (requires { typename patch_value_t::multi_index_t; })
+                        {
+                            typename patch_value_t::multi_index_t mi{};
+                            const auto coeff0 = s1[child_patch_idx][child_linear_idx][mi];
+                            if constexpr (requires { coeff0[0]; })
+                            {
+                                std::cerr << " sample=" << coeff0[0];
+                            }
+                        }
+                        std::cerr << "\n";
+                    }
+#    endif
                 }
             }
 
@@ -967,9 +1032,35 @@ public:
                 if (utils::patches::is_halo_cell<patch_layout_t>(k)) continue;
 
                 // invariant: child_counts[k] == s_nd_fanout
+#    ifdef AMR_NDTREE_ENABLE_CHECKS
+                assert(child_counts[k] == num_children);
+#    endif
                 s1[to][k] = AMRPolicy::restrict(children[k]);
+
+#    ifdef AMR_DG_COARSEN_DEBUG
+                if (do_print && k < 5)
+                {
+                    using coarse_t = std::remove_reference_t<decltype(s1[to][k])>;
+                    std::cerr << "  parent_linear=" << k;
+                    if constexpr (requires { typename coarse_t::multi_index_t; })
+                    {
+                        typename coarse_t::multi_index_t mi{};
+                        const auto                       coeff0 = s1[to][k][mi];
+                        if constexpr (requires { coeff0[0]; })
+                        {
+                            std::cerr << " result_sample=" << coeff0[0];
+                        }
+                    }
+                    std::cerr << " child_counts=" << child_counts[k] << "\n";
+                }
+#    endif
             }
         }
+#else
+        if constexpr (false)
+        {
+        }
+#endif
         /*------------------------------------------------------------
          * 3. Vanilla restriction (unchanged)
          *------------------------------------------------------------*/
@@ -977,7 +1068,7 @@ public:
         {
             for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
             {
-                const auto child_patch_idx = start_from + patch_idx;
+                const auto child_patch_idx = child_linear_indices[patch_idx];
 
                 for (linear_index_t linear_idx = 0; linear_idx != patch_size;
                      ++linear_idx)
