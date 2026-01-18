@@ -541,8 +541,22 @@ public:
                         new_neighbor.data = typename neighbor_patch_index_variant_t::same{
                             parent_node_id
                         };
-                        m_neighbors[m_index_map.at(neighbor_data.id)]
-                                   [opposite_d.index()] = new_neighbor;
+                        if (const auto it = m_index_map.find(neighbor_data.id);
+                            it != m_index_map.end())
+                        {
+                            m_neighbors[it->second][opposite_d.index()] = new_neighbor;
+                        }
+#ifdef AMR_NDTREE_ENABLE_CHECKS
+                        else
+                        {
+                            // Neighbor may have been recombined earlier in the same AMR
+                            // pass.
+                            DEFAULT_SOURCE_LOG_WARNING(
+                                "Missing same-level neighbor during recombining: " +
+                                neighbor_data.id.repr()
+                            );
+                        }
+#endif
                     }
                     else if constexpr (std::is_same_v<
                                            neighbor_category_t,
@@ -558,8 +572,39 @@ public:
                                                                                  static_cast<typename neighbor_patch_index_variant_t::
                                                     fanout_t>(i) }
                             };
-                            m_neighbors[m_index_map.at(neighbor_data.ids[i])]
-                                       [opposite_d.index()] = new_neighbor;
+
+                            const auto fine_id = neighbor_data.ids[i];
+                            if (const auto fine_it = m_index_map.find(fine_id);
+                                fine_it != m_index_map.end())
+                            {
+                                m_neighbors[fine_it->second][opposite_d.index()] =
+                                    new_neighbor;
+                                continue;
+                            }
+
+                            // If the finer neighbor was already recombined earlier in
+                            // this AMR pass, its parent may exist and should see us as a
+                            // same-level neighbor.
+                            const auto coarse_id = patch_index_t::parent_of(fine_id);
+                            if (const auto coarse_it = m_index_map.find(coarse_id);
+                                coarse_it != m_index_map.end())
+                            {
+                                neighbor_patch_index_variant_t same_neighbor;
+                                same_neighbor.data =
+                                    typename neighbor_patch_index_variant_t::same{
+                                        parent_node_id
+                                    };
+                                m_neighbors[coarse_it->second][opposite_d.index()] =
+                                    same_neighbor;
+                                continue;
+                            }
+
+#ifdef AMR_NDTREE_ENABLE_CHECKS
+                            DEFAULT_SOURCE_LOG_WARNING(
+                                "Missing finer neighbor during recombining: " +
+                                fine_id.repr()
+                            );
+#endif
                         }
                     }
                     else if constexpr (std::is_same_v<
