@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 cmake_minimum_required(VERSION 3.25)
 
 project(GPU_AMR VERSION 0.1 LANGUAGES CXX)
@@ -469,7 +468,6 @@ message(STATUS "Sanitizers:         ${ENABLE_SANITIZERS}")
 message(STATUS "Output Directory:   ${OUTPUT_DIR}")
 message(STATUS "Parallel Jobs:      ${CMAKE_BUILD_PARALLEL_LEVEL}")
 message(STATUS "====================================")
-=======
 file(GLOB EXAMPLE_SOURCES CONFIGURE_DEPENDS
     *.e.cpp
 )
@@ -488,4 +486,3 @@ foreach(src ${EXAMPLE_SOURCES})
         RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR_EXAMPLES}
     )
 endforeach()
->>>>>>> feature/3d_simulation
