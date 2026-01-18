@@ -706,9 +706,10 @@ public:
     auto get_linear_index_at(patch_index_t const node_id) const noexcept -> linear_index_t
     {
         const auto it = m_index_map.find(node_id);
-        if (it == m_index_map.end())
+        assert(it != nullptr && it != m_index_map.end());
+        if (it == nullptr)
         {
-            return std::numeric_limits<linear_index_t>::max();
+            utility::error_handling::assert_unreachable();
         }
         return it->second;
     }
@@ -732,20 +733,6 @@ private:
         patch_neighbors_t const& neighbor_array
     ) noexcept -> void
     {
-        // Zero-initialize new patch data to prevent NaN from uninitialized memory
-        std::apply(
-            [this](auto&... b)
-            {
-                ((void)(std::memset(
-                     b + m_size,
-                     0,
-                     patch_layout_t::flat_size() * sizeof(value_t<decltype(b)>)
-                 )),
-                 ...);
-            },
-            m_data_buffers
-        );
-
         m_linear_index_map[m_size] = node_id;
         m_index_map[node_id]       = m_size;
         m_neighbors[m_size]        = neighbor_array;
@@ -862,71 +849,6 @@ public:
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
     }
 
-    auto interpolate_patch(
-        linear_index_t const from,
-        linear_index_t const start_to
-    ) noexcept -> void
-    {
-        for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
-        {
-            const auto child_patch_index = start_to + patch_idx;
-            for (linear_index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
-                 ++linear_idx)
-            {
-                if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
-                {
-                    continue;
-                }
-                const auto from_linear_idx =
-                    s_fragmentation_patch_maps[patch_idx][linear_idx];
-
-                linear_index_t child_offset = 0;
-                {
-                    auto const& strides = patch_layout_t::padded_layout_t::strides();
-                    auto const& sizes   = patch_layout_t::data_layout_t::sizes();
-                    for (int d = 0; d < static_cast<int>(s_dimension); ++d)
-                    {
-                        const auto coord          = (linear_idx / strides[d]) % sizes[d];
-                        const auto fine_in_coarse = coord % s_1d_fanout;
-                        child_offset = child_offset * s_1d_fanout + fine_in_coarse;
-                    }
-                    child_offset = (s_nd_fanout - 1) - child_offset;
-                }
-
-                if constexpr (!std::is_void_v<AMRPolicy>)
-                {
-                    std::apply(
-                        [child_patch_index,
-                         from,
-                         from_linear_idx,
-                         linear_idx,
-                         child_offset](auto&... b)
-                        {
-                            ((void)(b[child_patch_index][linear_idx] =
-                                        AMRPolicy::interpolate(
-                                            b[from][from_linear_idx], child_offset
-                                        )),
-                             ...);
-                        },
-                        m_data_buffers
-                    );
-                }
-                else
-                {
-                    std::apply(
-                        [child_patch_index, from, from_linear_idx, linear_idx](auto&... b)
-                        {
-                            ((void)(b[child_patch_index][linear_idx] =
-                                        b[from][from_linear_idx]),
-                             ...);
-                        },
-                        m_data_buffers
-                    );
-                }
-            }
-        }
-    }
-
     auto restrict_patches(
         linear_index_t const start_from,
         linear_index_t const to
@@ -1035,6 +957,71 @@ public:
                 },
                 m_data_buffers
             );
+        }
+    }
+
+    auto interpolate_patch(
+        linear_index_t const from,
+        linear_index_t const start_to
+    ) noexcept -> void
+    {
+        for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
+        {
+            const auto child_patch_index = start_to + patch_idx;
+            for (linear_index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
+                 ++linear_idx)
+            {
+                if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
+                {
+                    continue;
+                }
+                const auto from_linear_idx =
+                    s_fragmentation_patch_maps[patch_idx][linear_idx];
+
+                linear_index_t child_offset = 0;
+                {
+                    auto const& strides = patch_layout_t::padded_layout_t::strides();
+                    auto const& sizes   = patch_layout_t::data_layout_t::sizes();
+                    for (int d = 0; d < static_cast<int>(s_dimension); ++d)
+                    {
+                        const auto coord          = (linear_idx / strides[d]) % sizes[d];
+                        const auto fine_in_coarse = coord % s_1d_fanout;
+                        child_offset = child_offset * s_1d_fanout + fine_in_coarse;
+                    }
+                    child_offset = (s_nd_fanout - 1) - child_offset;
+                }
+
+                if constexpr (!std::is_void_v<AMRPolicy>)
+                {
+                    std::apply(
+                        [child_patch_index,
+                         from,
+                         from_linear_idx,
+                         linear_idx,
+                         child_offset](auto&... b)
+                        {
+                            ((void)(b[child_patch_index][linear_idx] =
+                                        AMRPolicy::interpolate(
+                                            b[from][from_linear_idx], child_offset
+                                        )),
+                             ...);
+                        },
+                        m_data_buffers
+                    );
+                }
+                else
+                {
+                    std::apply(
+                        [child_patch_index, from, from_linear_idx, linear_idx](auto&... b)
+                        {
+                            ((void)(b[child_patch_index][linear_idx] =
+                                        b[from][from_linear_idx]),
+                             ...);
+                        },
+                        m_data_buffers
+                    );
+                }
+            }
         }
     }
 
