@@ -86,6 +86,7 @@ constexpr auto shaped_for_impl(
     using loop_t = Loop_Control;
     using rank_t = typename loop_t::rank_t;
 
+    // TODO: Deal with flipped indices
     if constexpr (I == loop_t::rank())
     {
         static_assert(std::invocable<decltype(fn), decltype(args)..., decltype(idxs)>);

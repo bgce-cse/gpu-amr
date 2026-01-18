@@ -9,6 +9,7 @@
 #include "patch_utils.hpp"
 #include "utility/compile_time_utility.hpp"
 #include "utility/error_handling.hpp"
+#include "utility/logging.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -66,7 +67,7 @@ private:
     static constexpr size_type s_halo_width = patch_layout_t::halo_width();
     static constexpr size_type s_1d_fanout  = patch_index_t::fanout();
     static constexpr size_type s_nd_fanout  = patch_index_t::nd_fanout();
-    static constexpr size_type s_dimension  = patch_layout_t::rank();
+    static constexpr size_type s_rank       = patch_layout_t::rank();
 
     static_assert(s_1d_fanout > 1);
     static_assert(s_nd_fanout > 1);
@@ -126,9 +127,9 @@ private:
 
 public:
     [[nodiscard]]
-    static constexpr auto dimension() noexcept -> auto const&
+    static constexpr auto rank() noexcept -> auto const&
     {
-        return s_dimension;
+        return s_rank;
     }
 
     [[nodiscard]]
@@ -171,11 +172,6 @@ public:
             root_neighbors[d.index()] = periodic_neighbor;
         }
         append(patch_index_t::root(), root_neighbors);
-    }
-
-    ndtree(size_type size, auto&& refinement, auto&& coarsening)
-        : ndtree(size)
-    {
     }
 
     ~ndtree() noexcept
@@ -295,6 +291,7 @@ public:
 
     auto fragment(patch_index_t const node_id) -> void
     {
+        DEFAULT_SOURCE_LOG_TRACE("Fragmenting node " + node_id.repr());
         const auto it   = find_index(node_id);
         const auto from = it.value()->second;
         assert(it.has_value());
@@ -620,6 +617,12 @@ public:
             }
         }
 
+        std::ranges::sort(
+            m_to_refine,
+            [](const auto& a, const auto& b)
+            { return patch_index_t::level(a) > patch_index_t::level(b); }
+        );
+
         std::vector<patch_index_t> blocks_to_remove{};
         for (auto i = 0uz; i != m_to_coarsen.size(); ++i)
         {
@@ -709,6 +712,9 @@ public:
         assert(it != nullptr && it != m_index_map.end());
         if (it == nullptr)
         {
+            DEFAULT_SOURCE_LOG_FATAL(
+                "Patch index " + node_id.repr() + " not found in index map"
+            );
             utility::error_handling::assert_unreachable();
         }
         return it->second;
@@ -831,8 +837,8 @@ public:
 public:
     [[nodiscard]]
     auto gather_node(linear_index_t const i) const noexcept -> map_type
-
     {
+        DEFAULT_SOURCE_LOG_TRACE("Gather node");
         return std::apply(
             [i](auto&&... args)
             { return map_type(std::forward<decltype(args)>(args)[i]...); },
@@ -842,6 +848,7 @@ public:
 
     auto scatter_node(map_type const& v, const linear_index_t i) const noexcept -> void
     {
+        DEFAULT_SOURCE_LOG_TRACE("Scatter node");
         [this, &v, i]<std::size_t... I>(std::index_sequence<I...>)
         {
             ((void)(std::get<I>(m_data_buffers)[i] = std::get<I>(v.data_tuple()).value),
@@ -854,6 +861,7 @@ public:
         linear_index_t const to
     ) noexcept -> void
     {
+        DEFAULT_SOURCE_LOG_TRACE("Patch restriction");
         static constexpr auto patch_size = patch_layout_t::flat_size();
 
         /*------------------------------------------------------------
@@ -864,8 +872,11 @@ public:
             {
                 for (linear_index_t k = 0; k != patch_size; ++k)
                 {
-                    if (utils::patches::is_halo_cell<patch_layout_t>(k)) continue;
-                    ((b[to][k] = {}), ...);
+                    if (utils::patches::is_halo_cell<patch_layout_t>(k))
+                    {
+                        continue;
+                    }
+                    ((b[to][k] = static_cast<unwrap_value_t<decltype(b)>>(0)), ...);
                 }
             },
             m_data_buffers
@@ -926,20 +937,12 @@ public:
                 for (linear_index_t linear_idx = 0; linear_idx != patch_size;
                      ++linear_idx)
                 {
-                    if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
+                    if (utils::patches::is_halo_cell<patch_layout_t>(k))
+                    {
                         continue;
-
-                    const auto to_linear_idx =
-                        s_fragmentation_patch_maps[patch_idx][linear_idx];
-
-                    std::apply(
-                        [to, to_linear_idx, child_patch_idx, linear_idx](auto&... b)
-                        {
-                            ((b[to][to_linear_idx] += b[child_patch_idx][linear_idx]),
-                             ...);
-                        },
-                        m_data_buffers
-                    );
+                    }
+                    ((b[to][k] /= static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)),
+                     ...);
                 }
             }
 
@@ -965,6 +968,7 @@ public:
         linear_index_t const start_to
     ) noexcept -> void
     {
+        DEFAULT_SOURCE_LOG_TRACE("Patch interpolation");
         for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
         {
             const auto child_patch_index = start_to + patch_idx;
@@ -1028,6 +1032,7 @@ public:
     constexpr auto halo_exchange_update() noexcept -> void
 
     {
+        DEFAULT_SOURCE_LOG_TRACE("Performing halo exchange");
         for (linear_index_t i = 0; i != m_size; ++i)
         {
             utils::patches::halo_apply<halo_exchange_operator_impl_t, patch_direction_t>(
@@ -1076,10 +1081,9 @@ private:
         return true;
     }
 
-    // TODO: privatize
-public:
     auto compact() noexcept -> void
     {
+        DEFAULT_SOURCE_LOG_TRACE("Comacting tree");
         size_t tail = 0;
         for (linear_index_t head = 0; head < m_size; ++head)
         {
@@ -1131,25 +1135,36 @@ public:
                 assert(m_index_map.contains(m_linear_index_map[i]));
                 if (m_index_map.at(m_linear_index_map[i]) != i)
                 {
-                    std::cout << "index map is not correct" << std::endl;
+                    DEFAULT_SOURCE_LOG_ERROR("index map is not correct");
                     return false;
                 }
             }
             return true;
         }
-        std::cout << "linear index is not sorted" << std::endl;
+        DEFAULT_SOURCE_LOG_ERROR("linear index is not sorted");
+
         return false;
     }
 
 #ifdef AMR_NDTREE_ENABLE_CHECKS
     auto check_index_map() const noexcept -> void
     {
-        assert(m_index_map.size() <= m_size);
+        if (m_index_map.size() > m_size)
+        {
+            DEFAULT_SOURCE_LOG_ERROR("morton index map size exceeds tree size");
+            assert(false);
+            return;
+        }
+
         for (const auto& [node_idx, linear_idx] : m_index_map)
         {
-            assert(m_linear_index_map[linear_idx] == node_idx);
+            if (m_linear_index_map[linear_idx] != node_idx)
+            {
+                DEFAULT_SOURCE_LOG_ERROR("morton index map is incorrect");
+                assert(false);
+                return;
+            }
         }
-        // std::cout << "Hash table looks good chef...\n";
     }
 #endif
 

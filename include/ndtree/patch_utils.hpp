@@ -319,11 +319,11 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            // DEFAULT_SOURCE_LOG_TRACE(
-            //     std::string("Boundary halo exchange in direction ") +
-            //     std::to_string(direction.index())
-            // );
-            // DEFAULT_SOURCE_LOG_DEBUG("Boundary halo exchange not implemented");
+            DEFAULT_SOURCE_LOG_TRACE(
+                std::string("Boundary halo exchange in direction ") +
+                std::to_string(direction.index())
+            );
+            DEFAULT_SOURCE_LOG_DEBUG("Boundary halo exchange not implemented");
         }
     };
 
@@ -337,10 +337,10 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            // DEFAULT_SOURCE_LOG_TRACE(
-            //     std::string("Same halo exchange in direction ") +
-            //     std::to_string(direction.index())
-            // );
+            DEFAULT_SOURCE_LOG_TRACE(
+                std::string("Same halo exchange in direction ") +
+                std::to_string(direction.index())
+            );
             using direction_t   = std::remove_cvref_t<decltype(direction)>;
             const auto dim      = direction.dimension();
             const auto positive = direction_t::is_positive(direction);
@@ -362,6 +362,10 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            DEFAULT_SOURCE_LOG_TRACE(
+                std::string("Finer halo exchange in direction ") +
+                std::to_string(direction.index())
+            );
             using direction_t = std::remove_cvref_t<decltype(direction)>;
             using value_t     = std::remove_cvref_t<decltype(current_patch[idxs])>;
 
@@ -398,9 +402,21 @@ struct halo_exchange_impl_t
             auto base_fine_idxs = from_idxs;
             for (index_t d = 0; d < s_dimension; ++d)
             {
-                base_fine_idxs[d] =
-                    ((from_idxs[d] - s_halo_width) * s_1d_fanout) % s_sizes[d] +
-                    s_halo_width;
+                if (d == dim)
+                {
+                    base_fine_idxs[d] =
+                        ((from_idxs[d] - s_halo_width) * s_1d_fanout) % s_sizes[d] +
+                        s_halo_width;
+                    continue;
+                }
+
+                const auto section_size = s_sizes[d] / s_1d_fanout;
+                const auto section_idx  = (idxs[d] - s_halo_width) / section_size;
+
+                const auto local_coarse =
+                    (from_idxs[d] - s_halo_width) - section_idx * section_size;
+
+                base_fine_idxs[d] = local_coarse * s_1d_fanout + s_halo_width;
             }
 
             if constexpr (!std::is_void_v<AMRPolicy>)
@@ -462,6 +478,10 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            DEFAULT_SOURCE_LOG_TRACE(
+                std::string("Coarser halo exchange in direction ") +
+                std::to_string(direction.index())
+            );
             using direction_t = std::remove_cvref_t<decltype(direction)>;
 
             const auto dim      = direction.dimension();
@@ -471,7 +491,8 @@ struct halo_exchange_impl_t
             from_idxs[dim] +=
                 positive ? -index_t{ s_sizes[dim] } : index_t{ s_sizes[dim] };
 
-            auto coarse_idxs = from_idxs;
+            auto    coarse_idxs         = from_idxs;
+            index_t tangential_selector = dim_offset;
             for (index_t d = 0; d < s_dimension; ++d)
             {
                 const auto fine_coord       = from_idxs[d] - s_halo_width;
@@ -485,7 +506,9 @@ struct halo_exchange_impl_t
                 }
                 else
                 {
-                    child_base_offset = dim_offset * (s_sizes[d] / s_1d_fanout);
+                    const index_t bit = tangential_selector % s_1d_fanout;
+                    tangential_selector /= s_1d_fanout;
+                    child_base_offset = bit * (s_sizes[d] / s_1d_fanout);
                 }
 
                 coarse_idxs[d] = coarse_coord + child_base_offset + s_halo_width;

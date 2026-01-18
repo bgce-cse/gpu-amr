@@ -17,6 +17,9 @@ bin/
 build/
 out/
 
+# Testing
+Testing/
+
 # Log Files
 *.log
 
@@ -170,3 +173,6 @@ dkms.conf
 
 .DS_Store
 
+####### Output
+*.vtk
+*vtk*

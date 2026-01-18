@@ -1,6 +1,8 @@
 #ifndef INCLUDED_UTILTIY_LOGGING
 #define INCLUDED_UTILTIY_LOGGING
 
+#include "macro_definitions.hpp"
+
 #ifdef USE_BOOST_LOGGING
 
 #    include <boost/date_time/posix_time/posix_time_types.hpp>
@@ -23,6 +25,7 @@
 #    include <fstream>
 #    include <iomanip>
 #    include <ios>
+#    include <mutex>
 #else
 #    include <string_view>
 #    ifndef DEBUG_OSTREAM
@@ -31,16 +34,105 @@
 #    endif
 #endif
 
+#ifndef AMR_DEFAULT_LOG_LEVEL_TRACE
+#    define AMR_DEFAULT_LOG_LEVEL_TRACE 1
+#endif
+#ifndef AMR_DEFAULT_LOG_LEVEL_DEBUG
+#    define AMR_DEFAULT_LOG_LEVEL_DEBUG 2
+#endif
+#ifndef AMR_DEFAULT_LOG_LEVEL_INFO
+#    define AMR_DEFAULT_LOG_LEVEL_INFO 3
+#endif
+#ifndef AMR_DEFAULT_LOG_LEVEL_WARNING
+#    define AMR_DEFAULT_LOG_LEVEL_WARNING 4
+#endif
+#ifndef AMR_DEFAULR_LOG_LEVEL_ERROR
+#    define AMR_DEFAULR_LOG_LEVEL_ERROR 5
+#endif
+#ifndef AMR_DEFAULT_LOG_LEVEL_FATAL
+#    define AMR_DEFAULT_LOG_LEVEL_FATAL 6
+#endif
+#ifndef AMR_DEFAULT_LOG_LEVEL_OFF
+#    define AMR_DEFAULT_LOG_LEVEL_OFF 7
+#endif
+
+#define DEFAULT_SOURCE_LOG_LEVEL_TRACE   AMR_DEFAULT_LOG_LEVEL_TRACE
+#define DEFAULT_SOURCE_LOG_LEVEL_DEBUG   AMR_DEFAULT_LOG_LEVEL_DEBUG
+#define DEFAULT_SOURCE_LOG_LEVEL_INFO    AMR_DEFAULT_LOG_LEVEL_INFO
+#define DEFAULT_SOURCE_LOG_LEVEL_WARNING AMR_DEFAULT_LOG_LEVEL_WARNING
+#define DEFAULT_SOURCE_LOG_LEVEL_ERROR   AMR_DEFAULR_LOG_LEVEL_ERROR
+#define DEFAULT_SOURCE_LOG_LEVEL_FATAL   AMR_DEFAULT_LOG_LEVEL_FATAL
+#define DEFAULT_SOURCE_LOG_LEVEL_OFF     AMR_DEFAULT_LOG_LEVEL_OFF
+
+#ifdef AMR_LOG_LEVEL
+#    define DEFAULT_SOURCE_LOG_LEVEL \
+        UTILITY_CONCATENATE_MACRO(DEFAULT_SOURCE_LOG_LEVEL_, AMR_LOG_LEVEL)
+#else
+#    define DEFAULT_SOURCE_LOG_LEVEL DEFAULT_SOURCE_LOG_LEVEL_INFO
+#endif
+
+#define DEFAULT_SOURCE_LOG_IGNORE(msg) ((void)0)
+
+#if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_TRACE
+#    define DEFAULT_SOURCE_LOG_TRACE(msg)                \
+        utility::logging::default_source::log(           \
+            utility::logging::severity_level::trace, msg \
+        )
+#else
+#    define DEFAULT_SOURCE_LOG_TRACE(msg) DEFAULT_SOURCE_LOG_IGNORE(msg)
+#endif
+
+#if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_DEBUG
+#    define DEFAULT_SOURCE_LOG_DEBUG(msg)                \
+        utility::logging::default_source::log(           \
+            utility::logging::severity_level::debug, msg \
+        )
+#else
+#    define DEFAULT_SOURCE_LOG_DEBUG(msg) DEFAULT_SOURCE_LOG_IGNORE(msg)
+#endif
+
+#if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_INFO
+#    define DEFAULT_SOURCE_LOG_INFO(msg) \
+        utility::logging::default_source::log(utility::logging::severity_level::info, msg)
+#else
+#    define DEFAULT_SOURCE_LOG_INFO(msg) DEFAULT_SOURCE_LOG_IGNORE(msg)
+#endif
+
+#if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_WARNING
+#    define DEFAULT_SOURCE_LOG_WARNING(msg)                \
+        utility::logging::default_source::log(             \
+            utility::logging::severity_level::warning, msg \
+        )
+#else
+#    define DEFAULT_SOURCE_LOG_WARNING(msg) DEFAULT_SOURCE_LOG_IGNORE(msg)
+#endif
+
+#if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_ERROR
+#    define DEFAULT_SOURCE_LOG_ERROR(msg)                \
+        utility::logging::default_source::log(           \
+            utility::logging::severity_level::error, msg \
+        )
+#else
+#    define DEFAULT_SOURCE_LOG_ERROR(msg) DEFAULT_SOURCE_LOG_IGNORE(msg)
+#endif
+
+#if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_FATAL
+#    define DEFAULT_SOURCE_LOG_FATAL(msg)                \
+        utility::logging::default_source::log(           \
+            utility::logging::severity_level::fatal, msg \
+        )
+#else
+#    define DEFAULT_SOURCE_LOG_FATAL(msg) DEFAULT_SOURCE_LOG_IGNORE(msg)
+#endif
+
 namespace utility::logging
 {
-
 // Define our own severity levels
 enum severity_level
 {
     trace,
     debug,
     info,
-    important_info,
     warning,
     error,
     fatal,
@@ -63,10 +155,8 @@ namespace attrs = boost::log::attributes;
 auto operator<<(std::ostream& strm, severity_level level) -> std::ostream&
 {
     using namespace std::literals;
-    static const std::string_view strings[] = { "trace"sv,   "debug"sv,
-                                                "info"sv,    "important info"sv,
-                                                "warning"sv, "error"sv,
-                                                "fatal"sv };
+    static const std::string_view strings[] = { "trace"sv,   "debug"sv, "info"sv,
+                                                "warning"sv, "error"sv, "fatal"sv };
     if (static_cast<std::size_t>(level) < sizeof(strings) / sizeof(*strings))
     {
         const auto s = strings[level];
@@ -140,40 +230,43 @@ auto init() -> void
 
 class default_source
 {
+    inline static constexpr std::string_view s_info_repr    = "info";
+    inline static constexpr std::string_view s_debug_repr   = "debug";
+    inline static constexpr std::string_view s_error_repr   = "error";
+    inline static constexpr std::string_view s_fatal_repr   = "fatal";
+    inline static constexpr std::string_view s_trace_repr   = "trace";
+    inline static constexpr std::string_view s_warning_repr = "warning";
+    inline static constexpr std::string_view s_unknown_repr = "UNKNOWN";
+
 public:
-    inline static auto log(severity_level sev, std::string_view message) -> void
+    inline static auto log(severity_level sev, auto&& message) -> void
     {
 #ifdef USE_BOOST_LOGGING
-        if (!initialized)
-        {
-            init();
-            initialized = true;
-        }
+        std::cal_once(s_initialized, init);
         static src::severity_logger<severity_level> lg;
-        BOOST_LOG_SEV(lg, sev) << message;
+        BOOST_LOG_SEV(lg, sev) << std::forward<decltype(message)>(message);
 #else
-        DEBUG_OSTREAM << "Log <" << severity_name(sev) << "> " << message << '\n';
+        DEBUG_OSTREAM << "Log <" << severity_name(sev) << "> "
+                      << std::forward<decltype(message)>(message) << '\n';
 #endif
     }
 
 #ifdef USE_BOOST_LOGGING
 private:
-    inline static bool initialized = false;
+    inline static bool std::once_flag s_initialized;
 #else
 
     inline static auto severity_name(severity_level sev) noexcept -> std::string_view
     {
         switch (sev)
         {
-            case utility::logging::severity_level::info: return "info";
-            case utility::logging::severity_level::debug: return "debug";
-            case utility::logging::severity_level::error: return "error";
-            case utility::logging::severity_level::fatal: return "fatal";
-            case utility::logging::severity_level::trace: return "trace";
-            case utility::logging::severity_level::warning: return "warning";
-            case utility::logging::severity_level::important_info:
-                return "important info";
-            default: return "UNKNOWN";
+            case utility::logging::severity_level::info: return s_info_repr;
+            case utility::logging::severity_level::debug: return s_debug_repr;
+            case utility::logging::severity_level::error: return s_error_repr;
+            case utility::logging::severity_level::fatal: return s_fatal_repr;
+            case utility::logging::severity_level::trace: return s_trace_repr;
+            case utility::logging::severity_level::warning: return s_warning_repr;
+            default: return s_unknown_repr;
         }
     };
 #endif

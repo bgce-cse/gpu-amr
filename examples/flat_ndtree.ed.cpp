@@ -3,8 +3,7 @@
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch.hpp"
-// #include "ndtree/structured_print.hpp"
-#include "ndtree/print_tree_a.hpp"
+#include "ndtree/structured_print.hpp"
 #include "utility/random.hpp"
 #include <cstddef>
 #include <iostream>
