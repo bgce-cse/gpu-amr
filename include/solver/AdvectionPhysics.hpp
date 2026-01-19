@@ -2,6 +2,7 @@
 #define ADVECTION_PHYSICS_H
 
 #include "containers/static_vector.hpp"
+#include "solver/cell_types.hpp"
 #include <cmath>
 #include <algorithm>
 
@@ -13,7 +14,7 @@ public:
     // Define a constant velocity for the "wind"
     static constexpr double Velocity[3] = {1.0, 0.5, 0.0};
 
-    using FieldTags = std::tuple<std::integral_constant<int, 0>>;
+    using FieldTags = std::tuple<amr::cell::Scalar>;
 
     /**
      * @brief For linear advection, conservative and primitive variables are identical.
