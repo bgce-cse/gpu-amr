@@ -10,6 +10,11 @@ class EulerPhysics {
 public:
     static constexpr int NVAR = DIM + 2;  // Nvariables: density + DIM velocities + energy
     
+    using FieldTags = std::conditional_t<DIM == 2,
+        std::tuple<amr::cell::Rho, amr::cell::Rhou, amr::cell::Rhov, amr::cell::E2D>,
+        std::tuple<amr::cell::Rho, amr::cell::Rhou, amr::cell::Rhov, amr::cell::Rhow, amr::cell::E3D>
+    >;
+    
     /**
      * @brief Convert conservative to primitive variables
      * @param cons Conservative variables [rho, rho*u, rho*v, (rho*w), E]
@@ -142,6 +147,25 @@ public:
         for (int k = 0; k < NVAR; k++) {
             flux[k] = 0.5 * (fluxL[k] + fluxR[k]) - 0.5 * smax * (UR[k] - UL[k]);
         }
+    }
+
+    /**
+     * @brief Get the maximum wave speed for the CFL condition
+     * @param cons Conservative variables
+     * @param direction Direction index
+     * @param gamma Specific heat ratio
+     * @return Max speed |u| + a
+     */
+    static double getMaxSpeed(const amr::containers::static_vector<double, NVAR>& cons, 
+                              int direction, 
+                              double gamma) {
+        amr::containers::static_vector<double, NVAR> prim;
+        conservativeToPrimitive(cons, prim, gamma);
+        
+        double u_dir = prim[1 + direction]; // Velocity in the chosen direction
+        double a = computeSoundSpeed(cons, gamma);
+        
+        return std::abs(u_dir) + a;
     }
     
     /**

@@ -198,6 +198,11 @@ auto operator<<(std::ostream& os, EulerCell3D const& c) -> std::ostream&
               << ", E3D: " << std::get<E3D>(c.data_tuple()).value;
 }
 
+struct AdvectionCell {
+        static constexpr std::size_t count = 1;
+        enum Vars { Scalar = 0 };
+    };
+
 } // namespace amr::cell
 
 #endif // CELL_TYPES_HPP

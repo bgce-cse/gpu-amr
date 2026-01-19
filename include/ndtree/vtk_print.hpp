@@ -22,7 +22,10 @@ public:
         : m_base_filename{ std::move(base_filename) }
     {
         DEFAULT_SOURCE_LOG_TRACE("Initializing vtk output dir");
-        std::filesystem::create_directory("vtk_output");
+        std::filesystem::path output_path = "vtk_output";
+        std::filesystem::create_directory(output_path);
+        auto absolute_path = std::filesystem::absolute(output_path);
+        std::cout << "VTK files will be saved to: " << absolute_path << std::endl;
     }
 
     auto print(auto const& tree, std::string filename_extension) const -> void
