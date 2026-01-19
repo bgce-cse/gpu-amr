@@ -2,6 +2,7 @@
 #define AMR_INCLUDED_STATIC_SHAPE
 
 #include "utility/utility_concepts.hpp"
+#include "utility/contracts.hpp"
 #include <array>
 #include <cassert>
 
@@ -52,9 +53,9 @@ public:
     }
 
     [[nodiscard]]
-    constexpr static auto size(index_t const i) noexcept -> size_type
+    static constexpr auto size(index_t const i) noexcept -> size_type
     {
-        assert(i < s_rank);
+        utility::contracts::assert_index(i, s_rank);
         using container_index_t =
             typename std::remove_cvref_t<decltype(s_sizes)>::size_type;
         return s_sizes[static_cast<container_index_t>(i)];

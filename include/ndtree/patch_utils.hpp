@@ -3,6 +3,7 @@
 
 #include "containers/container_manipulations.hpp"
 #include "containers/container_utils.hpp"
+#include "utility/contracts.hpp"
 #include "containers/static_tensor.hpp"
 #include "ndconcepts.hpp"
 #include "ndutils.hpp"
@@ -41,11 +42,7 @@ constexpr auto is_halo_cell(typename Layout::index_t linear_index) noexcept -> b
     static constexpr auto const& sizes      = layout_t::sizes();
     static constexpr size_type   halo_width = patch_layout_t::halo_width();
 
-    assert(linear_index < layout_t::flat_size());
-    if (std::is_signed_v<size_type>)
-    {
-        assert(linear_index >= 0);
-    }
+    utility::contracts::assert_index(linear_index, layout_t::flat_size());
 
     for (auto j = decltype(rank){}; j != rank; ++j)
     {

@@ -25,7 +25,7 @@ struct static_vector
     using shape_t         = static_shape<N>;
     using layout_t        = static_layout<shape_t>;
     using size_type       = typename layout_t::size_type;
-    using size_pack_t       = typename layout_t::size_pack_t;
+    using size_pack_t     = typename layout_t::size_pack_t;
     using index_t         = typename layout_t::index_t;
     using rank_t          = typename layout_t::rank_t;
     using const_iterator  = value_type const*;
@@ -59,7 +59,7 @@ public:
     [[nodiscard]]
     static constexpr auto size(index_t const i) noexcept -> size_type
     {
-        assert(i < rank());
+        utility::contracts::assert_index(i, rank());
         return layout_t::size(i);
     }
 
@@ -72,7 +72,7 @@ public:
     [[nodiscard]]
     static constexpr auto stride(index_t const i) noexcept -> size_type
     {
-        assert(i < rank());
+        utility::contracts::assert_index(i, rank());
         return layout_t::stride(i);
     }
 
@@ -169,11 +169,7 @@ public:
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
     constexpr auto assert_in_bounds(size_type const idx) const noexcept -> void
     {
-        assert(idx < elements());
-        if constexpr (std::is_signed_v<size_type>)
-        {
-            assert(idx >= size_type{});
-        }
+        utility::contracts::assert_index(idx, elements());
     }
 #endif
 
