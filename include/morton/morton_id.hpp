@@ -33,6 +33,7 @@ public:
     using depth_t     = decltype(Depth);
     using mask_t      = uint64_t;
     using coord_array = std::array<uint32_t, 2>;
+    // TODO: These types must be an input
     using offset_t    = uint32_t;
     using size_type   = uint32_t;
     using direction_t = direction;

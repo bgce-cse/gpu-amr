@@ -140,13 +140,13 @@ public:
 
     // TODO: This implicitly assumes 2 neighbors per dimension. Can we use the
     // dimension offset?
-    [[nodiscard]]
+    [[nodiscard, gnu::always_inline]]
     static constexpr auto is_negative(direction const& d) noexcept -> bool
     {
         return dimension_offset(d) == 0;
     }
 
-    [[nodiscard]]
+    [[nodiscard, gnu::always_inline]]
     static constexpr auto is_positive(direction const& d) noexcept -> bool
     {
         return !is_negative(d);
@@ -195,6 +195,37 @@ public:
     constexpr auto dimension() const noexcept -> index_t
     {
         return index() / s_neighbors_per_dim;
+    }
+
+    [[nodiscard]]
+    constexpr auto is_negative() const noexcept -> index_t
+    {
+        is_negative(*this);
+    }
+
+    [[nodiscard]]
+    constexpr auto is_positive() const noexcept -> index_t
+    {
+        is_positive(*this);
+    }
+
+    [[nodiscard]]
+    constexpr auto repr() const noexcept -> std::string_view
+    {
+        static constexpr auto repr_width   = 2;
+        static constexpr auto repr_strings = []()
+        {
+            constexpr auto dim_names = std::array{ 'x', 'y', 'z' };
+            auto           buffer    = std::array<char, s_elements * repr_width>{};
+            for (auto i = size_type{}; i != s_elements; ++i)
+            {
+                const direction d(i);
+                buffer[2 * i + 0] = dim_names[d.dimension()];
+                buffer[2 * i + 1] = is_negative(d) ? '-' : '+';
+            }
+            return buffer;
+        }();
+        return std::string_view(repr_strings.begin() + index() * repr_width, repr_width);
     }
 
     [[nodiscard]]
@@ -257,7 +288,7 @@ private:
             for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
             {
                 relation_array[d.index()] =
-                    direction_t::is_negative(d)
+                    d.is_negative()
                         ? ((coords[d.dimension()] == 0) ? NeighborRelation::ParentNeighbor
                                                         : NeighborRelation::Sibling)
                         : ((coords[d.dimension()] == s_1d_fanout - 1)
@@ -307,7 +338,7 @@ public:
             {
                 if (i == d.dimension())
                 {
-                    ret[i] = direction_t::is_negative(d) ? index_t{} : sizes[i] - 1;
+                    ret[i] = d.is_negative() ? index_t{} : sizes[i] - 1;
                 }
                 else
                 {
@@ -327,9 +358,9 @@ public:
     ) noexcept -> typename patch_index_t::offset_t
     {
         const auto dim = d.dimension();
-        coords[dim]    = (direction_t::is_positive(d) ? (coords[dim] + 1)
-                                                      : coords[dim] + s_1d_fanout - 1) %
-                      s_1d_fanout;
+        coords[dim] =
+            (d.is_positive() ? (coords[dim] + 1) : coords[dim] + s_1d_fanout - 1) %
+            s_1d_fanout;
         return static_cast<typename patch_index_t::offset_t>(
             child_expansion_t::layout_t::linear_index(coords)
         );

@@ -98,9 +98,8 @@ concept Direction = requires(D const cd) {
     { D::elements() } -> std::same_as<typename D::size_type>;
     { D::unit_vector(cd) } -> std::same_as<typename D::vector_t>;
     { cd.dimension() } -> std::same_as<typename D::index_t>;
-    // TODO: This is horrible
-    { D::is_negative(cd) } -> std::same_as<bool>;
-    { D::is_positive(cd) } -> std::same_as<bool>;
+    { cd.is_negative() } -> std::same_as<bool>;
+    { cd.is_positive() } -> std::same_as<bool>;
 };
 
 // TODO: Extend

@@ -333,6 +333,7 @@ public:
         const auto child_0    = patch_index_t::child_of(parent_node_id, 0);
         const auto child_0_it = find_index(child_0);
         assert(child_0_it.has_value());
+        const auto start = child_0_it.value()->second;
 
         std::array<patch_neighbors_t, s_nd_fanout> child_neighbor_arrays{};
         for (auto i = offset_t{}; i != offset_t{ s_nd_fanout }; ++i)
@@ -347,7 +348,6 @@ public:
 
         patch_neighbors_t neighbor_array =
             neighbor_utils_t::compute_parent_neighbors(child_neighbor_arrays);
-        const auto start = child_0_it.value()->second;
         const auto to    = m_size;
         append(parent_node_id, neighbor_array);
         assert(m_linear_index_map[back_idx()] == parent_node_id);
