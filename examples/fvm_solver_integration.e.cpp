@@ -42,8 +42,8 @@ int main()
 
     amr::ndt::print::vtk_print<physics_t> printer("euler_print");
 
-    double            tmax            = 40;  // Example tmax, adjust as needed
-    double            print_frequency = 5.0; // Print every 10 seconds
+    double            tmax            = 400;  // Example tmax, adjust as needed
+    //double            print_frequency = 5.0; // Print every 10 seconds
     const std::string output_prefix   = "solver_integration_test_refine";
 
     int inital_refinement = 3;
@@ -145,9 +145,9 @@ int main()
 
     // Main Simulation Loop
     double t               = 0.0;
-    double next_print_time = print_frequency;
+    //double next_print_time = print_frequency;
     int    step            = 1;
-    int    output_counter  = 1;
+    //int    output_counter  = 1;
 
     std::cout << "\nStarting AMR simulation..." << std::endl;
 
@@ -167,17 +167,6 @@ int main()
         }
 
         t += dt;
-
-        // Print only when we've passed the next print time
-        if (t >= next_print_time)
-        {
-            std::string file_extension =
-                "_iteration_" + std::to_string(output_counter) + ".vtk";
-            // printer.print(solver.get_tree(), file_extension);
-            printer.print(solver.get_tree(), file_extension);
-            next_print_time += print_frequency;
-            output_counter++;
-        }
 
         step++;
     }

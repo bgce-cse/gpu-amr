@@ -160,6 +160,11 @@ auto operator<<(std::ostream& os, EulerCell2D const& c) -> std::ostream&
               << ", E2D: " << std::get<E2D>(c.data_tuple()).value;
 }
 
+struct GpuPatchTable {
+    double* fields_src[4]; // rho, rhou, rhov, energy
+    double* fields_dst[4];
+};
+
 /**
  * @brief 3D Euler cell containing [rho, rho*u, rho*v, rho*w, E3D]
  *
