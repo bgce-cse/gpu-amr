@@ -45,7 +45,7 @@ int main()
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t,physics_t, 2> solver(1000000); // Provide initial capacity for tree
+    amr_solver<tree_t,physics_t, EulerPhysics2D, 2> solver(1000000); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
@@ -101,9 +101,11 @@ int main()
     constexpr double CENTER_Y       = 0.5;
 
     // The initial condition function (auto IC = [](){})
-    auto acousticPulseIC = [](double x,
-                              double y) -> amr::containers::static_vector<double, 4>
+      auto acousticPulseIC = [](auto const& coords) -> amr::containers::static_vector<double, 4>
     {
+        double x = coords[0];
+        double y = coords[1];
+
         amr::containers::static_vector<double, 4> prim;
 
         // Calculate distance squared from the center

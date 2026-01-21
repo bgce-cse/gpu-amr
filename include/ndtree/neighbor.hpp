@@ -286,20 +286,26 @@ public:
     static constexpr auto compute_boundary_children(direction_t d)
     {
         static constexpr auto num_boundary_children =
-            neighbor_variant_t::finer::num_neighbors();
+            neighbor_variant_t::finer::num_neighbors(); 
         std::array<size_type, num_boundary_children> boundary_children{};
 
-        size_type boundary_idx = 0;
+        const rank_t normal_rank = d.dimension();
+
         for (index_t i = 0; i != s_nd_fanout; ++i)
         {
             auto relations = s_neighbor_relation_maps[i];
-            if (relations[d.index()] == NeighborRelation::ParentNeighbor)
-            {
-                boundary_children[boundary_idx++] = i;
-            }
+            if (relations[d.index()] != NeighborRelation::ParentNeighbor)
+                continue;
+
+            const auto coords = child_expansion_t::layout_t::multi_index(i);
+
+            const index_t k = compute_fine_boundary_linear_index(coords, normal_rank);
+            boundary_children[k] = i;
         }
+
         return boundary_children;
     }
+
 
     [[nodiscard]]
     static auto compute_child_neighbors(
