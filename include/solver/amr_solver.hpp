@@ -322,4 +322,24 @@ __global__ void euler_2d_kernel(
     }
 }
 
+// TODOs:
+// - distribute threads, blocks with STRIDED LOOP WITH CUDA (there should be blog papers)
+//   - few cells for each thread
+//   - starting index thread idx, offset += block idx
+// - cuda launch bounds
+//   - hardcode how many threads in total so that nvcc can optimize
+// - inline device functions (force inline CUDA)
+//   - otherwise with relocatable device code it will be much slower
+// - for a static mesh (no AMR)
+//   - get cudaMemcopy out of loop
+//   - test with nvcc that there is no memory transfers during simulation
+//   - optimize kernel
+// - with AMR
+//   - there should be memcopy needed now (also for refine decision), the challenge is to get rid of them
+//   - roofline analysis (when / how / where is memory transfered)
+// Goal
+// - only memcopy for output (vis)
+// - "host_table" should be already on device (get rid of copy)
+
+
 #endif // AMR_SOLVER_HPP
