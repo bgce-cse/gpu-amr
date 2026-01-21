@@ -2,6 +2,7 @@
 #define AMR_INCLUDED_STATIC_TENSOR
 
 #include "container_concepts.hpp"
+#include "utility/contracts.hpp"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -34,6 +35,7 @@ public:
 
 private:
     static_assert(std::is_trivially_copyable_v<T>);
+    static_assert(std::is_trivially_destructible_v<T>);
     static_assert(std::is_standard_layout_v<T>);
 
 public:
@@ -64,7 +66,7 @@ public:
     [[nodiscard]]
     static constexpr auto size(index_t const i) noexcept -> size_type
     {
-        assert(i < rank());
+        utility::contracts::assert_index(i, rank());
         return layout_t::size(i);
     }
 
@@ -77,7 +79,7 @@ public:
     [[nodiscard]]
     static constexpr auto stride(index_t const i) noexcept -> size_type
     {
-        assert(i < rank());
+        utility::contracts::assert_index(i, rank());
         return layout_t::stride(i);
     }
 

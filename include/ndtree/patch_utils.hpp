@@ -6,8 +6,8 @@
 #include "containers/static_tensor.hpp"
 #include "ndconcepts.hpp"
 #include "ndutils.hpp"
-#include "neighbor.hpp"
 #include "utility/compile_time_utility.hpp"
+#include "utility/contracts.hpp"
 #include "utility/logging.hpp"
 #include <algorithm>
 
@@ -41,11 +41,7 @@ constexpr auto is_halo_cell(typename Layout::index_t linear_index) noexcept -> b
     static constexpr auto const& sizes      = layout_t::sizes();
     static constexpr size_type   halo_width = patch_layout_t::halo_width();
 
-    assert(linear_index < layout_t::flat_size());
-    if (std::is_signed_v<size_type>)
-    {
-        assert(linear_index >= 0);
-    }
+    utility::contracts::assert_index(linear_index, layout_t::flat_size());
 
     for (auto j = decltype(rank){}; j != rank; ++j)
     {
@@ -229,7 +225,7 @@ constexpr auto halo_apply_section_impl(
                     Halo_Exchange_Operator::coarser,
                     p_n.data(),
                     D,
-                    neighbor.dim_offset,
+                    neighbor.contact_quadrant,
                     std::forward<decltype(args)>(args)...
                 );
             } },
@@ -302,11 +298,13 @@ struct halo_exchange_impl_t
     using patch_index_t  = Patch_Index;
     using index_t        = typename patch_layout_t::index_t;
 
-    static constexpr auto s_halo_width = patch_layout_t::halo_width();
-    static constexpr auto s_dimension  = patch_layout_t::rank();
-    static constexpr auto s_1d_fanout  = patch_index_t::fanout();
-    static constexpr auto s_nd_fanout  = patch_index_t::nd_fanout();
-    static constexpr auto s_sizes      = patch_layout_t::data_layout_t::sizes();
+    // TODO: Revisit this after propperly typing patch_index_t
+    static constexpr auto s_halo_width =
+        static_cast<index_t>(patch_layout_t::halo_width());
+    static constexpr auto s_dimension = static_cast<index_t>(patch_layout_t::rank());
+    static constexpr auto s_1d_fanout = static_cast<index_t>(patch_index_t::fanout());
+    static constexpr auto s_nd_fanout = static_cast<index_t>(patch_index_t::nd_fanout());
+    static constexpr auto s_sizes     = patch_layout_t::data_layout_t::sizes();
 
     struct boundary_t
     {
@@ -318,9 +316,9 @@ struct halo_exchange_impl_t
         {
             DEFAULT_SOURCE_LOG_TRACE(
                 std::string("Boundary halo exchange in direction ") +
-                std::to_string(direction.index())
+                std::string(direction.repr())
             );
-            DEFAULT_SOURCE_LOG_DEBUG("Boundary halo exchange not implemented");
+            DEFAULT_SOURCE_LOG_WARNING("Boundary halo exchange not implemented");
         }
     };
 
@@ -336,16 +334,14 @@ struct halo_exchange_impl_t
         {
             DEFAULT_SOURCE_LOG_TRACE(
                 std::string("Same halo exchange in direction ") +
-                std::to_string(direction.index())
+                std::string(direction.repr())
             );
-            using direction_t   = std::remove_cvref_t<decltype(direction)>;
-            const auto dim      = direction.dimension();
-            const auto positive = direction_t::is_positive(direction);
-            [[assume(idxs[dim] >= s_halo_width)]];
-            auto from_idxs = idxs;
-            from_idxs[dim] +=
-                positive ? -index_t{ s_sizes[dim] } : index_t{ s_sizes[dim] };
-            self_patch[idxs] = other_patch[from_idxs];
+            const auto dim       = direction.dimension();
+            const auto positive  = direction.is_positive();
+            auto       from_idxs = idxs;
+            from_idxs[dim]       = positive ? (from_idxs[dim] - index_t{ s_sizes[dim] })
+                                            : (from_idxs[dim] + index_t{ s_sizes[dim] });
+            self_patch[idxs]     = other_patch[from_idxs];
         }
     };
 
@@ -361,15 +357,14 @@ struct halo_exchange_impl_t
         {
             DEFAULT_SOURCE_LOG_TRACE(
                 std::string("Finer halo exchange in direction ") +
-                std::to_string(direction.index())
+                std::string(direction.repr())
             );
-            using direction_t = std::remove_cvref_t<decltype(direction)>;
-            using value_t     = std::remove_cvref_t<decltype(current_patch[idxs])>;
+            using value_t = std::remove_cvref_t<decltype(current_patch[idxs])>;
 
             const auto dim      = direction.dimension();
-            const auto positive = direction_t::is_positive(direction);
+            const auto positive = direction.is_positive();
 
-            auto compute_fine_patch_index = [&]() -> index_t
+            const auto compute_fine_patch_index = [&idxs, &dim]() -> index_t
             {
                 index_t patch_linear_idx = 0;
                 index_t stride           = 1;
@@ -393,8 +388,8 @@ struct halo_exchange_impl_t
             auto&      fine_patch     = neighbor_patches[fine_patch_idx].get();
 
             auto from_idxs = idxs;
-            from_idxs[dim] +=
-                positive ? -index_t{ s_sizes[dim] } : index_t{ s_sizes[dim] };
+            from_idxs[dim] = positive ? (from_idxs[dim] - index_t{ s_sizes[dim] })
+                                      : (from_idxs[dim] + index_t{ s_sizes[dim] });
 
             auto base_fine_idxs = from_idxs;
             for (index_t d = 0; d < s_dimension; ++d)
@@ -402,12 +397,13 @@ struct halo_exchange_impl_t
                 if (d == dim)
                 {
                     base_fine_idxs[d] =
-                        ((from_idxs[d] - s_halo_width) * s_1d_fanout) % s_sizes[d] + s_halo_width;
+                        ((from_idxs[d] - s_halo_width) * s_1d_fanout) % s_sizes[d] +
+                        s_halo_width;
                     continue;
                 }
 
                 const auto section_size = s_sizes[d] / s_1d_fanout;
-                const auto section_idx  = (idxs[d] - s_halo_width) / section_size; 
+                const auto section_idx  = (idxs[d] - s_halo_width) / section_size;
 
                 const auto local_coarse =
                     (from_idxs[d] - s_halo_width) - section_idx * section_size;
@@ -438,48 +434,43 @@ struct halo_exchange_impl_t
             auto&       self_patch,
             auto const& other_patch,
             auto const& direction,
-            auto const& dim_offset,
+            auto const& contact_quadrant,
             auto const& idxs,
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
             DEFAULT_SOURCE_LOG_TRACE(
                 std::string("Coarser halo exchange in direction ") +
-                std::to_string(direction.index())
+                std::string(direction.repr())
             );
-            using direction_t = std::remove_cvref_t<decltype(direction)>;
-
             const auto dim      = direction.dimension();
-            const auto positive = direction_t::is_positive(direction);
+            const auto positive = direction.is_positive();
 
-            auto from_idxs = idxs;
-            from_idxs[dim] +=
-                positive ? -index_t{ s_sizes[dim] } : index_t{ s_sizes[dim] };
-
-            auto coarse_idxs = from_idxs;
-            index_t tangential_selector = dim_offset;
-            for (index_t d = 0; d < s_dimension; ++d)
+            std::array<index_t, s_dimension> from_idxs{};
+            for (auto i = index_t{}; i != s_dimension; ++i)
             {
-                const auto fine_coord       = from_idxs[d] - s_halo_width;
-                const auto local_fine_coord = fine_coord % s_sizes[d];
-                const auto coarse_coord     = local_fine_coord / s_1d_fanout;
-
-                index_t child_base_offset;
-                if (d == dim)
-                {
-                    child_base_offset = positive ? 0 : (s_sizes[d] / s_1d_fanout);
-                }
-                else
-                {
-                    const index_t bit = tangential_selector % s_1d_fanout;
-                    tangential_selector /= s_1d_fanout;
-                    child_base_offset = bit * (s_sizes[d] / s_1d_fanout);
-                }
-
-                coarse_idxs[d] = coarse_coord + child_base_offset + s_halo_width;
+                assert(
+                    i == dim
+                        ? (idxs[i] < s_1d_fanout || idxs[i] >= s_1d_fanout + s_sizes[i])
+                        : (idxs[i] >= s_1d_fanout && idxs[i] < s_1d_fanout + s_sizes[i])
+                );
+                const auto cells_per_block = (s_sizes[i] / s_1d_fanout);
+                const auto block_offset =
+                    (i == dim && !positive)
+                        ? (cells_per_block - s_halo_width / s_1d_fanout)
+                        : index_t{};
+                const auto idx_offset =
+                    i == dim ? (direction.is_positive() ? s_sizes[i] + s_halo_width
+                                                        : index_t{})
+                             : s_halo_width;
+                assert(idxs[i] >= idx_offset);
+                utility::contracts::assert_index(contact_quadrant[i], s_1d_fanout);
+                from_idxs[i] = s_halo_width + (contact_quadrant[i] * cells_per_block) +
+                               block_offset + (idxs[i] - idx_offset) / s_1d_fanout;
+                utility::contracts::assert_index(from_idxs[i] - s_halo_width, s_sizes[i]);
             }
 
-            self_patch[idxs] = other_patch[coarse_idxs];
+            self_patch[idxs] = other_patch[from_idxs];
         }
     };
 

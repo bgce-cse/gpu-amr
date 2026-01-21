@@ -64,7 +64,7 @@ private:
     static constexpr size_type s_halo_width = patch_layout_t::halo_width();
     static constexpr size_type s_1d_fanout  = patch_index_t::fanout();
     static constexpr size_type s_nd_fanout  = patch_index_t::nd_fanout();
-    static constexpr size_type s_rank  = patch_layout_t::rank();
+    static constexpr size_type s_rank       = patch_layout_t::rank();
 
     static_assert(s_1d_fanout > 1);
     static_assert(s_nd_fanout > 1);
@@ -72,6 +72,16 @@ private:
         utils::patches::multiples_of(patch_layout_t::data_layout_t::sizes(), s_1d_fanout),
         "All patch dimensions must be multiples of the fanout"
     );
+    static_assert(
+        std::ranges::all_of(
+            patch_layout_t::data_layout_t::sizes(),
+            [](auto const& e) { return e >= s_halo_width * s_1d_fanout; }
+        ),
+        "The halo must not span more than one finer neighbor cell"
+    );
+    static_assert(std::is_same_v<
+                  typename neighbor_patch_index_variant_t::index_t,
+                  typename neighbor_utils_t::index_t>);
 
     template <typename Type>
     using value_t = std::remove_pointer_t<std::remove_cvref_t<Type>>;
@@ -247,7 +257,7 @@ public:
         patch_direction_t const& d
     ) const noexcept -> neighbor_patch_index_variant_t
     {
-        assert(idx < m_size);
+        utility::contracts::assert_index(idx, m_size);
         return m_neighbors[idx][d.index()];
     }
 
@@ -279,7 +289,8 @@ public:
                 [this](typename neighbor_patch_index_variant_t::coarser const& n)
                 {
                     return ret_t{
-                        typename ret_t::coarser{ get_linear_index_at(n.id), n.dim_offset }
+                        typename ret_t::coarser{ get_linear_index_at(n.id),
+                                                n.contact_quadrant }
                     };
                 } },
             neighbor.data
@@ -322,9 +333,9 @@ public:
         const auto child_0    = patch_index_t::child_of(parent_node_id, 0);
         const auto child_0_it = find_index(child_0);
         assert(child_0_it.has_value());
+        const auto start = child_0_it.value()->second;
 
         std::array<patch_neighbors_t, s_nd_fanout> child_neighbor_arrays{};
-        const auto start = child_0_it.value()->second;
         for (auto i = offset_t{}; i != offset_t{ s_nd_fanout }; ++i)
         {
             const auto child_i    = patch_index_t::child_of(parent_node_id, i);
@@ -337,8 +348,7 @@ public:
 
         patch_neighbors_t neighbor_array =
             neighbor_utils_t::compute_parent_neighbors(child_neighbor_arrays);
-        
-        const auto to    = m_size;
+        const auto to = m_size;
         append(parent_node_id, neighbor_array);
         assert(m_linear_index_map[back_idx()] == parent_node_id);
         restrict_patches(start, to);
@@ -520,7 +530,7 @@ public:
             const auto& neighbor   = parent_neighbor[d.index()];
 
             std::visit(
-                [&](auto&& neighbor_data)
+                [&](auto const& neighbor_data)
                 {
                     using neighbor_category_t = std::decay_t<decltype(neighbor_data)>;
 
@@ -550,12 +560,12 @@ public:
                         // Finer neighbors now see the parent as a coarser neighbor
                         for (size_type i = 0; i != neighbor_data.num_neighbors(); i++)
                         {
-                            neighbor_patch_index_variant_t new_neighbor{
-                                typename neighbor_patch_index_variant_t::coarser{
-                                                                                 parent_node_id,
-                                                                                 static_cast<typename neighbor_patch_index_variant_t::
-                                                    fanout_t>(i) }
-                            };
+                            neighbor_patch_index_variant_t new_neighbor;
+                            new_neighbor.data =
+                                typename neighbor_patch_index_variant_t::coarser(
+                                    parent_node_id,
+                                    neighbor_utils_t::compute_contact_quadrant(i, d)
+                                );
                             m_neighbors[m_index_map.at(neighbor_data.ids[i])]
                                        [opposite_d.index()] = new_neighbor;
                         }
@@ -589,7 +599,7 @@ public:
                 const auto  neighbor_array = m_neighbors[m_index_map.at(node_id)];
                 auto const& neighbor       = neighbor_array[d.index()];
                 std::visit(
-                    [&](auto&& neighbor_data)
+                    [&](auto const& neighbor_data)
                     {
                         using neighbor_category_t = std::decay_t<decltype(neighbor_data)>;
                         if constexpr (std::is_same_v<
@@ -709,7 +719,9 @@ public:
         assert(it != nullptr && it != m_index_map.end());
         if (it == nullptr)
         {
-            DEFAULT_SOURCE_LOG_FATAL("Patch index " + node_id.repr() + " not found in index map");
+            DEFAULT_SOURCE_LOG_FATAL(
+                "Patch index " + node_id.repr() + " not found in index map"
+            );
             utility::error_handling::assert_unreachable();
         }
         return it->second;
@@ -1061,20 +1073,20 @@ private:
             return true;
         }
         DEFAULT_SOURCE_LOG_ERROR("linear index is not sorted");
-        
+
         return false;
     }
 
 #ifdef AMR_NDTREE_ENABLE_CHECKS
     auto check_index_map() const noexcept -> void
-    {   
+    {
         if (m_index_map.size() > m_size)
         {
             DEFAULT_SOURCE_LOG_ERROR("morton index map size exceeds tree size");
             assert(false);
             return;
         }
-        
+
         for (const auto& [node_idx, linear_idx] : m_index_map)
         {
             if (m_linear_index_map[linear_idx] != node_idx)

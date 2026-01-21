@@ -2,8 +2,9 @@
 #define AMR_INCLUDED_NEIGHBORS
 
 #include "containers/container_utils.hpp"
-#include "containers/static_vector.hpp"
 #include "ndconcepts.hpp"
+#include "utility/constexpr_functions.hpp"
+#include "utility/contracts.hpp"
 #include <cstddef>
 #include <type_traits>
 #include <variant>
@@ -17,16 +18,18 @@ enum class NeighborRelation : std::uint8_t
     ParentNeighbor,
 };
 
-template <auto Fanout_1D, auto Fanout_ND, typename Identifier>
+template <auto Fanout_1D, auto Rank, typename Identifier>
 struct neighbor_variant
 {
-    static_assert(std::is_same_v<decltype(Fanout_1D), decltype(Fanout_ND)>);
     using identifier_t = Identifier;
     using fanout_t     = decltype(Fanout_1D);
-    static_assert(std::is_same_v<decltype(Fanout_1D), decltype(Fanout_ND)>);
+    using index_t      = fanout_t;
+    using rank_t       = decltype(Rank);
 
+    static constexpr rank_t   s_rank      = Rank;
     static constexpr fanout_t s_1d_fanout = Fanout_1D;
-    static constexpr fanout_t s_nd_fanout = Fanout_ND;
+    static constexpr fanout_t s_nd_fanout =
+        utility::cx_functions::pow(s_1d_fanout, s_rank);
 
     struct none
     {
@@ -34,13 +37,28 @@ struct neighbor_variant
 
     struct same
     {
+        same(identifier_t i)
+            : id{ i }
+        {
+        }
+
         identifier_t id;
     };
 
     struct coarser
     {
+        template <typename T>
+        using container_type_t = std::array<T, s_rank>;
+        using container_t      = container_type_t<index_t>;
+
+        coarser(identifier_t i, container_t const& c)
+            : id{ i }
+            , contact_quadrant{ c }
+        {
+        }
+
         identifier_t id;
-        fanout_t     dim_offset;
+        container_t  contact_quadrant;
     };
 
     struct finer
@@ -55,6 +73,12 @@ struct neighbor_variant
         template <typename T>
         using container_type_t = std::array<T, num_neighbors()>;
         using container_t      = container_type_t<identifier_t>;
+
+        finer(container_t const& c)
+            : ids{ c }
+        {
+        }
+
         container_t ids;
     };
 
@@ -81,7 +105,7 @@ private:
 
 public:
     using signed_index_t = std::make_signed_t<index_t>;
-    using vector_t       = containers::static_vector<signed_index_t, s_rank>;
+    using vector_t       = std::array<signed_index_t, s_rank>;
 
 private:
     explicit constexpr direction(index_t const linear_index) noexcept
@@ -116,13 +140,13 @@ public:
 
     // TODO: This implicitly assumes 2 neighbors per dimension. Can we use the
     // dimension offset?
-    [[nodiscard]]
+    [[nodiscard, gnu::always_inline]]
     static constexpr auto is_negative(direction const& d) noexcept -> bool
     {
-        return d.index() % s_neighbors_per_dim == 0;
+        return dimension_offset(d) == 0;
     }
 
-    [[nodiscard]]
+    [[nodiscard, gnu::always_inline]]
     static constexpr auto is_positive(direction const& d) noexcept -> bool
     {
         return !is_negative(d);
@@ -174,6 +198,37 @@ public:
     }
 
     [[nodiscard]]
+    constexpr auto is_negative() const noexcept -> bool
+    {
+        return is_negative(*this);
+    }
+
+    [[nodiscard]]
+    constexpr auto is_positive() const noexcept -> bool
+    {
+        return is_positive(*this);
+    }
+
+    [[nodiscard]]
+    constexpr auto repr() const noexcept -> std::string_view
+    {
+        static constexpr auto repr_width   = 2;
+        static constexpr auto repr_strings = []()
+        {
+            constexpr auto dim_names = std::array{ 'x', 'y', 'z' };
+            auto           buffer    = std::array<char, s_elements * repr_width>{};
+            for (auto i = size_type{}; i != s_elements; ++i)
+            {
+                const direction d(i);
+                buffer[2 * i + 0] = dim_names[d.dimension()];
+                buffer[2 * i + 1] = is_negative(d) ? '-' : '+';
+            }
+            return buffer;
+        }();
+        return std::string_view(repr_strings.begin() + index() * repr_width, repr_width);
+    }
+
+    [[nodiscard]]
     explicit constexpr operator bool() const noexcept
     {
         return idx_ >= index_t{} && idx_ < s_elements;
@@ -192,19 +247,20 @@ class neighbor_utils
 public:
     using patch_index_t  = Patch_Index;
     using patch_layout_t = Patch_Layout;
+    using size_type      = patch_layout_t::size_type;
+    using index_t        = patch_layout_t::index_t;
+    using rank_t         = patch_layout_t::rank_t;
 
 private:
-    static constexpr auto s_1d_fanout = patch_index_t::fanout();
-    static constexpr auto s_nd_fanout = patch_index_t::nd_fanout();
-    static constexpr auto s_rank      = patch_index_t::rank();
+    static constexpr auto s_1d_fanout = static_cast<index_t>(patch_index_t::fanout());
+    static constexpr auto s_nd_fanout = static_cast<index_t>(patch_index_t::nd_fanout());
+    static constexpr auto s_rank      = static_cast<index_t>(patch_index_t::rank());
 
 public:
     template <typename Id_Type>
-    using neighbor_variant_base_t = neighbor_variant<s_1d_fanout, s_nd_fanout, Id_Type>;
-    using neighbor_variant_t      = neighbor_variant_base_t<patch_index_t>;
-    using size_type               = patch_layout_t::size_type;
-    using index_t                 = patch_layout_t::index_t;
-    using rank_t                  = patch_layout_t::rank_t;
+    using neighbor_variant_base_t =
+        neighbor_variant<index_t{ s_1d_fanout }, s_rank, Id_Type>;
+    using neighbor_variant_t = neighbor_variant_base_t<patch_index_t>;
 
 public:
     // TODO: This should be provided by the patch index
@@ -232,7 +288,7 @@ private:
             for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
             {
                 relation_array[d.index()] =
-                    direction_t::is_negative(d)
+                    d.is_negative()
                         ? ((coords[d.dimension()] == 0) ? NeighborRelation::ParentNeighbor
                                                         : NeighborRelation::Sibling)
                         : ((coords[d.dimension()] == s_1d_fanout - 1)
@@ -267,6 +323,50 @@ public:
         return linear_idx;
     }
 
+    // Compute the neighbor quadrant index in the coarse volume
+    static constexpr auto compute_contact_quadrant(
+        index_t const&     neighbor_linear_index,
+        direction_t const& d
+    ) -> std::array<index_t, s_rank>
+    {
+        static_assert(s_rank > rank_t{ 1 });
+        utility::contracts::assert_index(
+            neighbor_linear_index, s_nd_fanout / s_1d_fanout
+        );
+        return [&d](index_t idx)
+        {
+            std::array<index_t, s_rank> ret;
+            for (rank_t i = 0; i != s_rank; ++i)
+            {
+                if (i == d.dimension())
+                {
+                    ret[i] = d.is_positive() ? index_t{} : s_1d_fanout - index_t{ 1 };
+                }
+                else
+                {
+                    ret[i] = idx % s_1d_fanout;
+                    idx /= s_1d_fanout;
+                }
+            }
+            return ret;
+        }(neighbor_linear_index);
+    }
+
+    [[nodiscard]]
+    static constexpr auto compute_neighbor_coarse_block_coords(
+        std::array<index_t, s_rank> self_idx,
+        direction_t const&          d
+    )
+    {
+        const auto dim = d.dimension();
+        assert(
+            d.is_positive() ? self_idx[dim] == s_1d_fanout - index_t{ 1 }
+                            : self_idx[dim] == index_t{}
+        );
+        self_idx[dim] = d.is_positive() ? index_t{} : s_1d_fanout - index_t{ 1 };
+        return self_idx;
+    }
+
     // TODO: Are there any preconditions to the coords?
     // Seems like some invariants could be broken here
     static auto get_sibling_offset(
@@ -275,9 +375,9 @@ public:
     ) noexcept -> typename patch_index_t::offset_t
     {
         const auto dim = d.dimension();
-        coords[dim]    = (direction_t::is_positive(d) ? (coords[dim] + 1)
-                                                      : coords[dim] + s_1d_fanout - 1) %
-                      s_1d_fanout;
+        coords[dim] =
+            (d.is_positive() ? (coords[dim] + 1) : coords[dim] + s_1d_fanout - 1) %
+            s_1d_fanout;
         return static_cast<typename patch_index_t::offset_t>(
             child_expansion_t::layout_t::linear_index(coords)
         );
@@ -346,15 +446,12 @@ public:
                                            T,
                                            typename neighbor_variant_t::same>)
                     {
-                        return neighbor_variant_t{
-                            typename neighbor_variant_t::coarser{
-                                                                 neighbor.id,
-                                                                 static_cast<typename neighbor_variant_t::fanout_t>(
-                                    compute_fine_boundary_linear_index(
-                                        child_multiindex, d.dimension()
-                                    )
-                                ) }
-                        };
+                        return neighbor_variant_t{ typename neighbor_variant_t::coarser(
+                            neighbor.id,
+                            compute_neighbor_coarse_block_coords(
+                                child_multiindex.data(), d
+                            )
+                        ) };
                     }
                     else if constexpr (std::is_same_v<
                                            T,
