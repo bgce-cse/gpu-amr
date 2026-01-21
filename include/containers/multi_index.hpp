@@ -2,6 +2,7 @@
 #define AMR_INCLUDED_MULTI_INDEX
 
 #include "container_concepts.hpp"
+#include "utility/contracts.hpp"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -46,15 +47,15 @@ public:
     }
 
     [[nodiscard]]
-    constexpr static auto sizes() noexcept -> auto const&
+    static constexpr auto sizes() noexcept -> auto const&
     {
         return s_sizes;
     }
 
     [[nodiscard]]
-    constexpr static auto size(index_t const i) noexcept -> size_type
+    static constexpr auto size(index_t const i) noexcept -> size_type
     {
-        assert(i < s_rank);
+        utility::contracts::assert_index(i, rank());
         return s_sizes[i];
     }
 
@@ -155,6 +156,12 @@ public:
     constexpr auto end() noexcept -> iterator
     {
         return std::end(value_);
+    }
+
+    [[nodiscard]]
+    constexpr auto data() const noexcept -> auto const&
+    {
+        return value_;
     }
 
     [[nodiscard]]

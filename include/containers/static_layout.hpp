@@ -3,6 +3,7 @@
 
 #include "container_concepts.hpp"
 #include "multi_index.hpp"
+#include "utility/contracts.hpp"
 #include <array>
 #include <cassert>
 #include <numeric>
@@ -45,43 +46,43 @@ private:
 
 public:
     [[nodiscard]]
-    constexpr static auto flat_size() noexcept -> size_type
+    static constexpr auto flat_size() noexcept -> size_type
     {
         return s_flat_size;
     }
 
     [[nodiscard]]
-    constexpr static auto elements() noexcept -> size_type
+    static constexpr auto elements() noexcept -> size_type
     {
         return shape_t::elements();
     }
 
     [[nodiscard]]
-    constexpr static auto rank() noexcept -> rank_t
+    static constexpr auto rank() noexcept -> rank_t
     {
         return s_rank;
     }
 
     [[nodiscard]]
-    constexpr static auto sizes() noexcept -> auto const&
+    static constexpr auto sizes() noexcept -> auto const&
     {
         return shape_t::sizes();
     }
 
     [[nodiscard]]
-    constexpr static auto size(index_t const i) noexcept -> size_type
+    static constexpr auto size(index_t const i) noexcept -> size_type
     {
         return shape_t::size(i);
     }
 
     [[nodiscard]]
-    constexpr static auto strides() noexcept -> auto const&
+    static constexpr auto strides() noexcept -> auto const&
     {
         return s_strides;
     }
 
     [[nodiscard]]
-    constexpr static auto stride(index_t const i) noexcept -> size_type
+    static constexpr auto stride(index_t const i) noexcept -> size_type
     {
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
         assert_in_bounds(i);
@@ -92,7 +93,7 @@ public:
     template <std::integral... I>
         requires(sizeof...(I) == rank())
     [[nodiscard]]
-    constexpr static auto linear_index(I&&... idxs) noexcept -> index_t
+    static constexpr auto linear_index(I&&... idxs) noexcept -> index_t
     {
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
         const index_t vidxs[rank()]{ static_cast<index_t>(idxs)... };
@@ -105,16 +106,12 @@ public:
             return ((index_pack * s_strides[Indices]) + ...);
         }(std::make_index_sequence<sizeof...(I)>{}, std::forward<I>(idxs)...);
 
-        assert(linear_idx < elements());
-        if constexpr (std::is_signed_v<index_t>)
-        {
-            assert(linear_idx >= 0);
-        }
+        utility::contracts::assert_index(linear_index, elements());
         return linear_idx;
     }
 
     [[nodiscard]]
-    constexpr static auto
+    static constexpr auto
         linear_index(std::ranges::contiguous_range auto const& idxs) noexcept -> index_t
     {
         // assert(std::ranges::size(idxs) == rank());
@@ -123,16 +120,12 @@ public:
         auto linear_idx = std::transform_reduce(
             std::cbegin(idxs), std::cend(idxs), std::cbegin(s_strides), index_t{}
         );
-        assert(linear_idx < elements());
-        if constexpr (std::is_signed_v<index_t>)
-        {
-            assert(linear_idx >= 0);
-        }
+        utility::contracts::assert_index(linear_idx, elements());
         return linear_idx;
     }
 
     [[nodiscard]]
-    constexpr static auto multi_index(index_t linear_idx) noexcept -> multi_index_t
+    static constexpr auto multi_index(index_t linear_idx) noexcept -> multi_index_t
     {
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
         assert_in_bounds(linear_idx);
@@ -148,29 +141,18 @@ public:
 
 private:
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
-    static auto assert_in_bounds(index_t const (&idxs)[s_rank]) noexcept -> void
+    static constexpr auto assert_in_bounds(index_t const (&idxs)[s_rank]) noexcept -> void
         requires(s_rank != 1)
     {
         for (auto d = rank_t{}; d != s_rank; ++d)
         {
-            assert(idxs[d] < s_sizes[d]);
-            if constexpr (std::is_signed_v<index_t>)
-            {
-                assert(idxs[d] >= 0);
-            }
+            utility::contracts::assert_index(idxs[d], s_sizes[d]);
         }
     }
 
-    constexpr static auto assert_in_bounds(index_t idx) noexcept -> void
+    static constexpr auto assert_in_bounds(index_t idx) noexcept -> void
     {
-        if (!std::is_constant_evaluated())
-        {
-            assert(idx < s_flat_size);
-            if constexpr (std::is_signed_v<index_t>)
-            {
-                assert(idx >= 0);
-            }
-        }
+        utility::contracts::assert_index(idx, elements());
     }
 #endif
 };

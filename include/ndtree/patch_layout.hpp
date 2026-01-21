@@ -61,7 +61,7 @@ private:
         static constexpr auto sizes = padded_layout_t::sizes();
         using vec_t                 = containers::static_vector<index_t, rank>;
 
-        constexpr auto low       = direction_t::is_negative(Direction);
+        constexpr auto low       = Direction.is_negative();
         constexpr auto dimension = Direction.dimension();
         constexpr auto start     = []()
         {
