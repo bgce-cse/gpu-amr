@@ -4,6 +4,7 @@
 #include "containers/container_manipulations.hpp"
 #include "containers/container_utils.hpp"
 #include "containers/static_tensor.hpp"
+#include "containers/static_vector.hpp"
 #include "ndconcepts.hpp"
 #include "ndutils.hpp"
 #include "utility/compile_time_utility.hpp"
@@ -336,13 +337,12 @@ struct halo_exchange_impl_t
                 std::string("Same halo exchange in direction ") +
                 std::string(direction.repr())
             );
-            using direction_t    = std::remove_cvref_t<decltype(direction)>;
             const auto dim       = direction.dimension();
             const auto positive  = direction.is_positive();
             auto       from_idxs = idxs;
-            from_idxs[dim] +=
-                positive ? -index_t{ s_sizes[dim] } : index_t{ s_sizes[dim] };
-            self_patch[idxs] = other_patch[from_idxs];
+            from_idxs[dim]       = positive ? (from_idxs[dim] - index_t{ s_sizes[dim] })
+                                            : (from_idxs[dim] + index_t{ s_sizes[dim] });
+            self_patch[idxs]     = other_patch[from_idxs];
         }
     };
 
@@ -360,8 +360,7 @@ struct halo_exchange_impl_t
                 std::string("Finer halo exchange in direction ") +
                 std::string(direction.repr())
             );
-            using direction_t = std::remove_cvref_t<decltype(direction)>;
-            using value_t     = std::remove_cvref_t<decltype(current_patch[idxs])>;
+            using value_t = std::remove_cvref_t<decltype(current_patch[idxs])>;
 
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
@@ -390,8 +389,8 @@ struct halo_exchange_impl_t
             auto&      fine_patch     = neighbor_patches[fine_patch_idx].get();
 
             auto from_idxs = idxs;
-            from_idxs[dim] +=
-                positive ? -index_t{ s_sizes[dim] } : index_t{ s_sizes[dim] };
+            from_idxs[dim] = positive ? (from_idxs[dim] - index_t{ s_sizes[dim] })
+                                      : (from_idxs[dim] + index_t{ s_sizes[dim] });
 
             auto base_fine_idxs = from_idxs;
             for (index_t d = 0; d < s_dimension; ++d)
@@ -433,7 +432,6 @@ struct halo_exchange_impl_t
                 std::string("Coarser halo exchange in direction ") +
                 std::string(direction.repr())
             );
-            using direction_t = std::remove_cvref_t<decltype(direction)>;
             // std::cout << "\nDSizes:\t";
             // for (auto const& e : s_sizes)
             //     std::cout << e << ' ';
@@ -445,27 +443,32 @@ struct halo_exchange_impl_t
             //     std::cout << e << ' ';
             // std::cout << '\n';
 
-            std::array<index_t, s_dimension> from_idxs;
+            const auto dim      = direction.dimension();
+            const auto positive = direction.is_positive();
+
+            containers::static_vector<index_t, s_dimension> from_idxs;
+
             for (auto i = index_t{}; i != s_dimension; ++i)
             {
                 assert(
-                    i == direction.dimension()
+                    i == dim
                         ? (idxs[i] < s_1d_fanout || idxs[i] >= s_1d_fanout + s_sizes[i])
                         : (idxs[i] >= s_1d_fanout && idxs[i] < s_1d_fanout + s_sizes[i])
                 );
                 const auto cells_per_block = (s_sizes[i] / s_1d_fanout);
-                const auto dim_offset =
-                    (i == direction.dimension() && direction.is_negative())
-                        ? (cells_per_block - s_halo_width / s_1d_fanout)
-                        : index_t{};
+                const auto block_offset =
+                    (i == dim && positive)
+                        ? index_t{}
+                        : (cells_per_block - s_halo_width / s_1d_fanout);
                 const auto idx_offset =
-                    i == direction.dimension()
-                        ? (direction.is_positive() ? s_sizes[i] : index_t{})
-                        : s_halo_width;
+                    i == dim ? (direction.is_positive() ? s_sizes[i] + s_halo_width
+                                                        : index_t{})
+                             : s_halo_width;
+                assert(idxs[i] >= idx_offset);
                 utility::contracts::assert_index(contact_quadrant[i], s_1d_fanout);
                 // std::cout << (quadrant[i] * cells_per_block) << '\n';
                 from_idxs[i] = s_halo_width + (contact_quadrant[i] * cells_per_block) +
-                               dim_offset + (idxs[i] - idx_offset) / s_1d_fanout;
+                               block_offset + (idxs[i] - idx_offset) / s_1d_fanout;
                 // std::cout << "hw:\t" << s_halo_width << '\n';
                 // std::cout << "dim:\t" << direction.dimension() << '\n';
                 // std::cout << "cpb:\t" << cells_per_block << '\n';

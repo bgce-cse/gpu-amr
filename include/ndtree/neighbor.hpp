@@ -2,9 +2,9 @@
 #define AMR_INCLUDED_NEIGHBORS
 
 #include "containers/container_utils.hpp"
-#include "containers/static_vector.hpp"
 #include "ndconcepts.hpp"
 #include "utility/constexpr_functions.hpp"
+#include "utility/contracts.hpp"
 #include <cstddef>
 #include <type_traits>
 #include <variant>
@@ -105,7 +105,7 @@ private:
 
 public:
     using signed_index_t = std::make_signed_t<index_t>;
-    using vector_t       = containers::static_vector<signed_index_t, s_rank>;
+    using vector_t       = std::array<signed_index_t, s_rank>;
 
 private:
     explicit constexpr direction(index_t const linear_index) noexcept
@@ -198,15 +198,15 @@ public:
     }
 
     [[nodiscard]]
-    constexpr auto is_negative() const noexcept -> index_t
+    constexpr auto is_negative() const noexcept -> bool
     {
-        is_negative(*this);
+        return is_negative(*this);
     }
 
     [[nodiscard]]
-    constexpr auto is_positive() const noexcept -> index_t
+    constexpr auto is_positive() const noexcept -> bool
     {
-        is_positive(*this);
+        return is_positive(*this);
     }
 
     [[nodiscard]]
@@ -247,16 +247,16 @@ class neighbor_utils
 public:
     using patch_index_t  = Patch_Index;
     using patch_layout_t = Patch_Layout;
+    using size_type      = patch_layout_t::size_type;
+    using index_t        = patch_layout_t::index_t;
+    using rank_t         = patch_layout_t::rank_t;
 
 private:
-    static constexpr auto s_1d_fanout = patch_index_t::fanout();
-    static constexpr auto s_nd_fanout = patch_index_t::nd_fanout();
-    static constexpr auto s_rank      = patch_index_t::rank();
+    static constexpr auto s_1d_fanout = static_cast<index_t>(patch_index_t::fanout());
+    static constexpr auto s_nd_fanout = static_cast<index_t>(patch_index_t::nd_fanout());
+    static constexpr auto s_rank      = static_cast<index_t>(patch_index_t::rank());
 
 public:
-    using size_type = patch_layout_t::size_type;
-    using index_t   = patch_layout_t::index_t;
-    using rank_t    = patch_layout_t::rank_t;
     template <typename Id_Type>
     using neighbor_variant_base_t =
         neighbor_variant<index_t{ s_1d_fanout }, s_rank, Id_Type>;
@@ -330,24 +330,40 @@ public:
     ) -> std::array<index_t, s_rank>
     {
         static_assert(s_rank > rank_t{ 1 });
-        auto const& sizes = patch_layout_t::data_layout_t::sizes();
+        utility::contracts::assert_index(
+            neighbor_linear_index, s_nd_fanout / s_1d_fanout
+        );
         return [&d](index_t idx)
         {
-            auto ret = std::array<index_t, s_rank>{};
+            std::array<index_t, s_rank> ret;
             for (rank_t i = 0; i != s_rank; ++i)
             {
                 if (i == d.dimension())
                 {
-                    ret[i] = d.is_negative() ? index_t{} : sizes[i] - 1;
+                    ret[i] = d.is_positive() ? index_t{} : s_1d_fanout - index_t{ 1 };
                 }
                 else
                 {
-                    ret[i] = idx % sizes[i];
-                    idx /= sizes[i];
+                    ret[i] = idx % s_1d_fanout;
+                    idx /= s_1d_fanout;
                 }
             }
             return ret;
         }(neighbor_linear_index);
+    }
+
+    [[nodiscard]]
+    static constexpr auto compute_neighbor_coarse_block_coords(
+        std::array<index_t, s_rank> self_idx,
+        direction_t const&          d
+    )
+    {
+        // TODO: wtf am i doing
+        const auto dim = d.dimension();
+        self_idx[dim]  = (d.is_positive() ? (self_idx[dim] + 1)
+                                          : (self_idx[dim] + s_1d_fanout - index_t{ 1 })) %
+                        s_1d_fanout;
+        return self_idx;
     }
 
     // TODO: Are there any preconditions to the coords?
@@ -424,7 +440,10 @@ public:
                                            typename neighbor_variant_t::same>)
                     {
                         return neighbor_variant_t{ typename neighbor_variant_t::coarser(
-                            neighbor.id, child_multiindex.data()
+                            neighbor.id,
+                            compute_neighbor_coarse_block_coords(
+                                child_multiindex.data(), d
+                            )
                         ) };
                     }
                     else if constexpr (std::is_same_v<
