@@ -4,7 +4,6 @@
 #include "containers/container_manipulations.hpp"
 #include "containers/container_utils.hpp"
 #include "containers/static_tensor.hpp"
-#include "containers/static_vector.hpp"
 #include "ndconcepts.hpp"
 #include "ndutils.hpp"
 #include "utility/compile_time_utility.hpp"
@@ -446,7 +445,7 @@ struct halo_exchange_impl_t
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
-            containers::static_vector<index_t, s_dimension> from_idxs;
+            std::array<index_t, s_dimension> from_idxs{};
 
             for (auto i = index_t{}; i != s_dimension; ++i)
             {
@@ -457,9 +456,9 @@ struct halo_exchange_impl_t
                 );
                 const auto cells_per_block = (s_sizes[i] / s_1d_fanout);
                 const auto block_offset =
-                    (i == dim && positive)
-                        ? index_t{}
-                        : (cells_per_block - s_halo_width / s_1d_fanout);
+                    (i == dim && !positive)
+                        ? (cells_per_block - s_halo_width / s_1d_fanout)
+                        : index_t{};
                 const auto idx_offset =
                     i == dim ? (direction.is_positive() ? s_sizes[i] + s_halo_width
                                                         : index_t{})
@@ -472,11 +471,11 @@ struct halo_exchange_impl_t
                 // std::cout << "hw:\t" << s_halo_width << '\n';
                 // std::cout << "dim:\t" << direction.dimension() << '\n';
                 // std::cout << "cpb:\t" << cells_per_block << '\n';
-                // std::cout << "do:\t" << dim_offset << '\n';
-                // std::cout << "o:\t" << offset << '\n';
+                // std::cout << "bo:\t" << block_offset << '\n';
+                // std::cout << "io:\t" << idx_offset << '\n';
                 // std::cout << "1df:\t" << s_1d_fanout << '\n';
                 // std::cout << "From:\t";
-                // for (auto const& e : coarse_cell_coords)
+                // for (auto const& e : from_idxs)
                 //     std::cout << e << ' ';
                 // std::cout << '\n';
                 utility::contracts::assert_index(from_idxs[i] - s_halo_width, s_sizes[i]);

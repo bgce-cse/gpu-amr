@@ -358,11 +358,12 @@ public:
         direction_t const&          d
     )
     {
-        // TODO: wtf am i doing
         const auto dim = d.dimension();
-        self_idx[dim]  = (d.is_positive() ? (self_idx[dim] + 1)
-                                          : (self_idx[dim] + s_1d_fanout - index_t{ 1 })) %
-                        s_1d_fanout;
+        assert(
+            d.is_positive() ? self_idx[dim] == s_1d_fanout - index_t{ 1 }
+                            : self_idx[dim] == index_t{}
+        );
+        self_idx[dim] = d.is_positive() ? index_t{} : s_1d_fanout - index_t{ 1 };
         return self_idx;
     }
 
