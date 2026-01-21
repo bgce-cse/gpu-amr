@@ -43,14 +43,14 @@ int main()
 
     amr::ndt::print::vtk_print<physics_t> printer("euler_print_3d");
 
-    double            tmax            = 400;  // Example tmax, adjust as needed
-    double            print_frequency = 4.0; // Print every 10 seconds
+    double            tmax            = 10;  // Example tmax, adjust as needed
+    double            print_frequency = 2.0; // Print every 10 seconds
     const std::string output_prefix   = "solver_integration_test_3d_refine";
 
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t, physics_t, 3> solver(1000000); // Provide initial capacity for tree
+    amr_solver<tree_t, physics_t, EulerPhysics3D, 3> solver(1000000); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
@@ -108,10 +108,13 @@ int main()
     constexpr double CENTER_Y = 0.5 * physics_y;
     constexpr double CENTER_Z = 0.5 * physics_z;
 
-    // Initial condition function for 3D
-    auto acousticPulseIC_3D =
-        [](double x, double y, double z) -> amr::containers::static_vector<double, 5>
+    // Initial condition function for 3D   
+    auto acousticPulseIC_3D = [&](auto const& coords) -> amr::containers::static_vector<double, 5>
     {
+        double x = coords[0];
+        double y = coords[1];
+        double z = coords[2];
+
         amr::containers::static_vector<double, 5> prim;
 
         // Calculate distance squared from the center

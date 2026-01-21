@@ -9,6 +9,7 @@
 #include "solver/amr_solver.hpp"
 #include "solver/cell_types.hpp"
 #include "solver/physics_system.hpp"
+#include "solver/EulerPhysics.hpp"
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -41,14 +42,14 @@ int main()
 
     amr::ndt::print::vtk_print<physics_t> printer("euler_print");
 
-    double            tmax            = 400;  // Example tmax, adjust as needed
-    double            print_frequency = 10.0; // Print every 10 seconds
+    double            tmax            = 40;  // Example tmax, adjust as needed
+    double            print_frequency = 5.0; // Print every 10 seconds
     const std::string output_prefix   = "solver_integration_test_refine";
 
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t, physics_t, 2> solver(1000000,1.4,0.3); // Provide initial capacity for tree
+    amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(1000000,1.4,0.3); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
@@ -105,9 +106,11 @@ int main()
     constexpr double CENTER_Y = 0.5 * physics_y;
 
     // The initial condition function (auto IC = [](){})
-    auto acousticPulseIC = [](double x,
-                              double y) -> amr::containers::static_vector<double, 4>
+    auto acousticPulseIC = [&](auto const& coords) -> amr::containers::static_vector<double, 4>
     {
+        double x = coords[0];
+        double y = coords[1];
+        
         amr::containers::static_vector<double, 4> prim;
 
         // Calculate distance squared from the center
