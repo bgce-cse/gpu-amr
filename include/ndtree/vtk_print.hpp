@@ -18,8 +18,8 @@ struct vtk_print
 public:
     using physics_system_t = Physics_System;
 
-    explicit vtk_print(std::string base_filename)
-        : m_base_filename{ std::move(base_filename) }
+    explicit vtk_print(std::string_view base_filename)
+        : m_base_filename{ base_filename }
     {
         DEFAULT_SOURCE_LOG_TRACE("Initializing vtk output dir");
         std::filesystem::path output_path = "vtk_output";
@@ -60,9 +60,10 @@ private:
             std::tuple_element<0, typename tree_t::deconstructed_raw_map_types_t>;
         using lc_interior_t = patch_layout_t::interior_iteration_t;
 
-        constexpr auto dim = std::remove_cvref_t<decltype(tree)>::rank();
-        constexpr auto box_points =
-            static_cast<index_t>(utility::cx_functions::pow(2, dim)); // Changed from pow(dim, 2)
+        constexpr auto dim        = std::remove_cvref_t<decltype(tree)>::rank();
+        constexpr auto box_points = static_cast<index_t>(
+            utility::cx_functions::pow(2, dim)
+        ); // Changed from pow(dim, 2)
         static_assert(dim == 2 || dim == 3);
         constexpr auto halo_width = patch_layout_t::halo_width();
         const auto     tree_size  = tree.size();
@@ -107,24 +108,24 @@ private:
                             static_cast<double>(idxs[0] - halo_width) * cell_size[1];
 
                         file << cell_x << ' ' << cell_y << ' ' << 0.0 << '\n';
-                        file << cell_x + cell_size[0] << ' ' << cell_y << ' ' << 0 << '\n';
-                        file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1] << ' '
-                             << 0.0 << '\n';
-                        file << cell_x << ' ' << cell_y + cell_size[1] << ' ' << 0 << '\n';
+                        file << cell_x + cell_size[0] << ' ' << cell_y << ' ' << 0
+                             << '\n';
+                        file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1]
+                             << ' ' << 0.0 << '\n';
+                        file << cell_x << ' ' << cell_y + cell_size[1] << ' ' << 0
+                             << '\n';
                     }
                 );
             }
         }
         else // dim == 3
         {
-               
             for (std::size_t i = 0; i != tree_size; ++i)
             {
-              
                 const auto patch_id     = tree.get_node_index_at(i);
                 const auto patch_origin = physics_system_t::patch_coord(patch_id);
                 const auto cell_size    = physics_system_t::cell_sizes(patch_id);
-                
+
                 amr::containers::manipulators::shaped_for<lc_interior_t>(
                     [&](auto const& idxs)
                     {
@@ -140,13 +141,20 @@ private:
 
                         // 8 corners of a hexahedron (VTK_VOXEL ordering)
                         file << cell_x << ' ' << cell_y << ' ' << cell_z << '\n';
-                        file << cell_x + cell_size[0] << ' ' << cell_y << ' ' << cell_z << '\n';
-                        file << cell_x << ' ' << cell_y + cell_size[1] << ' ' << cell_z << '\n';
-                        file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1] << ' ' << cell_z << '\n';
-                        file << cell_x << ' ' << cell_y << ' ' << cell_z + cell_size[2] << '\n';
-                        file << cell_x + cell_size[0] << ' ' << cell_y << ' ' << cell_z + cell_size[2] << '\n';
-                        file << cell_x << ' ' << cell_y + cell_size[1] << ' ' << cell_z + cell_size[2] << '\n';
-                        file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1] << ' ' << cell_z + cell_size[2] << '\n';
+                        file << cell_x + cell_size[0] << ' ' << cell_y << ' ' << cell_z
+                             << '\n';
+                        file << cell_x << ' ' << cell_y + cell_size[1] << ' ' << cell_z
+                             << '\n';
+                        file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1]
+                             << ' ' << cell_z << '\n';
+                        file << cell_x << ' ' << cell_y << ' ' << cell_z + cell_size[2]
+                             << '\n';
+                        file << cell_x + cell_size[0] << ' ' << cell_y << ' '
+                             << cell_z + cell_size[2] << '\n';
+                        file << cell_x << ' ' << cell_y + cell_size[1] << ' '
+                             << cell_z + cell_size[2] << '\n';
+                        file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1]
+                             << ' ' << cell_z + cell_size[2] << '\n';
                     }
                 );
             }
@@ -168,7 +176,7 @@ private:
         {
             if constexpr (dim == 2)
             {
-                file << "9\n";  // VTK_QUAD
+                file << "9\n"; // VTK_QUAD
             }
             else // dim == 3
             {

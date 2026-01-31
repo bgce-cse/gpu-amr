@@ -299,7 +299,7 @@ public:
 
     auto fragment(patch_index_t const node_id) -> void
     {
-        DEFAULT_SOURCE_LOG_TRACE("Fragmenting node " + node_id.repr());
+        DEFAULT_SOURCE_LOG_TRACE("Fragmenting node {}", node_id.repr());
         const auto it   = find_index(node_id);
         const auto from = it.value()->second;
         assert(it.has_value());
@@ -720,7 +720,7 @@ public:
         if (it == nullptr)
         {
             DEFAULT_SOURCE_LOG_FATAL(
-                "Patch index " + node_id.repr() + " not found in index map"
+                "Patch index {} not found in index map", node_id.repr()
             );
             utility::error_handling::assert_unreachable();
         }

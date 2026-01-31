@@ -2,6 +2,7 @@
 #define EULER_PHYSICS_H
 
 #include "containers/static_vector.hpp"
+#include "cell_types.hpp"
 #include <cmath>
 #include <algorithm>
 

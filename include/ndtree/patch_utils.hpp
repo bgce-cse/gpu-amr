@@ -315,8 +315,7 @@ struct halo_exchange_impl_t
         ) noexcept -> void
         {
             DEFAULT_SOURCE_LOG_TRACE(
-                std::string("Boundary halo exchange in direction ") +
-                std::string(direction.repr())
+                "Boundary halo exchange in direction {}", direction.repr()
             );
             DEFAULT_SOURCE_LOG_WARNING("Boundary halo exchange not implemented");
         }
@@ -333,8 +332,7 @@ struct halo_exchange_impl_t
         ) noexcept -> void
         {
             DEFAULT_SOURCE_LOG_TRACE(
-                std::string("Same halo exchange in direction ") +
-                std::string(direction.repr())
+                "Same halo exchange in direction {}", direction.repr()
             );
             const auto dim       = direction.dimension();
             const auto positive  = direction.is_positive();
@@ -356,8 +354,7 @@ struct halo_exchange_impl_t
         ) noexcept -> void
         {
             DEFAULT_SOURCE_LOG_TRACE(
-                std::string("Finer halo exchange in direction ") +
-                std::string(direction.repr())
+                "Finer halo exchange in direction {}", direction.repr()
             );
             using value_t = std::remove_cvref_t<decltype(current_patch[idxs])>;
 
@@ -440,8 +437,8 @@ struct halo_exchange_impl_t
         ) noexcept -> void
         {
             DEFAULT_SOURCE_LOG_TRACE(
-                std::string("Coarser halo exchange in direction ") +
-                std::string(direction.repr())
+                "Coarser halo exchange in direction {}",
+                direction.repr()
             );
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
@@ -463,7 +460,9 @@ struct halo_exchange_impl_t
                     i == dim ? (direction.is_positive() ? s_sizes[i] + s_halo_width
                                                         : index_t{})
                              : s_halo_width;
-                assert(idxs[i] >= idx_offset);
+                utility::contracts::assert_index(
+                    idxs[i] - idx_offset, i == dim ? s_halo_width : s_sizes[i]
+                );
                 utility::contracts::assert_index(contact_quadrant[i], s_1d_fanout);
                 from_idxs[i] = s_halo_width + (contact_quadrant[i] * cells_per_block) +
                                block_offset + (idxs[i] - idx_offset) / s_1d_fanout;

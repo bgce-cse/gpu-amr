@@ -6,10 +6,10 @@
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
 #include "ndtree/vtk_print.hpp"
+#include "solver/EulerPhysics.hpp"
 #include "solver/amr_solver.hpp"
 #include "solver/cell_types.hpp"
 #include "solver/physics_system.hpp"
-#include "solver/EulerPhysics.hpp"
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -49,7 +49,9 @@ int main()
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(1000000,1.4,0.3); // Provide initial capacity for tree
+    amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(
+        1000000, 1.4, 0.3
+    ); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
@@ -106,11 +108,12 @@ int main()
     constexpr double CENTER_Y = 0.5 * physics_y;
 
     // The initial condition function (auto IC = [](){})
-    auto acousticPulseIC = [&](auto const& coords) -> amr::containers::static_vector<double, 4>
+    auto acousticPulseIC =
+        [&](auto const& coords) -> amr::containers::static_vector<double, 4>
     {
         double x = coords[0];
         double y = coords[1];
-        
+
         amr::containers::static_vector<double, 4> prim;
 
         // Calculate distance squared from the center
@@ -153,9 +156,9 @@ int main()
 
     while (t < tmax)
     {
-        double dt = solver.compute_time_step();
+        const double dt = solver.compute_time_step();
 
-        std::cout << "Step " << step << ", t=" << t << ", dt=" << dt << std::endl;
+        DEFAULT_SOURCE_LOG_INFO("Step: {},\tt: {:.5f},\tdt: {:.5f} ", step, t, dt);
 
         solver.time_step(dt);
         solver.get_tree().halo_exchange_update();

@@ -36,7 +36,7 @@ The tests for this project in the `tests/` directory. Tests with a `.t.cpp` exte
 GoogleTest has been used as the testing framework.
 
 Test can be run after building. For example, from the project root directory:
-1. `cmkae -S . -B build`
+1. `cmake -S . -B build`
 1. `cmake --build build --parallel 12`
 1. `ctest --test-dir build/tests`
 

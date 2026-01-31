@@ -7,7 +7,6 @@ project(gpu_amr VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_VERBOSE_MAKEFILE ON)
-set(CMAKE_BUILD_PARALLEL_LEVEL 12)
 
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
@@ -17,14 +16,6 @@ endif()
 # Options
 # ----------------------------
 option(ENABLE_SANITIZERS "Enable runtime sanitizers (Debug only)" ON)
-
-# ----------------------------
-# Logging
-# ----------------------------
-set(LOG_LEVEL "INFO" CACHE STRING "Logging level")
-
-set_property(CACHE LOG_LEVEL PROPERTY STRINGS
-    TRACE DEBUG INFO WARNING ERROR FATAL OFF)
 
 # ----------------------------
 # Output dir
@@ -38,7 +29,7 @@ set(OUTPUT_DIR_BENCHMARKS ${CMAKE_BINARY_DIR}/bin/benchmarks)
 find_package(TBB REQUIRED)
 
 # ----------------------------
-# Core code target (headers-only for now)
+# Core taget
 # ----------------------------
 add_library(gpu_amr INTERFACE)
 
@@ -49,8 +40,9 @@ target_include_directories(gpu_amr INTERFACE
     ${PROJECT_SOURCE_DIR}/lib
 )
 
-target_link_libraries(gpu_amr INTERFACE
-    TBB::tbb
+target_link_libraries(gpu_amr
+    INTERFACE TBB::tbb
+    INTERFACE spdlog::spdlog_header_only
 )
 
 # ----------------------------
@@ -150,6 +142,26 @@ set(CONSTEXPR_LIMIT_FLAGS
 )
 
 # ----------------------------
+# Logging
+# ----------------------------
+if(NOT TARGET spdlog)
+    # Stand-alone build
+    find_package(spdlog REQUIRED)
+endif()
+target_compile_definitions(gpu_amr INTERFACE
+    SPDLOG_USE_STD_FORMAT
+    AMR_BUILD_TYPE="$<CONFIG>"
+    AMR_GIT_HASH="${GIT_HASH}"
+    AMR_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
+    AMR_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
+)
+
+set(LOG_LEVEL "INFO" CACHE STRING "Logging level")
+
+set_property(CACHE LOG_LEVEL PROPERTY STRINGS
+    TRACE DEBUG INFO WARNING ERROR FATAL OFF)
+
+# ----------------------------
 # Policy targets
 # ----------------------------
 add_library(amr_examples INTERFACE)
@@ -199,4 +211,4 @@ add_subdirectory(benchmark)
 # ----------------------------
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Sanitizers enabled (Debug only): ${ENABLE_SANITIZERS}")
-message(STATUS "Examles log level: ${LOG_LEVEL}")
+message(STATUS "Examples log level: ${LOG_LEVEL}")
