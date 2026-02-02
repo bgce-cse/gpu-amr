@@ -103,29 +103,21 @@
 // Avoid includes and definitions if logging is off
 #if DEFAULT_SOURCE_LOG_LEVEL < AMR_DEFAULT_LOG_LEVEL_OFF
 
-#    include <fmt/core.h>
-#    include <fmt/format.h>
+#    include "spdlog/async.h"
+#    include "spdlog/sinks/rotating_file_sink.h"
+#    include <format>
+#    include <memory>
 #    include <spdlog/common.h>
+#    include <spdlog/sinks/basic_file_sink.h>
+#    include <spdlog/sinks/stdout_color_sinks.h>
 #    include <spdlog/spdlog.h>
 #    include <string_view>
+#    include <thread>
+#    include <unistd.h>
+#    include <vector>
 
 namespace utility::logging
 {
-
-namespace detail
-{
-
-inline std::string_view format_to_buffer(fmt::string_view fmt, fmt::format_args args)
-{
-    thread_local fmt::memory_buffer buffer;
-    buffer.clear();
-
-    fmt::vformat_to(std::back_inserter(buffer), fmt, args);
-
-    return { buffer.data(), buffer.size() };
-}
-
-} // namespace detail
 
 class default_logger
 {
@@ -143,19 +135,90 @@ private:
     }
 
 public:
-    static auto init() -> void;
+    static auto init() -> void
+    {
+        static bool initialized = []
+        {
+            spdlog::init_thread_pool(8192, 1);
+
+            auto stdout_sink  = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+            auto general_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+                "logs/general.log", true
+            );
+            auto rotating_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+                "logs/backtrace.log", 1024 * 1024 * 10, 3
+            );
+            auto errors_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+                "logs/errors.log", true
+            );
+            errors_sink->set_level(spdlog::level::warn);
+
+            std::vector<spdlog::sink_ptr> async_sinks{ general_sink,
+                                                       rotating_sink,
+                                                       errors_sink };
+
+            auto logger = std::make_shared<spdlog::logger>("default_source", stdout_sink);
+            logger->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
+            logger->set_level(spdlog::level::info);
+            logger->flush_on(spdlog::level::warn);
+
+            auto async_logger = std::make_shared<spdlog::async_logger>(
+                "default_async_source",
+                async_sinks.begin(),
+                async_sinks.end(),
+                spdlog::thread_pool(),
+                spdlog::async_overflow_policy::overrun_oldest
+            );
+            async_logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
+            async_logger->set_level(spdlog::level::trace);
+
+            spdlog::register_logger(logger);
+            spdlog::register_logger(async_logger);
+
+            // Initial messages
+            async_logger->info("Build:");
+            async_logger->info("  type      : {}", AMR_BUILD_TYPE);
+            async_logger->info(
+                "  compiler  : {} {}", AMR_COMPILER_ID, AMR_COMPILER_VERSION
+            );
+            async_logger->info("  git hash  : {}", AMR_GIT_HASH);
+            async_logger->info("Runtime configuration:");
+            async_logger->info(
+                "  log level : {}", spdlog::level::to_string_view(logger->level())
+            );
+            async_logger->info("  threads   : {}", std::thread::hardware_concurrency());
+            async_logger->info("  pid       : {}", ::getpid());
+
+            return true;
+        }();
+
+        (void)initialized;
+    }
+
+    static auto log(spdlog::level::level_enum sev, std::string_view msg) -> void
+    {
+        init();
+        dispatch(sev, msg);
+    }
 
     template <typename... Args>
     static auto
         log(spdlog::level::level_enum   sev,
-            fmt::format_string<Args...> fmt,
-            Args const&... args) -> void
+            std::format_string<Args...> fmt,
+            Args&&... args) -> void
     {
-        const auto msg = detail::format_to_buffer(fmt, fmt::make_format_args(args...));
-        log(sev, msg);
+        init();
+        dispatch(sev, std::format(fmt, std::forward<Args>(args)...));
     }
 
-    static auto log(spdlog::level::level_enum sev, std::string_view msg) -> void;
+    static auto dispatch(spdlog::level::level_enum sev, std::string_view msg) -> void
+    {
+        if (sev >= spdlog::level::info)
+        {
+            default_source()->log(sev, msg);
+        }
+        default_async_source()->log(sev, msg);
+    }
 };
 
 } // namespace utility::logging

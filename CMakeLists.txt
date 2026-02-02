@@ -29,6 +29,40 @@ set(OUTPUT_DIR_BENCHMARKS ${CMAKE_BINARY_DIR}/bin/benchmarks)
 find_package(TBB REQUIRED)
 
 # ----------------------------
+# Logging
+# ----------------------------
+if(NOT TARGET spdlog)
+    # Stand-alone build
+    find_package(spdlog REQUIRED)
+endif()
+
+add_library(utility_logging
+    src/utility/logging.cpp
+)
+
+target_include_directories(utility_logging
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(utility_logging
+    PUBLIC spdlog::spdlog
+)
+
+target_compile_definitions(utility_logging PUBLIC
+    # SPDLOG_USE_STD_FORMAT
+    AMR_BUILD_TYPE="$<CONFIG>"
+    AMR_GIT_HASH="${GIT_HASH}"
+    AMR_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
+    AMR_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
+)
+
+set(LOG_LEVEL "INFO" CACHE STRING "Logging level")
+
+set_property(CACHE LOG_LEVEL PROPERTY STRINGS
+    TRACE DEBUG INFO WARNING ERROR FATAL OFF)
+
+# ----------------------------
 # Core taget
 # ----------------------------
 add_library(gpu_amr INTERFACE)
@@ -42,7 +76,7 @@ target_include_directories(gpu_amr INTERFACE
 
 target_link_libraries(gpu_amr
     INTERFACE TBB::tbb
-    INTERFACE spdlog::spdlog_header_only
+    INTERFACE utility_logging
 )
 
 # ----------------------------
@@ -83,6 +117,7 @@ set(PROJECT_DIAGNOSTICS
 	-fdiagnostics-path-format=inline-events
 	-fdiagnostics-show-caret
 	-fdiagnostics-show-template-tree
+    -ftime-report
 )
 
 set(PROJECT_DEBUG_INFO
@@ -142,26 +177,6 @@ set(CONSTEXPR_LIMIT_FLAGS
 )
 
 # ----------------------------
-# Logging
-# ----------------------------
-if(NOT TARGET spdlog)
-    # Stand-alone build
-    find_package(spdlog REQUIRED)
-endif()
-target_compile_definitions(gpu_amr INTERFACE
-    SPDLOG_USE_STD_FORMAT
-    AMR_BUILD_TYPE="$<CONFIG>"
-    AMR_GIT_HASH="${GIT_HASH}"
-    AMR_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
-    AMR_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
-)
-
-set(LOG_LEVEL "INFO" CACHE STRING "Logging level")
-
-set_property(CACHE LOG_LEVEL PROPERTY STRINGS
-    TRACE DEBUG INFO WARNING ERROR FATAL OFF)
-
-# ----------------------------
 # Policy targets
 # ----------------------------
 add_library(amr_examples INTERFACE)
@@ -177,7 +192,7 @@ target_compile_definitions(amr_benchmarks INTERFACE
 )
 
 target_compile_definitions(amr_tests INTERFACE
-    AMR_LOG_LEVEL=WARNING
+    AMR_LOG_LEVEL=OFF
 )
 
 foreach(tgt amr_examples amr_benchmarks amr_tests)

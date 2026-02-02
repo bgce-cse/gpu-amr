@@ -151,6 +151,9 @@ constexpr auto halo_apply_section_impl(
     using patch_layout_t        = typename tree_t::patch_layout_t;
     auto& p_i = std::forward<decltype(tree)>(tree).template get_patch<T>(idx);
 
+    DEFAULT_SOURCE_LOG_TRACE(
+        "{} halo exchange in direction {}", n_idx.repr(), D.repr()
+    );
     std::visit(
         utils::overloads{
             // None impl
@@ -314,9 +317,6 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            DEFAULT_SOURCE_LOG_TRACE(
-                "Boundary halo exchange in direction {}", direction.repr()
-            );
             DEFAULT_SOURCE_LOG_WARNING("Boundary halo exchange not implemented");
         }
     };
@@ -331,9 +331,6 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            DEFAULT_SOURCE_LOG_TRACE(
-                "Same halo exchange in direction {}", direction.repr()
-            );
             const auto dim       = direction.dimension();
             const auto positive  = direction.is_positive();
             auto       from_idxs = idxs;
@@ -353,9 +350,6 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            DEFAULT_SOURCE_LOG_TRACE(
-                "Finer halo exchange in direction {}", direction.repr()
-            );
             using value_t = std::remove_cvref_t<decltype(current_patch[idxs])>;
 
             const auto dim      = direction.dimension();
@@ -436,10 +430,6 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            DEFAULT_SOURCE_LOG_TRACE(
-                "Coarser halo exchange in direction {}",
-                direction.repr()
-            );
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
