@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <execution>
 #include <numeric>
 #include <ranges>
 #include <tuple>
@@ -965,12 +966,18 @@ public:
     constexpr auto halo_exchange_update() noexcept -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Performing halo exchange");
-        for (linear_index_t i = 0; i != m_size; ++i)
-        {
-            utils::patches::halo_apply<halo_exchange_operator_impl_t, patch_direction_t>(
-                *this, i
-            );
-        }
+        auto const r = std::views::iota(size_type{}, m_size);
+        std::for_each(
+            std::execution::par_unseq,
+            std::cbegin(r),
+            std::cend(r),
+            [this](auto const i)
+            {
+                utils::patches::halo_apply<
+                    halo_exchange_operator_impl_t,
+                    patch_direction_t>(*this, i);
+            }
+        );
     }
 
     [[nodiscard]]

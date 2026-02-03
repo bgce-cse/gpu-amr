@@ -42,9 +42,8 @@ constexpr auto check_range(T const& i, T const& low, T const& high) noexcept -> 
     {
         if constexpr (std::is_signed_v<T>)
         {
-            if (i < low) std::unreachable();
+            if ((i < low) || (i >= high)) std::unreachable();
         }
-        if (i >= high) std::unreachable();
     }
 #endif
 }
