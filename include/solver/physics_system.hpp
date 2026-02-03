@@ -3,10 +3,8 @@
 
 #include "containers/container_concepts.hpp"
 #include "ndtree/ndconcepts.hpp"
-#include "ndtree/ndutils.hpp"
+#include "utility/contracts.hpp"
 #include <array>
-#include <cassert>
-#include <cmath>
 #include <cstdint>
 
 namespace amr::ndt::solver
@@ -97,7 +95,7 @@ public:
         {
             result[i] = s_physics_lengths[i] * static_cast<physics_coord_t>(coords[i]) /
                         static_cast<physics_coord_t>(s_max_morton_coord);
-            assert(
+            CONTRACTS_CHECK(
                 result[i] <= s_physics_lengths[i] &&
                 "coord needs to be smaller than domain length"
             );
@@ -113,7 +111,9 @@ public:
     {
         if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
         {
-            assert(false && "this function should not be called for a halo cell!");
+            CONTRACTS_CHECK(
+                false && "this function should not be called for a halo cell!"
+            );
             return physics_coord_arr_t{};
         }
         physics_coord_arr_t patch_origin = patch_coord(morton_id);
@@ -129,7 +129,7 @@ public:
                 static_cast<physics_coord_t>(multi_idx[n_dimension - 1 - i]) -
                 static_cast<physics_coord_t>(halo_width);
             result[i] = patch_origin[i] + data_cell_idx * cell_size[i];
-            assert(
+            CONTRACTS_CHECK(
                 result[i] <= s_physics_lengths[i] &&
                 "coord needs to be smaller than domain length"
             );

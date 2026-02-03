@@ -5,7 +5,6 @@
 #include "utility/contracts.hpp"
 #include <algorithm>
 #include <array>
-#include <cassert>
 #include <cmath>
 #include <iomanip>
 #include <optional>
@@ -24,7 +23,7 @@ public:
     using layout_t        = Layout;
     using shape_t         = typename layout_t::shape_t;
     using size_type       = typename layout_t::size_type;
-    using size_pack_t       = typename layout_t::size_pack_t;
+    using size_pack_t     = typename layout_t::size_pack_t;
     using index_t         = typename layout_t::index_t;
     using rank_t          = typename layout_t::rank_t;
     using multi_index_t   = typename layout_t::multi_index_t;
@@ -66,7 +65,7 @@ public:
     [[nodiscard]]
     static constexpr auto size(index_t const i) noexcept -> size_type
     {
-        utility::contracts::assert_index(i, rank());
+        utility::contracts::check_index(i, rank());
         return layout_t::size(i);
     }
 
@@ -79,7 +78,7 @@ public:
     [[nodiscard]]
     static constexpr auto stride(index_t const i) noexcept -> size_type
     {
-        utility::contracts::assert_index(i, rank());
+        utility::contracts::check_index(i, rank());
         return layout_t::stride(i);
     }
 
@@ -94,9 +93,9 @@ public:
     [[nodiscard]]
     static constexpr auto
         linear_index(std::ranges::contiguous_range auto const& idxs) noexcept -> index_t
-        
+
     {
-        // assert(std::ranges::size(idxs) == rank());
+        // CONTRACTS_CHECK(std::ranges::size(idxs) == rank());
         return layout_t::linear_index(idxs);
     }
 
@@ -112,7 +111,8 @@ public:
     constexpr auto
         operator[](std::ranges::contiguous_range auto const& idxs) const noexcept
         -> const_reference
-        // requires(std::ranges::size(idxs) == rank() && std::is_same_v<std::ranges::range_value_t<decltype(idxs)>, index_t>) #TODO: @Miguel
+    // requires(std::ranges::size(idxs) == rank() &&
+    // std::is_same_v<std::ranges::range_value_t<decltype(idxs)>, index_t>) #TODO: @Miguel
     {
         return data_[linear_index(idxs)];
     }

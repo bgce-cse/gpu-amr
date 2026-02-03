@@ -3,10 +3,10 @@
 
 #include "container_concepts.hpp"
 #include <concepts>
+#include "utility/contracts.hpp"
 #include <functional>
 #include <ranges>
 #include <type_traits>
-#include <cassert>
 
 namespace amr::containers
 {
@@ -18,7 +18,7 @@ template <std::floating_point R, concepts::Container C, typename Distance>
     constexpr auto
     distance(C const& c1, C const& c2, Distance&& dist_op, R init = R{}) noexcept -> R
 {
-    assert(std::ranges::size(c1) == std::ranges::size(c2));
+    CONTRACTS_CHECK(std::ranges::size(c1) == std::ranges::size(c2));
     for (auto it1 = std::begin(c1), it2 = std::begin(c2);
          it1 != std::end(c1) && it2 != std::end(c1);
          ++it1, ++it2)
@@ -61,7 +61,7 @@ constexpr auto nearly_equals(
     const typename C::value_type epsilon = 1e-4
 ) noexcept -> bool
 {
-    assert(std::ranges::size(c1) == std::ranges::size(c2));
+    CONTRACTS_CHECK(std::ranges::size(c1) == std::ranges::size(c2));
     for (auto it1 = std::begin(c1), it2 = std::begin(c2);
          it1 != std::end(c1) && it2 != std::end(c1);
          ++it1, ++it2)
@@ -75,7 +75,7 @@ template <concepts::Container C>
 [[nodiscard]]
 constexpr auto exactly_equals(C const& c1, C const& c2) noexcept -> bool
 {
-    assert(std::ranges::size(c1) == std::ranges::size(c2));
+    CONTRACTS_CHECK(std::ranges::size(c1) == std::ranges::size(c2));
     for (auto it1 = std::begin(c1), it2 = std::begin(c2);
          it1 != std::end(c1) && it2 != std::end(c1);
          ++it1, ++it2)

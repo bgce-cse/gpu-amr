@@ -317,7 +317,7 @@ public:
         rank_t                                           rank
     ) -> index_t
     {
-        assert(rank < coords.rank());
+        CONTRACTS_CHECK(rank < coords.rank());
 
         index_t linear_idx = 0;
         index_t multiplier = 1;
@@ -342,9 +342,7 @@ public:
     ) -> std::array<index_t, s_rank>
     {
         static_assert(s_rank > rank_t{ 1 });
-        utility::contracts::assert_index(
-            neighbor_linear_index, s_nd_fanout / s_1d_fanout
-        );
+        utility::contracts::check_index(neighbor_linear_index, s_nd_fanout / s_1d_fanout);
         return [&d](index_t idx)
         {
             std::array<index_t, s_rank> ret;
@@ -371,7 +369,7 @@ public:
     )
     {
         const auto dim = d.dimension();
-        assert(
+        CONTRACTS_CHECK(
             d.is_positive() ? self_idx[dim] == s_1d_fanout - index_t{ 1 }
                             : self_idx[dim] == index_t{}
         );
@@ -546,7 +544,7 @@ public:
                 }
                 else if constexpr (std::is_same_v<T, typename neighbor_variant_t::finer>)
                 {
-                    assert(
+                    CONTRACTS_CHECK(
                         false &&
                         "Child has finer neighbor during coarsening - unexpected!"
                     );

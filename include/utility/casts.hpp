@@ -2,8 +2,7 @@
 #define INCLUDED_UTILITY_CASTS
 
 #include "error_handling.hpp"
-#include <cassert>
-#include <cmath>
+#include "contracts.hpp"
 #include <cstdint>
 #include <type_traits>
 
@@ -36,21 +35,21 @@ constexpr auto safe_cast(Src const& v) noexcept -> Dst
     }
     else if constexpr (is_ptr_to_ptr)
     {
-        assert(dynamic_cast<Dst>(v) != nullptr);
+        CONTRACTS_CHECK(dynamic_cast<Dst>(v) != nullptr);
         return static_cast<Dst>(v);
     }
     else if constexpr (is_float_to_float)
     {
         const auto casted      = static_cast<Dst>(v);
         const auto casted_back = static_cast<Src>(casted);
-        assert(!std::isnan(casted_back) && !std::isinf(casted_back));
+        CONTRACTS_CHECK(!std::isnan(casted_back) && !std::isinf(casted_back));
         return casted;
     }
     else if constexpr (is_number_to_number)
     {
         const auto casted      = static_cast<Dst>(v);
         const auto casted_back = static_cast<Src>(casted);
-        assert(v == casted_back);
+        CONTRACTS_CHECK(v == casted_back);
         return casted;
     }
     else

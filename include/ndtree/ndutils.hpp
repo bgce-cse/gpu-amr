@@ -2,7 +2,6 @@
 #define AMR_INCLUDED_NDUTILS
 
 #include "utility/constexpr_functions.hpp"
-#include <cassert>
 #include <concepts>
 #include <type_traits>
 

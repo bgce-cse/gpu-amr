@@ -5,7 +5,6 @@
 #include "utility/contracts.hpp"
 #include <algorithm>
 #include <array>
-#include <cassert>
 #include <concepts>
 #include <iostream>
 #include <type_traits>
@@ -55,7 +54,7 @@ public:
     [[nodiscard]]
     static constexpr auto size(index_t const i) noexcept -> size_type
     {
-        utility::contracts::assert_index(i, rank());
+        utility::contracts::check_index(i, rank());
         return s_sizes[i];
     }
 
@@ -96,7 +95,7 @@ public:
     {
         for (rank_t d = s_rank; d-- > 0;)
         {
-            assert(value_[d] >= 0 && value_[d] < s_sizes[d]);
+            CONTRACTS_CHECK(value_[d] >= 0 && value_[d] < s_sizes[d]);
             if (value_[d] != s_sizes[d] - 1)
             {
                 ++value_[d];

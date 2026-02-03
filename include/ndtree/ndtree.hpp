@@ -11,7 +11,6 @@
 #include "utility/error_handling.hpp"
 #include "utility/logging.hpp"
 #include <algorithm>
-#include <cassert>
 #include <cstdint>
 #include <cstdlib>
 #include <numeric>
@@ -201,7 +200,7 @@ public:
     // [[nodiscard, gnu::always_inline, gnu::flatten]]
     // auto get(linear_index_t const idx) noexcept -> reference_t<typename Map_Type::type>
     // {
-    //     assert(idx < m_size);
+    //     CONTRACTS_CHECK(idx < m_size);
     //     return std::get<Map_Type::index()>(m_data_buffers)[idx];
     // }
 
@@ -210,7 +209,7 @@ public:
     // auto get(linear_index_t const idx) const noexcept
     //     -> const_reference_t<typename Map_Type::type>
     // {
-    //     assert(idx < m_size);
+    //     CONTRACTS_CHECK(idx < m_size);
     //     return std::get<Map_Type::index()>(m_data_buffers)[idx];
     // }
 
@@ -228,7 +227,7 @@ public:
     auto get_patch(linear_index_t const linear_index) const noexcept
         -> patch_t<Map_Type> const&
     {
-        assert(linear_index < m_size);
+        CONTRACTS_CHECK(linear_index < m_size);
         return std::get<Map_Type::index()>(m_data_buffers)[linear_index];
     }
 
@@ -247,7 +246,7 @@ public:
         -> patch_t<Map_Type> const&
     {
         const auto linear_index = m_index_map.at(patch_idx);
-        assert(linear_index < m_size);
+        CONTRACTS_CHECK(linear_index < m_size);
         return std::get<Map_Type::index()>(m_data_buffers)[linear_index];
     }
 
@@ -257,7 +256,7 @@ public:
         patch_direction_t const& d
     ) const noexcept -> neighbor_patch_index_variant_t
     {
-        utility::contracts::assert_index(idx, m_size);
+        utility::contracts::check_index(idx, m_size);
         return m_neighbors[idx][d.index()];
     }
 
@@ -302,20 +301,20 @@ public:
         DEFAULT_SOURCE_LOG_TRACE("Fragmenting node {}", node_id.repr());
         const auto it   = find_index(node_id);
         const auto from = it.value()->second;
-        assert(it.has_value());
+        CONTRACTS_CHECK(it.has_value());
         const auto start_to = m_size;
         for (size_type i = 0; i != s_nd_fanout; ++i)
         {
             const auto child_id = patch_index_t::child_of(
                 node_id, static_cast<typename patch_index_t::offset_t>(i)
             );
-            assert(!find_index(child_id).has_value());
+            CONTRACTS_CHECK(!find_index(child_id).has_value());
 
             const auto neighbor_array =
                 neighbor_utils_t::compute_child_neighbors(node_id, m_neighbors[from], i);
             append(child_id, neighbor_array);
-            assert(m_index_map[child_id] == back_idx());
-            assert(m_linear_index_map[back_idx()] == child_id);
+            CONTRACTS_CHECK(m_index_map[child_id] == back_idx());
+            CONTRACTS_CHECK(m_linear_index_map[back_idx()] == child_id);
         }
         enforce_symmetry_after_refinement(node_id);
         interpolate_patch(from, start_to);
@@ -328,11 +327,11 @@ public:
     auto recombine(patch_index_t const parent_node_id) -> void
     {
         using offset_t = typename patch_index_t::offset_t;
-        assert(!find_index(parent_node_id).has_value());
+        CONTRACTS_CHECK(!find_index(parent_node_id).has_value());
 
         const auto child_0    = patch_index_t::child_of(parent_node_id, 0);
         const auto child_0_it = find_index(child_0);
-        assert(child_0_it.has_value());
+        CONTRACTS_CHECK(child_0_it.has_value());
         const auto start = child_0_it.value()->second;
 
         std::array<patch_neighbors_t, s_nd_fanout> child_neighbor_arrays{};
@@ -340,8 +339,8 @@ public:
         {
             const auto child_i    = patch_index_t::child_of(parent_node_id, i);
             const auto child_i_it = find_index(child_i);
-            assert(child_i_it.has_value());
-            // assert(child_i_it.value()->second == start + i);
+            CONTRACTS_CHECK(child_i_it.has_value());
+            // CONTRACTS_CHECK(child_i_it.value()->second == start + i);
             child_neighbor_arrays[i] = m_neighbors[m_index_map.at(child_i)];
             m_index_map.erase(child_i_it.value());
         }
@@ -350,7 +349,7 @@ public:
             neighbor_utils_t::compute_parent_neighbors(child_neighbor_arrays);
         const auto to = m_size;
         append(parent_node_id, neighbor_array);
-        assert(m_linear_index_map[back_idx()] == parent_node_id);
+        CONTRACTS_CHECK(m_linear_index_map[back_idx()] == parent_node_id);
         restrict_patches(start, to);
 
         enforce_symmetry_after_recombining(parent_node_id, neighbor_array);
@@ -358,24 +357,24 @@ public:
 
     auto fragment() -> void
     {
-        assert(is_sorted());
+        CONTRACTS_CHECK(is_sorted());
         for (auto i = m_to_refine.size(); i > 0; --i)
         {
             fragment(m_to_refine[i - 1]);
         }
         sort_buffers();
-        assert(is_sorted());
+        CONTRACTS_CHECK(is_sorted());
     }
 
     auto recombine() -> void
     {
-        assert(is_sorted());
+        CONTRACTS_CHECK(is_sorted());
         for (const auto& node_id : m_to_coarsen)
         {
             recombine(node_id);
         }
         sort_buffers();
-        assert(is_sorted());
+        CONTRACTS_CHECK(is_sorted());
     }
 
     template <typename Fn>
@@ -508,7 +507,7 @@ public:
                                            typename neighbor_patch_index_variant_t::
                                                coarser>)
                     {
-                        assert(
+                        CONTRACTS_CHECK(
                             false && "Coarser neighbor during refinement shouldn't happen"
                         );
                     }
@@ -575,7 +574,7 @@ public:
                                            typename neighbor_patch_index_variant_t::
                                                coarser>)
                     {
-                        assert(
+                        CONTRACTS_CHECK(
                             false && "Having a coarser neighbor after recombining does "
                                      "not make sense."
                         );
@@ -716,7 +715,7 @@ public:
     auto get_linear_index_at(patch_index_t const node_id) const noexcept -> linear_index_t
     {
         const auto it = m_index_map.find(node_id);
-        assert(it != nullptr && it != m_index_map.end());
+        CONTRACTS_CHECK(it != nullptr && it != m_index_map.end());
         if (it == nullptr)
         {
             DEFAULT_SOURCE_LOG_FATAL(
@@ -730,7 +729,7 @@ public:
     [[nodiscard]]
     auto get_node_index_at(linear_index_t idx) const noexcept -> patch_index_t
     {
-        assert(idx < m_size && "Index out of bounds in node_index_at()");
+        CONTRACTS_CHECK(idx < m_size && "Index out of bounds in node_index_at()");
         return m_linear_index_map[idx];
     }
 
@@ -823,7 +822,7 @@ public:
                 m_reorder_buffer[dst]                = dst;
                 dst                                  = src;
                 src                                  = m_reorder_buffer[src];
-                assert(src != dst);
+                CONTRACTS_CHECK(src != dst);
             } while (src != backup_start_pos);
 
             m_linear_index_map[dst]     = backup_node_index;
@@ -840,8 +839,10 @@ public:
             m_index_map[backup_node_index] = dst;
             m_reorder_buffer[dst]          = dst;
         }
-        assert(is_sorted());
-        assert(std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size]));
+        CONTRACTS_CHECK(is_sorted());
+        CONTRACTS_CHECK(
+            std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size])
+        );
     }
 
 public:
@@ -975,7 +976,7 @@ public:
     [[nodiscard]]
     auto get_refine_status(const linear_index_t i) const noexcept -> refine_status_t
     {
-        assert(i < m_size);
+        CONTRACTS_CHECK(i < m_size);
         return m_refine_status_buffer[i];
     }
 
@@ -984,7 +985,7 @@ private:
     auto is_refine_elegible(const linear_index_t i) const noexcept -> bool
     {
         const auto node_id = m_linear_index_map[i];
-        assert(m_index_map.contains(node_id));
+        CONTRACTS_CHECK(m_index_map.contains(node_id));
         const auto status = m_refine_status_buffer[i];
         const auto level  = patch_index_t::level(node_id);
         return (status == refine_status_t::Refine) &&
@@ -998,7 +999,7 @@ private:
         {
             const auto child = patch_index_t::child_of(parent_id, i);
             const auto it    = find_index(child.id());
-            // TODO: Maybe do this an assert rather
+            // TODO: Maybe do this an CONTRACTS_CHECK rather
             if (!it.has_value())
             {
                 return false;
@@ -1037,14 +1038,14 @@ private:
     auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
         -> void
     {
-        assert(i < m_size);
-        assert(j < m_size);
+        CONTRACTS_CHECK(i < m_size);
+        CONTRACTS_CHECK(j < m_size);
         if (i == j)
         {
             return;
         }
 
-        assert(m_linear_index_map[i] != m_linear_index_map[j]);
+        CONTRACTS_CHECK(m_linear_index_map[i] != m_linear_index_map[j]);
         std::swap(m_linear_index_map[i], m_linear_index_map[j]);
         std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
         std::swap(m_neighbors[i], m_neighbors[j]);
@@ -1063,7 +1064,7 @@ private:
         {
             for (linear_index_t i = 0; i != m_size; ++i)
             {
-                assert(m_index_map.contains(m_linear_index_map[i]));
+                CONTRACTS_CHECK(m_index_map.contains(m_linear_index_map[i]));
                 if (m_index_map.at(m_linear_index_map[i]) != i)
                 {
                     DEFAULT_SOURCE_LOG_ERROR("index map is not correct");
@@ -1083,7 +1084,7 @@ private:
         if (m_index_map.size() > m_size)
         {
             DEFAULT_SOURCE_LOG_ERROR("morton index map size exceeds tree size");
-            assert(false);
+            CONTRACTS_CHECK(false);
             return;
         }
 
@@ -1092,7 +1093,7 @@ private:
             if (m_linear_index_map[linear_idx] != node_idx)
             {
                 DEFAULT_SOURCE_LOG_ERROR("morton index map is incorrect");
-                assert(false);
+                CONTRACTS_CHECK(false);
                 return;
             }
         }

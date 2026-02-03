@@ -1,9 +1,8 @@
 #ifndef AMR_INCLUDED_ALLOCATOR_UTILS
 #define AMR_INCLUDED_ALLOCATOR_UTILS
 
-#include <cassert>
+#include "utility/contracts.hpp"
 #include <concepts>
-#include <type_traits>
 
 #ifndef NDEBUG
 #    ifndef ALLOCATOR_DEBUG_INITIALIZE
@@ -34,7 +33,7 @@ static auto fill_buffer(
     std::byte const          value
 )
 {
-    assert(size > 0);
+    CONTRACTS_CHECK(size > 0);
     [[assume(size > 0)]];
     std::fill_n(buffer, size, value);
 }

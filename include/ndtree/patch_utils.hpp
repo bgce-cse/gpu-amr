@@ -41,12 +41,12 @@ constexpr auto is_halo_cell(typename Layout::index_t linear_index) noexcept -> b
     static constexpr auto const& sizes      = layout_t::sizes();
     static constexpr size_type   halo_width = patch_layout_t::halo_width();
 
-    utility::contracts::assert_index(linear_index, layout_t::flat_size());
+    utility::contracts::check_index(linear_index, layout_t::flat_size());
 
     for (auto j = decltype(rank){}; j != rank; ++j)
     {
         const auto relative_idx = static_cast<size_type>(linear_index / strides[j]);
-        assert(relative_idx < sizes[j]);
+        CONTRACTS_CHECK(relative_idx < sizes[j]);
         if (relative_idx < halo_width || relative_idx >= sizes[j] - halo_width)
         {
             return true;
@@ -105,7 +105,7 @@ consteval auto fragmentation_patch_maps() noexcept
                 std::plus{},
                 [](auto const i, auto const s)
                 {
-                    assert(i >= halo_width);
+                    CONTRACTS_CHECK(i >= halo_width);
                     return ((i - halo_width) / fanout) * s;
                 }
             );
@@ -118,7 +118,7 @@ consteval auto fragmentation_patch_maps() noexcept
                 index_t ret{};
                 for (index_t i = 0; i != layout_t::rank(); ++i)
                 {
-                    assert(data_shape[i] % fanout == 0);
+                    CONTRACTS_CHECK(data_shape[i] % fanout == 0);
                     ret += (out_patch_idx[i] * (data_shape[i] / fanout) + halo_width) *
                            strides[i];
                 }
@@ -151,9 +151,7 @@ constexpr auto halo_apply_section_impl(
     using patch_layout_t        = typename tree_t::patch_layout_t;
     auto& p_i = std::forward<decltype(tree)>(tree).template get_patch<T>(idx);
 
-    DEFAULT_SOURCE_LOG_TRACE(
-        "{} halo exchange in direction {}", n_idx.repr(), D.repr()
-    );
+    DEFAULT_SOURCE_LOG_TRACE("{} halo exchange in direction {}", n_idx.repr(), D.repr());
     std::visit(
         utils::overloads{
             // None impl
@@ -436,7 +434,7 @@ struct halo_exchange_impl_t
             std::array<index_t, s_dimension> from_idxs{};
             for (auto i = index_t{}; i != s_dimension; ++i)
             {
-                assert(
+                CONTRACTS_CHECK(
                     i == dim
                         ? (idxs[i] < s_1d_fanout || idxs[i] >= s_1d_fanout + s_sizes[i])
                         : (idxs[i] >= s_1d_fanout && idxs[i] < s_1d_fanout + s_sizes[i])
@@ -450,13 +448,13 @@ struct halo_exchange_impl_t
                     i == dim ? (direction.is_positive() ? s_sizes[i] + s_halo_width
                                                         : index_t{})
                              : s_halo_width;
-                utility::contracts::assert_index(
+                utility::contracts::check_index(
                     idxs[i] - idx_offset, i == dim ? s_halo_width : s_sizes[i]
                 );
-                utility::contracts::assert_index(contact_quadrant[i], s_1d_fanout);
+                utility::contracts::check_index(contact_quadrant[i], s_1d_fanout);
                 from_idxs[i] = s_halo_width + (contact_quadrant[i] * cells_per_block) +
                                block_offset + (idxs[i] - idx_offset) / s_1d_fanout;
-                utility::contracts::assert_index(from_idxs[i] - s_halo_width, s_sizes[i]);
+                utility::contracts::check_index(from_idxs[i] - s_halo_width, s_sizes[i]);
             }
 
             self_patch[idxs] = other_patch[from_idxs];

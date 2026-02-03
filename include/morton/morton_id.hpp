@@ -3,10 +3,10 @@
 
 #include <array>
 #include <bitset>
-#include <cassert>
 #include <climits>
 #include <cstdint>
 #include <iostream>
+#include "utility/contracts.hpp"
 #include <libmorton/morton.h>
 #include <utility>
 
@@ -65,10 +65,10 @@ public:
     {
         // Assume offset in {0, 1, 2, 3}
         // Assume id corresponds to zero sibling (bits 6-7 are 0)
-        assert(
+        CONTRACTS_CHECK(
             offset_of(id) == 0 && "This function assumes it is called for zero sibling"
         );
-        assert(offset <= 3 && "Offset must be 0, 1, 2, or 3");
+        CONTRACTS_CHECK(offset <= 3 && "Offset must be 0, 1, 2, or 3");
         auto [coords, level] = decode(id.m_id);
         uint32_t delta_x_y   = 1u << (s_depth - level);
         offset_t x_offset    = offset % 2;
@@ -103,11 +103,11 @@ public:
     static constexpr morton_id parent_of(morton_id morton_code)
     {
         auto [coords, level] = decode(morton_code.id());
-        assert(level > 0 && "Root has no parent");
+        CONTRACTS_CHECK(level > 0 && "Root has no parent");
         uint32_t offset = 1u << (s_depth - level);
         coords[0] &= ~offset;
         coords[1] &= ~offset;
-        assert(isvalid_coord(coords, level - 1) && "invalid parent coordiantes");
+        CONTRACTS_CHECK(isvalid_coord(coords, level - 1) && "invalid parent coordiantes");
 
         return morton_id(encode(coords, level - 1));
     }
@@ -128,7 +128,7 @@ public:
 
     static constexpr mask_t encode(coord_array const& coords, level_t level)
     {
-        assert(
+        CONTRACTS_CHECK(
             isvalid_coord(coords, level) && "invalid coordiantes and level combination"
         );
 
@@ -138,7 +138,7 @@ public:
 
     static constexpr morton_id child_of(morton_id parent_id, offset_t off)
     {
-        assert(
+        CONTRACTS_CHECK(
             std::get<1>(decode(parent_id.id())) < s_depth && "Cell already at max level"
         );
         return offset(parent_id.id() + 1, off);
@@ -162,7 +162,7 @@ public:
             case direction::right: x_coord += offset; break;
             case direction::bottom: y_coord += offset; break;
             case direction::top: y_coord -= offset; break;
-            default: assert(false); break;
+            default: CONTRACTS_CHECK(false); break;
         }
 
         if (!isvalid_coord({ x_coord, y_coord }, level))
@@ -275,10 +275,10 @@ public:
     {
         // Assume offset in {0, 1, ..., 7}
         // Assume id corresponds to zero sibling
-        assert(
+        CONTRACTS_CHECK(
             offset_of(id) == 0 && "This function assumes it is called for zero sibling"
         );
-        assert(offset <= 7 && "Offset must be 0, 1, ..., or 7");
+        CONTRACTS_CHECK(offset <= 7 && "Offset must be 0, 1, ..., or 7");
         auto [coords, level] = decode(id.m_id);
         uint32_t delta_x_y_z = 1u << (s_depth - level);
         offset_t x_offset    = offset & 1;
@@ -316,12 +316,12 @@ public:
     static constexpr morton_id parent_of(morton_id morton_code)
     {
         auto [coords, level] = decode(morton_code.id());
-        assert(level > 0 && "Root has no parent");
+        CONTRACTS_CHECK(level > 0 && "Root has no parent");
         uint32_t offset = 1u << (s_depth - level);
         coords[0] &= ~offset;
         coords[1] &= ~offset;
         coords[2] &= ~offset;
-        assert(isvalid_coord(coords, level - 1) && "invalid parent coordinates");
+        CONTRACTS_CHECK(isvalid_coord(coords, level - 1) && "invalid parent coordinates");
 
         return morton_id(encode(coords, level - 1));
     }
@@ -344,7 +344,7 @@ public:
 
     static constexpr mask_t encode(coord_array const& coords, level_t level)
     {
-        assert(
+        CONTRACTS_CHECK(
             isvalid_coord(coords, level) && "invalid coordinates and level combination"
         );
 
@@ -355,7 +355,7 @@ public:
 
     static constexpr morton_id child_of(morton_id parent_id, offset_t off)
     {
-        assert(
+        CONTRACTS_CHECK(
             std::get<1>(decode(parent_id.id())) < s_depth && "Cell already at max level"
         );
         return offset(parent_id.id() + 1, off);
@@ -382,7 +382,7 @@ public:
             case direction::top: y_coord -= offset; break;
             case direction::front: z_coord -= offset; break;
             case direction::back: z_coord += offset; break;
-            default: assert(false); break;
+            default: CONTRACTS_CHECK(false); break;
         }
 
         if (!isvalid_coord({ x_coord, y_coord, z_coord }, level))

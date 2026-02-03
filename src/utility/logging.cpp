@@ -34,6 +34,16 @@ auto default_logger::init() -> void
         logger->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
         logger->set_level(spdlog::level::info);
         logger->flush_on(spdlog::level::warn);
+        logger->enable_backtrace(32);
+
+        auto terminate_handler = []()
+        {
+            spdlog::critical("std::terminate called");
+            spdlog::dump_backtrace();
+            spdlog::shutdown();
+            std::abort();
+        };
+        std::set_terminate(terminate_handler);
 
         auto async_logger = std::make_shared<spdlog::async_logger>(
             "default_async_source",

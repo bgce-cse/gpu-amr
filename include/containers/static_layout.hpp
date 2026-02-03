@@ -5,7 +5,6 @@
 #include "multi_index.hpp"
 #include "utility/contracts.hpp"
 #include <array>
-#include <cassert>
 #include <numeric>
 #include <utility>
 
@@ -106,7 +105,7 @@ public:
             return ((index_pack * s_strides[Indices]) + ...);
         }(std::make_index_sequence<sizeof...(I)>{}, std::forward<I>(idxs)...);
 
-        utility::contracts::assert_index(linear_index, elements());
+        utility::contracts::check_index(linear_index, elements());
         return linear_idx;
     }
 
@@ -114,13 +113,13 @@ public:
     static constexpr auto
         linear_index(std::ranges::contiguous_range auto const& idxs) noexcept -> index_t
     {
-        // assert(std::ranges::size(idxs) == rank());
+        // CONTRACTS_CHECK(std::ranges::size(idxs) == rank());
         // TODO: Enfore at compile time
         // [[assume(std::ranges::size(idxs) == rank())]];
         auto linear_idx = std::transform_reduce(
             std::cbegin(idxs), std::cend(idxs), std::cbegin(s_strides), index_t{}
         );
-        utility::contracts::assert_index(linear_idx, elements());
+        utility::contracts::check_index(linear_idx, elements());
         return linear_idx;
     }
 
@@ -146,13 +145,13 @@ private:
     {
         for (auto d = rank_t{}; d != s_rank; ++d)
         {
-            utility::contracts::assert_index(idxs[d], s_sizes[d]);
+            utility::contracts::check_index(idxs[d], s_sizes[d]);
         }
     }
 
     static constexpr auto assert_in_bounds(index_t idx) noexcept -> void
     {
-        utility::contracts::assert_index(idx, elements());
+        utility::contracts::check_index(idx, elements());
     }
 #endif
 };
