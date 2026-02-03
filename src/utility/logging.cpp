@@ -20,7 +20,7 @@ auto default_logger::init() -> void
         auto general_sink =
             std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/general.log", true);
         auto rotating_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-            "logs/backtrace.log", 1024 * 1024 * 10, 3
+            "logs/backtrace.log", 1024 * 1024 * 10, 1
         );
         auto errors_sink =
             std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/errors.log", true);
