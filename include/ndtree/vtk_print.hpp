@@ -15,6 +15,9 @@ namespace amr::ndt::print
 template <typename Physics_System>
 struct vtk_print
 {
+    static constexpr bool host_is_little_endian =
+        std::endian::native == std::endian::little;
+
 public:
     using physics_system_t = Physics_System;
 
@@ -31,7 +34,7 @@ public:
     auto print(auto const& tree, std::string filename_extension) const -> void
     {
         std::string full_filename = "vtk_output/" + m_base_filename + filename_extension;
-        std::ofstream file(full_filename);
+        std::ofstream file(full_filename, std::ios::binary);
         if (!file.is_open())
         {
             DEFAULT_SOURCE_LOG_ERROR("Could not open vtk output directory");
@@ -46,7 +49,7 @@ private:
     {
         file << "# vtk DataFile Version 3.0\n";
         file << "AMR Tree Structure\n";
-        file << "ASCII\n";
+        file << "BINARY\n";
         file << "DATASET UNSTRUCTURED_GRID\n";
     }
 
@@ -58,6 +61,7 @@ private:
         using data_layout_t  = typename patch_layout_t::data_layout_t;
         using value_type =
             std::tuple_element<0, typename tree_t::deconstructed_raw_map_types_t>;
+        using arithmetic_t  = typename value_type::type::type;
         using lc_interior_t = patch_layout_t::interior_iteration_t;
 
         constexpr auto dim        = std::remove_cvref_t<decltype(tree)>::rank();
@@ -87,7 +91,7 @@ private:
         };
 
         file << "POINTS " << cell_count * box_points << ' '
-             << type_repr.template operator()<typename value_type::type::type>() << '\n';
+             << type_repr.template operator()<arithmetic_t>() << '\n';
 
         if constexpr (dim == 2)
         {
@@ -107,13 +111,21 @@ private:
                             patch_origin[1] +
                             static_cast<double>(idxs[0] - halo_width) * cell_size[1];
 
-                        file << cell_x << ' ' << cell_y << ' ' << 0.0 << '\n';
-                        file << cell_x + cell_size[0] << ' ' << cell_y << ' ' << 0
-                             << '\n';
-                        file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1]
-                             << ' ' << 0.0 << '\n';
-                        file << cell_x << ' ' << cell_y + cell_size[1] << ' ' << 0
-                             << '\n';
+                        write_binary<arithmetic_t>(file, cell_x);
+                        write_binary<arithmetic_t>(file, cell_y);
+                        write_binary<arithmetic_t>(file, 0.0f);
+
+                        write_binary<arithmetic_t>(file, cell_x + cell_size[0]);
+                        write_binary<arithmetic_t>(file, cell_y);
+                        write_binary<arithmetic_t>(file, 0.0f);
+
+                        write_binary<arithmetic_t>(file, cell_x + cell_size[0]);
+                        write_binary<arithmetic_t>(file, cell_y + cell_size[1]);
+                        write_binary<arithmetic_t>(file, 0.0f);
+
+                        write_binary<arithmetic_t>(file, cell_x);
+                        write_binary<arithmetic_t>(file, cell_y + cell_size[1]);
+                        write_binary<arithmetic_t>(file, 0.0f);
                     }
                 );
             }
@@ -140,21 +152,37 @@ private:
                             static_cast<double>(idxs[0] - halo_width) * cell_size[2];
 
                         // 8 corners of a hexahedron (VTK_VOXEL ordering)
-                        file << cell_x << ' ' << cell_y << ' ' << cell_z << '\n';
-                        file << cell_x + cell_size[0] << ' ' << cell_y << ' ' << cell_z
-                             << '\n';
-                        file << cell_x << ' ' << cell_y + cell_size[1] << ' ' << cell_z
-                             << '\n';
-                        file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1]
-                             << ' ' << cell_z << '\n';
-                        file << cell_x << ' ' << cell_y << ' ' << cell_z + cell_size[2]
-                             << '\n';
-                        file << cell_x + cell_size[0] << ' ' << cell_y << ' '
-                             << cell_z + cell_size[2] << '\n';
-                        file << cell_x << ' ' << cell_y + cell_size[1] << ' '
-                             << cell_z + cell_size[2] << '\n';
-                        file << cell_x + cell_size[0] << ' ' << cell_y + cell_size[1]
-                             << ' ' << cell_z + cell_size[2] << '\n';
+                        write_binary<arithmetic_t>(file, cell_x);
+                        write_binary<arithmetic_t>(file, cell_y);
+                        write_binary<arithmetic_t>(file, cell_z);
+
+                        write_binary<arithmetic_t>(file, cell_x + cell_size[0]);
+                        write_binary<arithmetic_t>(file, cell_y);
+                        write_binary<arithmetic_t>(file, cell_z);
+
+                        write_binary<arithmetic_t>(file, cell_x);
+                        write_binary<arithmetic_t>(file, cell_y + cell_size[1]);
+                        write_binary<arithmetic_t>(file, cell_z);
+
+                        write_binary<arithmetic_t>(file, cell_x + cell_size[0]);
+                        write_binary<arithmetic_t>(file, cell_y + cell_size[1]);
+                        write_binary<arithmetic_t>(file, cell_z);
+
+                        write_binary<arithmetic_t>(file, cell_x);
+                        write_binary<arithmetic_t>(file, cell_y);
+                        write_binary<arithmetic_t>(file, cell_z + cell_size[2]);
+
+                        write_binary<arithmetic_t>(file, cell_x + cell_size[0]);
+                        write_binary<arithmetic_t>(file, cell_y);
+                        write_binary<arithmetic_t>(file, cell_z + cell_size[2]);
+
+                        write_binary<arithmetic_t>(file, cell_x);
+                        write_binary<arithmetic_t>(file, cell_y + cell_size[1]);
+                        write_binary<arithmetic_t>(file, cell_z + cell_size[2]);
+
+                        write_binary<arithmetic_t>(file, cell_x + cell_size[0]);
+                        write_binary<arithmetic_t>(file, cell_y + cell_size[1]);
+                        write_binary<arithmetic_t>(file, cell_z + cell_size[2]);
                     }
                 );
             }
@@ -163,25 +191,17 @@ private:
         file << "CELLS " << cell_count << ' ' << cell_count * (box_points + 1) << '\n';
         for (std::size_t i = 0; i != cell_count; ++i)
         {
-            file << box_points;
-            for (auto j = index_t{}; j != box_points; ++j)
+            write_binary<int>(file, box_points);
+            for (int j = 0; j != box_points; ++j)
             {
-                file << ' ' << i * box_points + j;
+                write_binary<int>(file, i * box_points + j);
             }
-            file << '\n';
         }
 
         file << "CELL_TYPES " << cell_count << '\n';
         for (std::size_t i = 0; i != cell_count; ++i)
         {
-            if constexpr (dim == 2)
-            {
-                file << "9\n"; // VTK_QUAD
-            }
-            else // dim == 3
-            {
-                file << "11\n"; // VTK_VOXEL
-            }
+            write_binary<int>(file, dim == 2 ? 9 : 11);
         }
 
         file << "CELL_DATA " << cell_count << '\n';
@@ -189,7 +209,7 @@ private:
         file << "LOOKUP_TABLE default\n";
         for (std::size_t i = 0; i != cell_count; ++i)
         {
-            file << i << '\n';
+            write_binary<int>(file, i);
         }
 
         file << "SCALARS is_halo int 1\n";
@@ -200,7 +220,8 @@ private:
                  j != data_layout_t::elements();
                  ++j)
             {
-                file << utils::patches::is_halo_cell<patch_layout_t>(j) << '\n';
+                const auto b = utils::patches::is_halo_cell<patch_layout_t>(j);
+                write_binary<int>(file, b);
             }
         }
 
@@ -222,13 +243,34 @@ private:
                       amr::containers::manipulators::for_each<lc_interior_t>(
                           patch.data(),
                           [&file](auto const& p, auto const& idxs)
-                          { file << p[idxs] << '\n'; }
+                          { write_binary<arithmetic_t>(file, p[idxs]); }
                       );
                   }
               }()),
              ...);
         }(std::make_index_sequence<
             std::tuple_size_v<typename tree_t::deconstructed_raw_map_types_t>>{});
+    }
+
+    template <typename T>
+    static auto write_binary(std::ofstream& f, auto const& value) -> void
+    {
+        using type_t          = T;
+        constexpr auto type_n = sizeof(T);
+        static_assert(std::is_trivially_copyable_v<type_t>);
+        auto const tvalue = static_cast<T>(value);
+
+        if constexpr (std::endian::native == std::endian::little)
+        {
+            std::array<std::byte, type_n> bytes;
+            std::memcpy(bytes.data(), &tvalue, type_n);
+            std::reverse(bytes.begin(), bytes.end());
+            f.write(reinterpret_cast<char*>(bytes.data()), type_n);
+        }
+        else
+        {
+            f.write(reinterpret_cast<char*>(&tvalue), type_n);
+        }
     }
 
     std::string m_base_filename;
