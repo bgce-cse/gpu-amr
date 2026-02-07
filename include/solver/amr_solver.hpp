@@ -21,14 +21,14 @@ template <typename TreeT, typename GeometryT, typename EquationT, int DIM>
 class amr_solver
 {
 private:
-    TreeT  m_tree;
-    double gamma; // Specific heat ratio
-    double cfl;   // CFL number
+    TreeT        m_tree;
+    double const gamma; // Specific heat ratio
+    double const cfl;   // CFL number
 
 public:
-    using PatchLayoutT        = typename TreeT::patch_layout_t;
-    using PatchIndexT         = typename TreeT::patch_index_t;
-    static constexpr int NVAR = EquationT::NVAR;
+    using PatchLayoutT         = typename TreeT::patch_layout_t;
+    using PatchIndexT          = typename TreeT::patch_index_t;
+    static constexpr auto NVAR = EquationT::NVAR;
 
     amr_solver(size_t capacity, double gamma_ = 1.4, double cfl_ = 0.1)
         : m_tree(capacity)
@@ -36,7 +36,7 @@ public:
         , cfl(cfl_)
     {
         // Dummy dimensions were removed from new EulerPhysics.hpp
-        static_assert(DIM == 2 || DIM == 3, "Error: Wrong dimensions");
+        static_assert(DIM == 2 || DIM == 3, "Error: Wrong dimension");
     }
 
     TreeT& get_tree()
@@ -84,12 +84,12 @@ public:
         write_state(std::make_index_sequence<NVAR>{});
     }
 
-    double get_gamma() const
+    double get_gamma() const noexcept
     {
         return gamma;
     }
 
-    double get_cfl() const
+    double get_cfl() const noexcept
     {
         return cfl;
     }
@@ -186,6 +186,8 @@ public:
 
     double compute_time_step() const
     {
+        // We could have a tighter upper bound here, maybe there is some other
+        // theoretical limit we can use instead
         std::atomic<double> dt{ std::numeric_limits<double>::max() };
 
         auto const r = std::views::iota(decltype(m_tree.size()){}, m_tree.size());
@@ -199,7 +201,7 @@ public:
                 auto   patch_id = m_tree.get_node_index_at(p_idx);
                 auto   c_size   = GeometryT::cell_sizes(patch_id);
 
-                for (std::size_t l_idx = 0; l_idx < PatchLayoutT::flat_size(); ++l_idx)
+                for (std::size_t l_idx = 0; l_idx != PatchLayoutT::flat_size(); ++l_idx)
                 {
                     if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(l_idx))
                         continue;
@@ -207,9 +209,15 @@ public:
                     auto U = get_full_state(p_idx, l_idx);
 
                     // Ask Equation for max wave speed in each direction
+                    // TODO: The level of abstraction here is incorrect in my
+                    // opiniton. Iterating over the dimensions and calling it
+                    // direction is heavily missleading. neighbor::direction is
+                    // a possible alternative.
                     for (int d = 0; d < DIM; ++d)
                     {
-                        double speed = EquationT::getMaxSpeed(U, d, gamma);
+                        const double speed = EquationT::getMaxSpeed(U, d, gamma);
+                        // TODO: This magic number should at least have a name
+                        // TODO: Is this value special in any way?
                         if (speed > 1e-12)
                         {
                             local_dt = std::min(local_dt, c_size[d] / speed);
@@ -217,12 +225,9 @@ public:
                     }
                 }
                 double current = dt.load();
-                while (local_dt < current)
+                while (local_dt < current && !dt.compare_exchange_weak(current, local_dt))
                 {
-                    if (dt.compare_exchange_weak(current, local_dt))
-                    {
-                        break;
-                    }
+                    break;
                 }
             }
         );

@@ -93,6 +93,8 @@ set(PROJECT_WARNINGS
 	-Wduplicated-branches
 	-Wduplicated-cond
 	-Werror
+    -Wpadded
+    -Wredundant-decls
 	-Wextra
 	-Wfloat-equal
 	-Wformat
