@@ -5,6 +5,7 @@
 #include "ndconcepts.hpp"
 #include "utility/constexpr_functions.hpp"
 #include "utility/contracts.hpp"
+#include "utility/error_handling.hpp"
 #include <cstddef>
 #include <type_traits>
 #include <variant>
@@ -478,6 +479,10 @@ public:
                     {
                         return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                     }
+                    else
+                    {
+                        utility::error_handling::assert_unreachable();
+                    }
                 };
 
                 child_neighbor_array[d.index()] =
@@ -549,6 +554,10 @@ public:
                         "Child has finer neighbor during coarsening - unexpected!"
                     );
                     return neighbor_variant_t{ typename neighbor_variant_t::none{} };
+                }
+                else
+                {
+                    utility::error_handling::assert_unreachable();
                 }
             };
 

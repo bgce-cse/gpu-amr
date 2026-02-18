@@ -33,13 +33,13 @@ template <concepts::PatchLayout Layout>
 [[nodiscard]]
 constexpr auto is_halo_cell(typename Layout::index_t linear_index) noexcept -> bool
 {
-    using patch_layout_t                    = Layout;
-    using layout_t                          = typename patch_layout_t::padded_layout_t;
-    using size_type                         = layout_t::size_type;
-    static constexpr auto        rank       = layout_t::rank();
-    static constexpr auto const& strides    = layout_t::strides();
-    static constexpr auto const& sizes      = layout_t::sizes();
-    static constexpr size_type   halo_width = patch_layout_t::halo_width();
+    using patch_layout_t             = Layout;
+    using layout_t                   = typename patch_layout_t::padded_layout_t;
+    using size_type                  = layout_t::size_type;
+    constexpr auto        rank       = layout_t::rank();
+    constexpr auto const& strides    = layout_t::strides();
+    constexpr auto const& sizes      = layout_t::sizes();
+    constexpr size_type   halo_width = patch_layout_t::halo_width();
 
     utility::contracts::check_index(linear_index, layout_t::flat_size());
 
@@ -66,8 +66,8 @@ consteval auto fragmentation_patch_maps() noexcept
         Fanout,
         Patch_Layout::rank()>
 {
-    using patch_layout_t         = Patch_Layout;
-    static constexpr auto fanout = static_cast<typename patch_layout_t::index_t>(Fanout);
+    using patch_layout_t  = Patch_Layout;
+    constexpr auto fanout = static_cast<typename patch_layout_t::index_t>(Fanout);
 
     using layout_t = typename patch_layout_t::padded_layout_t;
     using index_t  = typename patch_layout_t::index_t;
@@ -76,20 +76,20 @@ consteval auto fragmentation_patch_maps() noexcept
         containers::utils::types::tensor::hypercube_t<tensor_t, fanout, tensor_t::rank()>;
     patch_shape_t to{};
 
-    static constexpr auto& strides = layout_t::strides();
-    // static constexpr auto& patch_shape = layout_t::sizes();
-    static constexpr auto& data_shape = patch_layout_t::data_layout_t::sizes();
-    auto                   idx        = typename tensor_t::multi_index_t{};
+    constexpr index_t halo_width = patch_layout_t::halo_width();
+    constexpr auto&   strides    = layout_t::strides();
+    constexpr auto&   data_shape = patch_layout_t::data_layout_t::sizes();
+
+    auto idx = typename tensor_t::multi_index_t{};
     do
     {
-        static constexpr index_t halo_width = patch_layout_t::halo_width();
-        const auto               linear_idx = layout_t::linear_index(idx);
-        const auto               is_halo    = is_halo_cell<patch_layout_t>(linear_idx);
-        const auto               offset        = is_halo 
+        const auto linear_idx = layout_t::linear_index(idx);
+        const auto is_halo    = is_halo_cell<patch_layout_t>(linear_idx);
+        const auto        offset     = is_halo
             ? [&idx]()
             {
                 index_t ret{};
-                for(index_t i = 0; i != layout_t::rank(); ++i)
+                for(auto i = index_t{}; i != layout_t::rank(); ++i)
                 {
                     const auto inc = (idx[i] - halo_width + data_shape[i])
                                    % data_shape[i] + halo_width;

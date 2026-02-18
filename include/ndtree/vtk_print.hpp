@@ -62,7 +62,7 @@ private:
         using value_type =
             std::tuple_element<0, typename tree_t::deconstructed_raw_map_types_t>;
         using arithmetic_t  = typename value_type::type::type;
-        using lc_interior_t = patch_layout_t::interior_iteration_t;
+        using lc_interior_t = patch_layout_t::interior_iteration_control_t;
 
         constexpr auto dim        = std::remove_cvref_t<decltype(tree)>::rank();
         constexpr auto box_points = static_cast<index_t>(
@@ -73,7 +73,7 @@ private:
         const auto     tree_size  = tree.size();
         const auto     cell_count = tree_size * data_layout_t::elements();
 
-        static constexpr auto type_repr = []<utility::concepts::Arithmetic T>
+        constexpr auto type_repr = []<utility::concepts::Arithmetic T>
         {
             if constexpr (std::is_same_v<T, float>)
             {
@@ -225,10 +225,10 @@ private:
             }
         }
 
-        [&tree, &file, tree_size, cell_count]<std::size_t... I>(std::index_sequence<I...>)
+        [&tree, &file, tree_size, cell_count, &type_repr]<std::size_t... I>(std::index_sequence<I...>)
         {
             (((void)I,
-              [&tree, &file, tree_size, cell_count]()
+              [&tree, &file, tree_size, cell_count, &type_repr]()
               {
                   using element_type = typename std::tuple_element<
                       I,

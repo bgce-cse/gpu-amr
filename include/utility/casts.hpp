@@ -5,6 +5,7 @@
 #include "contracts.hpp"
 #include <cstdint>
 #include <type_traits>
+#include <cmath>
 
 namespace utility::casts
 {
@@ -41,14 +42,14 @@ constexpr auto safe_cast(Src const& v) noexcept -> Dst
     else if constexpr (is_float_to_float)
     {
         const auto casted      = static_cast<Dst>(v);
-        const auto casted_back = static_cast<Src>(casted);
+        [[maybe_unused]] const auto casted_back = static_cast<Src>(casted);
         CONTRACTS_CHECK(!std::isnan(casted_back) && !std::isinf(casted_back));
         return casted;
     }
     else if constexpr (is_number_to_number)
     {
         const auto casted      = static_cast<Dst>(v);
-        const auto casted_back = static_cast<Src>(casted);
+        [[maybe_unused]] const auto casted_back = static_cast<Src>(casted);
         CONTRACTS_CHECK(v == casted_back);
         return casted;
     }

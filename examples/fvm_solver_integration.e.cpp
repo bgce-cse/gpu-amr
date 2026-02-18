@@ -43,7 +43,7 @@ int main()
     amr::ndt::print::vtk_print<physics_t> printer("euler_print");
 
     double            tmax            = 40;  // Example tmax, adjust as needed
-    double            print_frequency = 5.0; // Print every 10 seconds
+    double            print_frequency = 1.0; // Print every 10 seconds
     const std::string output_prefix   = "solver_integration_test_refine";
 
     int inital_refinement = 3;
@@ -77,10 +77,7 @@ int main()
         for (std::size_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
              ++linear_idx)
         {
-            if (rho_patch[linear_idx] > max_rho_value)
-            {
-                max_rho_value = rho_patch[linear_idx];
-            }
+            max_rho_value = std::max(rho_patch[linear_idx], max_rho_value);
         }
 
         // Hard check for refinement limit
@@ -111,8 +108,8 @@ int main()
     auto acousticPulseIC =
         [&](auto const& coords) -> amr::containers::static_vector<double, 4>
     {
-        double x = coords[0];
-        double y = coords[1];
+        const double x = coords[0];
+        const double y = coords[1];
 
         amr::containers::static_vector<double, 4> prim;
 

@@ -197,11 +197,11 @@ template <typename T, concepts::StaticLayout Layout>
 auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
     -> std::ostream&
 {
-    using tensor_t                 = std::remove_cvref_t<decltype(t)>;
-    static constexpr auto rank     = tensor_t::rank();
-    static constexpr auto newlines = []
+    using tensor_t          = std::remove_cvref_t<decltype(t)>;
+    constexpr auto rank     = tensor_t::rank();
+    static const auto newlines = []
     {
-        static constexpr auto pool = [] constexpr -> auto
+        static const auto pool = [] constexpr -> auto
         {
             std::array<char, rank> arr{};
             for (auto& e : arr)
@@ -217,9 +217,9 @@ auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
         }
         return arr;
     }();
-    static constexpr auto prefixes = []
+    static const auto prefixes = []
     {
-        static constexpr auto pool = [] constexpr -> auto
+        static const auto pool = [] constexpr -> auto
         {
             std::array<char, rank * 2> arr{};
             for (std::size_t d = 0; d != rank; ++d)
@@ -236,9 +236,9 @@ auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
         }
         return arr;
     }();
-    static constexpr auto postfix = []
+    static const auto postfix = []
     {
-        static constexpr auto pool = [] constexpr -> auto
+        static const auto pool = [] constexpr -> auto
         {
             std::array<char, rank> arr{};
             for (auto& e : arr)

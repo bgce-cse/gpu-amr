@@ -1,6 +1,7 @@
 #ifndef AMR_INCLUDED_NDTREE
 #define AMR_INCLUDED_NDTREE
 
+#include "config/definitions.hpp"
 #include "ndconcepts.hpp"
 #include "ndtype_traits.hpp"
 #include "ndutils.hpp"
@@ -968,7 +969,7 @@ public:
         DEFAULT_SOURCE_LOG_TRACE("Performing halo exchange");
         auto const r = std::views::iota(size_type{}, m_size);
         std::for_each(
-            std::execution::par_unseq,
+            AMR_EXECUTION_POLICY,
             std::cbegin(r),
             std::cend(r),
             [this](auto const i)

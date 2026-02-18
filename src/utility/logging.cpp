@@ -60,9 +60,10 @@ auto default_logger::init() -> void
 
         // Initial messages
         async_logger->info("Build:");
-        async_logger->info("  type      : {}", AMR_BUILD_TYPE);
-        async_logger->info("  compiler  : {} {}", AMR_COMPILER_ID, AMR_COMPILER_VERSION);
-        async_logger->info("  git hash  : {}", AMR_GIT_HASH);
+        async_logger->info("  type      : {}", LOGGING_BUILD_TYPE);
+        async_logger->info("  compiler  : {} {}", LOGGING_COMPILER_ID, LOGGING_COMPILER_VERSION);
+        async_logger->info("  execution policy  : {}", LOGGING_EXECUTION);
+        async_logger->info("  git hash  : {}", LOGGING_GIT_HASH);
         async_logger->info("Runtime configuration:");
         async_logger->info(
             "  log level : {}", spdlog::level::to_string_view(logger->level())

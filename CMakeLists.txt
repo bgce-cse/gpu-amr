@@ -18,6 +18,13 @@ endif()
 option(ENABLE_SANITIZERS "Enable runtime sanitizers (Debug only)" ON)
 
 # ----------------------------
+# Execution policy
+# ----------------------------
+set(EXECUTION "SEQ" CACHE STRING "Execution policy")
+
+set_property(CACHE EXECUTION PROPERTY STRINGS SEQ PAR)
+
+# ----------------------------
 # Output dir
 # ----------------------------
 set(OUTPUT_DIR_EXAMPLES   ${CMAKE_BINARY_DIR}/bin/examples/$<CONFIG>)
@@ -51,10 +58,11 @@ target_link_libraries(utility_logging
 
 target_compile_definitions(utility_logging PUBLIC
     # SPDLOG_USE_STD_FORMAT
-    AMR_BUILD_TYPE="$<CONFIG>"
-    AMR_GIT_HASH="${GIT_HASH}"
-    AMR_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
-    AMR_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
+    LOGGING_BUILD_TYPE="$<CONFIG>"
+    LOGGING_EXECUTION="${EXECUTION}"
+    LOGGING_GIT_HASH="${GIT_HASH}"
+    LOGGING_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
+    LOGGING_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
 )
 
 set(LOG_LEVEL "INFO" CACHE STRING "Logging level")
@@ -83,34 +91,34 @@ target_link_libraries(gpu_amr
 # Compiler flags
 # ----------------------------
 set(PROJECT_WARNINGS
-	-fbounds-check
-	-fvisibility=hidden
-	-pedantic
-	-Wall
-	-Wconversion
-	-Wdangling-else
-	-Wdouble-promotion
-	-Wduplicated-branches
-	-Wduplicated-cond
-	-Werror
+    -fbounds-check
+    -fvisibility=hidden
+    -pedantic
+    -Wall
+    -Wconversion
+    -Wdangling-else
+    -Wdouble-promotion
+    -Wduplicated-branches
+    -Wduplicated-cond
+    -Werror
     -Wpadded
     -Wredundant-decls
-	-Wextra
-	-Wfloat-equal
-	-Wformat
-	-Winvalid-pch
-	-Wlogical-op
-	-Wmisleading-indentation
-	-Wnull-dereference
-	-Wodr
-	-Wpointer-arith
-	-Wrestrict
-	-Wreturn-local-addr
-	-Wshadow
-	-Wswitch-default
-	-Wswitch-enum
-	-Wuninitialized
-	-Wvla
+    -Wextra
+    -Wfloat-equal
+    -Wformat
+    -Winvalid-pch
+    -Wlogical-op
+    -Wmisleading-indentation
+    -Wnull-dereference
+    -Wodr
+    -Wpointer-arith
+    -Wrestrict
+    -Wreturn-local-addr
+    -Wshadow
+    -Wswitch-default
+    -Wswitch-enum
+    -Wuninitialized
+    -Wvla
 )
 
 set(PROJECT_DIAGNOSTICS
@@ -119,7 +127,7 @@ set(PROJECT_DIAGNOSTICS
 	-fdiagnostics-path-format=inline-events
 	-fdiagnostics-show-caret
 	-fdiagnostics-show-template-tree
-    -ftime-report
+	-ftime-report
 )
 
 set(PROJECT_DEBUG_INFO
@@ -187,14 +195,17 @@ add_library(amr_tests INTERFACE)
 
 target_compile_definitions(amr_examples INTERFACE
     AMR_LOG_LEVEL=${LOG_LEVEL}
+    AMR_EXECUTION=${EXECUTION}
 )
 
 target_compile_definitions(amr_benchmarks INTERFACE
     AMR_LOG_LEVEL=OFF
+    AMR_EXECUTION=${EXECUTION}
 )
 
 target_compile_definitions(amr_tests INTERFACE
     AMR_LOG_LEVEL=OFF
+    AMR_EXECUTION=${EXECUTION}
 )
 
 foreach(tgt amr_examples amr_benchmarks amr_tests)
@@ -228,4 +239,5 @@ add_subdirectory(benchmark)
 # ----------------------------
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Sanitizers enabled (Debug only): ${ENABLE_SANITIZERS}")
-message(STATUS "Examples log level: ${LOG_LEVEL}")
+message(STATUS "Log level: ${LOG_LEVEL}")
+message(STATUS "Execution policy: ${EXECUTION}" )
