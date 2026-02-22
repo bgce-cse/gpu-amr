@@ -129,7 +129,7 @@ struct DGSolver
 
             apply_amr(timestep, next_amr_step);
 
-            if (true) // time >= next_plot_time
+            if (time >= next_plot_time) // time >= next_plot_time
             {
                 write_output(printer, timestep, time);
                 next_plot_time += params.plot_interval;
@@ -140,49 +140,93 @@ struct DGSolver
 private:
     // -----------------------------------------------------------------
     //  Time-step kernel: advance every patch by dt
+    //
+    //  Uses the stage-wise integrator interface so that a global halo
+    //  exchange is performed between every RK stage.  This ensures that
+    //  intermediate-stage RHS evaluations see consistent neighbor data
+    //  instead of stale halos from the previous time level.
     // -----------------------------------------------------------------
     void advance_patches(double dt, double& dt_min)
     {
-        auto& t = tree();
-        t.halo_exchange_update();
+        auto&     t        = tree();
+        const int n_stages = integrator.num_stages();
 
+        // --- Per-patch integrator instances (one per leaf) ---
+        // Each integrator stores u^n and intermediate stage data.
+        // We keep a vector so that all patches can share the same
+        // global stage loop.
+        std::vector<integrator_t> patch_integrators(t.size());
+
+        // --- Begin step: save u^n for every patch ---
+        t.halo_exchange_update();
         for (std::size_t idx = 0; idx < t.size(); ++idx)
         {
-            auto& dof_patch  = t.template get_patch<S1>(idx);
-            auto& flux_patch = t.template get_patch<S2>(idx);
+            auto& dof_patch = t.template get_patch<S1>(idx);
+            patch_integrators[idx].begin_step(dof_patch.data());
+        }
 
-            const double edge    = global_t::cell_edge(t.get_node_index_at(idx));
-            const double volume  = global_t::cell_volume(edge);
-            const double surface = global_t::cell_area(edge);
-            const double inv_jac = 1.0 / edge;
+        // --- Stage loop ---
+        for (int s = 0; s < n_stages; ++s)
+        {
+            // Halo exchange so every patch sees the consistent state
+            // (u^n for stage 0, the intermediate u* for later stages).
+            t.halo_exchange_update();
 
-            double max_eigenval = -std::numeric_limits<double>::infinity();
-
-            auto residual = [&](patch_container_t&       update,
-                                const patch_container_t& current,
-                                double /*t*/)
+            for (std::size_t idx = 0; idx < t.size(); ++idx)
             {
-                rhs_t::evaluate(
-                    current,
-                    flux_patch.data(),
-                    update,
-                    dt,
-                    volume,
-                    surface,
-                    max_eigenval,
-                    inv_jac
+                auto& dof_patch  = t.template get_patch<S1>(idx);
+                auto& flux_patch = t.template get_patch<S2>(idx);
+
+                const double edge    = global_t::cell_edge(t.get_node_index_at(idx));
+                const double volume  = global_t::cell_volume(edge);
+                const double surface = global_t::cell_area(edge);
+                const double inv_jac = 1.0 / edge;
+
+                double max_eigenval = -std::numeric_limits<double>::infinity();
+
+                auto residual = [&](patch_container_t&       update,
+                                    const patch_container_t& current,
+                                    double /*t*/)
+                {
+                    rhs_t::evaluate(
+                        current,
+                        flux_patch.data(),
+                        update,
+                        dt,
+                        volume,
+                        surface,
+                        max_eigenval,
+                        inv_jac
+                    );
+                };
+
+                // Evaluate this stage's RHS using the halo-consistent tree data
+                patch_integrators[idx].compute_stage(
+                    s, residual, dof_patch.data(), 0.0, dt
                 );
-            };
 
-            integrator.step(residual, dof_patch.data(), 0.0, dt);
+                // Write the intermediate result back into the tree so the
+                // next halo exchange reflects it.
+                dof_patch.data() =
+                    patch_integrators[idx].stage_result(s, dof_patch.data());
 
-            if (max_eigenval > 0.0)
-            {
-                const double scale = 1.0 / (std::pow(Policy::Order, Policy::Dim) + 1.0);
-                const double new_dt =
-                    scale * amr::config::CourantNumber * edge / max_eigenval;
-                dt_min = std::min(dt_min, new_dt);
+                // CFL bookkeeping (only on the last stage to avoid redundant work)
+                if (s == n_stages - 1 && max_eigenval > 0.0)
+                {
+                    const double scale =
+                        1.0 / (std::pow(Policy::Order, Policy::Dim) + 1.0);
+                    const double new_dt =
+                        scale * amr::config::CourantNumber * edge / max_eigenval;
+                    dt_min = std::min(dt_min, new_dt);
+                }
             }
+        }
+
+        // --- Finish step: write final u^{n+1} into tree ---
+        for (std::size_t idx = 0; idx < t.size(); ++idx)
+        {
+            auto& dof_patch = t.template get_patch<S1>(idx);
+            patch_integrators[idx].finish_step(dof_patch.data());
         }
     }
 
