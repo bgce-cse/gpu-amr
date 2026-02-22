@@ -14,24 +14,29 @@
 #include "volume.hpp"
 #include <algorithm>
 #include <cmath>
-#include <functional>
 #include <utility>
-#include <variant>
 
 namespace amr::rhs
 {
 
-// Helper function to dispatch to the correct compile-time direction
+namespace tensor_ops = amr::containers::algorithms::tensor;
+namespace patch_util = amr::ndt::utils::patches;
 
 /**
- * @brief RHS Evaluator for DG discretization
+ * @brief RHS evaluator for the DG spatial discretization.
  *
- * Statically caches mass tensors and compile-time constants to avoid
- * repeated allocation and computation across multiple RHS evaluations.
+ * Computes  dU/dt = − (surface terms) + (volume terms)
+ * for every interior cell of a patch.  Dimension-generic.
+ *
+ * @tparam global_t  Fully-assembled GlobalConfig type.
+ * @tparam Policy    Compile-time configuration policy.
  */
 template <typename global_t, typename Policy>
 struct RHSEvaluator
 {
+    // -----------------------------------------------------------------
+    //  Type aliases
+    // -----------------------------------------------------------------
     using eq        = typename global_t::EquationImpl;
     using surface_t = amr::surface::Surface<global_t, Policy>;
     using volume_t  = amr::volume::VolumeEvaluator<global_t, Policy>;
@@ -39,10 +44,17 @@ struct RHSEvaluator
     using patch_layout_t  = typename dg_tree::patch_layout_t;
     using direction_t     = amr::ndt::neighbors::direction<Policy::Dim>;
     using padded_layout_t = typename patch_layout_t::padded_layout_t;
-    using flux_vector_t   = dg_tree::S1::type;
+    using flux_vector_t   = typename dg_tree::S1::type;
     using size_type       = typename flux_vector_t::size_type;
     using size_t          = typename patch_layout_t::size_type;
 
+    // -----------------------------------------------------------------
+    //  Direction dispatch
+    //
+    //  project_to_faces needs a compile-time Direction template arg;
+    //  these helpers map a runtime dimension index to the correct
+    //  instantiation via a fold-expression if-else chain.
+    // -----------------------------------------------------------------
     template <
         std::size_t Dim,
         typename DOFType,
@@ -57,10 +69,6 @@ struct RHSEvaluator
         std::size_t     runtime_dim
     )
     {
-        // Use a compile-time unrolled if-else chain
-        // Note: project_to_faces requires <KernelsType, Direction, Tensor>
-        // We instantiate with void as KernelsType (unused), Direction as Is, Tensor as
-        // DOFType
         std::decay_t<
             decltype(surface_t::template project_to_faces<0, DOFType>(dof, flux, sign))>
             result;
@@ -89,24 +97,26 @@ struct RHSEvaluator
         );
     }
 
+    // -----------------------------------------------------------------
+    //  Max eigenvalue across two neighbouring cells
+    // -----------------------------------------------------------------
     static double
         maxeigenvalue(auto& max_eigenval, auto& dof_cell, auto& dof_neigh, auto& dim)
     {
-        double eigenval_curr  = eq::max_eigenvalue(dof_cell, dim);
-        double eigenval_neigh = eq::max_eigenvalue(dof_neigh, dim);
-
-        double curr_eigenval = std::max(eigenval_curr, eigenval_neigh);
-
+        double curr_eigenval = std::max(
+            eq::max_eigenvalue(dof_cell, dim), eq::max_eigenvalue(dof_neigh, dim)
+        );
         return std::max(max_eigenval, curr_eigenval);
     }
 
-    template <
-        typename DOFTensorType,
-        typename FluxVectorType>
+    // -----------------------------------------------------------------
+    //  Main entry point: evaluate the full RHS for one patch
+    // -----------------------------------------------------------------
+    template <typename DOFTensorType, typename FluxVectorType>
     inline static void evaluate(
-        const DOFTensorType&           dof_patch,    // const: read-only
-        FluxVectorType&                flux_patch,   // written inside
-        DOFTensorType&                 patch_update, // output
+        const DOFTensorType&           dof_patch,
+        FluxVectorType&                flux_patch,
+        DOFTensorType&                 patch_update,
         [[maybe_unused]] double const& dt,
         const double&                  volume,
         const double&                  surface,
@@ -114,13 +124,35 @@ struct RHSEvaluator
         const double&                  inverse_jacobian
     )
     {
+        compute_fluxes_and_volume(
+            dof_patch, flux_patch, patch_update, volume, inverse_jacobian
+        );
+        accumulate_surface_terms(
+            dof_patch, flux_patch, patch_update, surface, max_eigenval
+        );
+        apply_inverse_mass(patch_update, volume);
+    }
+
+private:
+    // -----------------------------------------------------------------
+    //  Step 1: Evaluate physical fluxes and volume integrals
+    // -----------------------------------------------------------------
+    template <typename DOFTensorType, typename FluxVectorType>
+    static void compute_fluxes_and_volume(
+        const DOFTensorType& dof_patch,
+        FluxVectorType&      flux_patch,
+        DOFTensorType&       patch_update,
+        const double&        volume,
+        const double&        inverse_jacobian
+    )
+    {
         for (size_t linear_idx = 0; linear_idx < patch_layout_t::flat_size();
              ++linear_idx)
         {
-            flux_patch[linear_idx] =
-                global_t::EquationImpl::evaluate_flux(dof_patch[linear_idx]);
+            flux_patch[linear_idx] = eq::evaluate_flux(dof_patch[linear_idx]);
+
             if (Policy::Order > 1 &&
-                !amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
+                !patch_util::is_halo_cell<patch_layout_t>(linear_idx))
             {
                 volume_t::evaluate_volume_integral(
                     patch_update[linear_idx],
@@ -130,22 +162,31 @@ struct RHSEvaluator
                 );
             }
         }
+    }
 
+    // -----------------------------------------------------------------
+    //  Step 2: Loop over interior cells × directions, accumulate
+    //          surface flux contributions into patch_update
+    // -----------------------------------------------------------------
+    template <typename DOFTensorType, typename FluxVectorType>
+    static void accumulate_surface_terms(
+        const DOFTensorType&  dof_patch,
+        const FluxVectorType& flux_patch,
+        DOFTensorType&        patch_update,
+        const double&         surface,
+        double&               max_eigenval
+    )
+    {
         for (size_t idx = 0; idx < patch_layout_t::flat_size(); ++idx)
         {
-            if (amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(idx))
-            {
-                continue;
-            }
+            if (patch_util::is_halo_cell<patch_layout_t>(idx)) continue;
 
             for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
             {
-                // Convert current linear index to multi-index using padded_layout_t
                 auto current_coords = padded_layout_t::multi_index(
                     static_cast<typename padded_layout_t::index_t>(idx)
                 );
 
-                // Natural neighbor in dimension d
                 auto dim_idx  = static_cast<int>(d.dimension());
                 bool is_neg   = direction_t::is_negative(d);
                 int  sign     = is_neg ? -1 : 1;
@@ -153,15 +194,14 @@ struct RHSEvaluator
 
                 auto neighbor_coords = current_coords;
                 neighbor_coords[dim_idx] += sign;
-
                 auto neighbor_linear_idx = padded_layout_t::linear_index(neighbor_coords);
 
                 size_t actual_dim = Policy::Dim - dim_idx - 1;
 
+                // Project current cell and neighbour onto the shared face
                 auto [dofs_face, flux_face] = dispatch_project_to_faces<Policy::Dim>(
                     dof_patch[idx], flux_patch[idx][actual_dim], sign_idx, actual_dim
                 );
-
                 auto [dofs_face_neigh, flux_face_neigh] =
                     dispatch_project_to_faces<Policy::Dim>(
                         dof_patch[neighbor_linear_idx],
@@ -191,15 +231,23 @@ struct RHSEvaluator
 
                 patch_update[idx] = patch_update[idx] - face_du;
             }
+        }
+    }
 
-            patch_update[idx] = amr::containers::algorithms::tensor::tensor_dot(
+    // -----------------------------------------------------------------
+    //  Step 3: Apply the inverse volume mass matrix to every
+    //          interior cell
+    // -----------------------------------------------------------------
+    template <typename DOFTensorType>
+    static void apply_inverse_mass(DOFTensorType& patch_update, const double& volume)
+    {
+        for (size_t idx = 0; idx < patch_layout_t::flat_size(); ++idx)
+        {
+            if (patch_util::is_halo_cell<patch_layout_t>(idx)) continue;
+
+            patch_update[idx] = tensor_ops::tensor_dot(
                 patch_update[idx], global_t::inv_volume_mass / volume
             );
-            // if (idx == 130 || idx == 13)
-            // {
-            //     std::cout << "final du at cell center " << cell_center[idx] << " = "
-            //               << patch_update[idx] << "\n\n";
-            // }
         }
     }
 };

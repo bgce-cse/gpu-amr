@@ -311,6 +311,32 @@ struct halo_exchange_impl_t
     static constexpr auto s_nd_fanout  = patch_index_t::nd_fanout();
     static constexpr auto s_sizes      = patch_layout_t::data_layout_t::sizes();
 
+    /// Compute child_offset using the same convention as ndtree's
+    /// interpolate_patch / restrict_patches.  Takes a padded multi-index.
+    static constexpr std::size_t
+        ndtree_child_offset(auto const& padded_multi_idx) noexcept
+    {
+        static constexpr auto& padded_strides =
+            patch_layout_t::padded_layout_t::strides();
+
+        // Build padded linear index from multi-index
+        index_t padded_linear = 0;
+        for (index_t d = 0; d < s_dimension; ++d)
+            padded_linear += padded_multi_idx[d] * padded_strides[d];
+
+        // Same loop as ndtree: padded strides + data sizes
+        std::size_t offset = 0;
+        for (index_t d = 0; d < s_dimension; ++d)
+        {
+            auto coord = static_cast<std::size_t>(
+                (padded_linear / padded_strides[d]) % s_sizes[d]
+            );
+            auto fine_in_coarse = coord % s_1d_fanout;
+            offset              = offset * s_1d_fanout + fine_in_coarse;
+        }
+        return (s_nd_fanout - 1) - offset;
+    }
+
     struct boundary_t
     {
         static constexpr auto operator()(
@@ -438,8 +464,10 @@ struct halo_exchange_impl_t
                         fine_cell_idxs[d] += remaining % s_1d_fanout;
                         remaining /= s_1d_fanout;
                     }
-                    fine_children[fine_offset] = fine_patch[fine_cell_idxs];
-                    // std::cout << "  [FINER] Child " << fine_offset << " collected\n";
+                    // Place children using ndtree's child_offset convention
+                    // so that AMRPolicy::restrict reads them consistently
+                    auto ndtree_offset           = ndtree_child_offset(fine_cell_idxs);
+                    fine_children[ndtree_offset] = fine_patch[fine_cell_idxs];
                 }
                 // // Call restrict with the collected fine children
                 // std::cout << "[FINER] Calling AMRPolicy::restrict with " <<
@@ -516,15 +544,9 @@ struct halo_exchange_impl_t
 
             if constexpr (!std::is_void_v<AMRPolicy>)
             {
-                std::size_t child_offset = 0;
-                for (index_t d = 0; d < s_dimension; ++d)
-                {
-                    auto local_fine     = from_idxs[d] - s_halo_width;
-                    auto local_coarse   = local_fine / s_1d_fanout;
-                    auto fine_in_coarse = local_fine - local_coarse * s_1d_fanout;
-
-                    child_offset = child_offset * s_1d_fanout + fine_in_coarse;
-                }
+                // Use the same child_offset convention as ndtree's
+                // interpolate_patch / restrict_patches.
+                std::size_t child_offset = ndtree_child_offset(idxs);
                 // Only interpolate if the type has multi_index_t (tensor types like S1)
                 if constexpr (requires {
                                   typename std::remove_cvref_t<

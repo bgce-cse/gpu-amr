@@ -106,17 +106,53 @@ struct dg_tree_printer_2d
 
     static constexpr auto padded_patch_size = PatchSize + 2 * HaloWidth;
 
-    explicit dg_tree_printer_2d(std::string base_filename)
+    static constexpr std::string_view equation_name()
+    {
+        using ET = amr::config::EquationType;
+        if constexpr (Policy::equation == ET::Advection)
+            return "Advection";
+        else if constexpr (Policy::equation == ET::Euler)
+            return "Euler";
+        else
+            return "Unknown";
+    }
+
+    static constexpr std::string_view integrator_name()
+    {
+        using TI = amr::config::TimeIntegratorType;
+        if constexpr (Policy::integrator == TI::Euler)
+            return "SSPRK1";
+        else if constexpr (Policy::integrator == TI::SSPRK2)
+            return "SSPRK2";
+        else if constexpr (Policy::integrator == TI::SSPRK3)
+            return "SSPRK3";
+        else
+            return "Unknown";
+    }
+
+    explicit dg_tree_printer_2d(std::string base_filename, bool clear_folder = true)
         : m_base_filename(std::move(base_filename))
     {
-        std::filesystem::create_directory("vtk_output");
+        const auto dir = std::filesystem::path("vtk_output");
+        if (clear_folder && std::filesystem::exists(dir))
+        {
+            std::filesystem::remove_all(dir);
+        }
+        std::filesystem::create_directory(dir);
     }
 
     template <typename S1Tag, typename TreeType>
     void print(TreeType const& tree, std::string filename_extension) const
     {
-        std::string full_filename = "vtk_output/" + m_base_filename + "_Order" +
-                                    std::to_string(Order) + filename_extension;
+        // Build filename in steps to avoid a GCC 15 LTO false-positive
+        // -Wstringop-overflow warning on chained std::string operator+.
+        std::string full_filename = "vtk_output/DG_";
+        full_filename += equation_name();
+        full_filename += "_ord";
+        full_filename += std::to_string(Order);
+        full_filename += "_";
+        full_filename += integrator_name();
+        full_filename += filename_extension;
         std::ofstream file(full_filename, std::ios::binary);
         if (!file.is_open())
             throw std::runtime_error("Cannot open file: " + full_filename);

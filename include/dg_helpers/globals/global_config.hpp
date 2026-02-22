@@ -148,6 +148,12 @@ struct CoordinateMixin
     }
 
     template <typename PatchIndexType>
+    static constexpr auto patch_corner(const PatchIndexType& patch_id)
+    {
+        return compute_patch_corner<Policy::Dim>(patch_id);
+    }
+
+    template <typename PatchIndexType>
     static constexpr auto
         compute_center(const PatchIndexType& patch_id, const auto& local)
     {

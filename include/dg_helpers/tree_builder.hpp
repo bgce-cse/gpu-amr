@@ -357,10 +357,29 @@ struct TreeBuilder
         patch_layout_t,
         DefaultAMRPolicy<global_t, Policy>>;
 
-    tree_t tree{ 100000 };
+    tree_t tree{ 500000 };
 
-    TreeBuilder()
+    TreeBuilder(int initial_refinement_level = 4)
     {
+        // ---------------------------------------------------------------
+        //  Step 1: Refine the tree uniformly to reach the desired level.
+        //          Following the same pattern used in the FVM mains:
+        //          call reconstruct_tree(refineAll) in a loop.
+        // ---------------------------------------------------------------
+        auto refineAll = []([[maybe_unused]]
+                            const patch_index_t& /*idx*/)
+        {
+            return tree_t::refine_status_t::Refine;
+        };
+
+        for (int i = 0; i < initial_refinement_level; ++i)
+        {
+            tree.reconstruct_tree(refineAll);
+        }
+
+        // ---------------------------------------------------------------
+        //  Step 2: Interpolate initial DOFs on every leaf patch.
+        // ---------------------------------------------------------------
         for (std::size_t idx = 0; idx < tree.size(); ++idx)
         {
             auto& dof_patch          = tree.template get_patch<S1>(idx);
@@ -368,7 +387,7 @@ struct TreeBuilder
             auto& center_coord_patch = tree.template get_patch<S3>(idx);
             auto& size_patch         = tree.template get_patch<S4>(idx);
 
-            auto patch_id                    = patch_index_t(idx);
+            auto patch_id                    = tree.get_node_index_at(idx);
             auto [patch_coords, patch_level] = patch_index_t::decode(patch_id.id());
             double patch_level_size = 1.0 / static_cast<double>(1u << patch_level);
             double cell_size = patch_level_size / static_cast<double>(Policy::PatchSize);
@@ -396,6 +415,9 @@ struct TreeBuilder
                     typename std::remove_reference_t<decltype(size_patch)>::value_type{};
             }
         }
+
+        // Final halo exchange so halos are consistent with interpolated DOFs
+        tree.halo_exchange_update();
     };
 };
 

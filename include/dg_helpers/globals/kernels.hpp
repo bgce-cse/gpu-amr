@@ -60,7 +60,7 @@ struct DerivativeKernel
         amr::containers::static_layout<amr::containers::static_shape<Order, Order>>>;
     using lagrange_t       = typename amr::basis::Lagrange<Order>;
     using gauss_legendre_t = typename amr::basis::GaussLegendre<Order>;
-
+    // TODO check for 3D
     static constexpr auto derivative_tensor = []()
     {
         derivative_t   result{};

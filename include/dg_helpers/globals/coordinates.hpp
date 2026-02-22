@@ -125,7 +125,28 @@ constexpr auto remove_halo(const idx_vector<Dim>& coords_with_halo)
 }
 
 /*======================================================================
+  Compute patch corner coordinate in [0,1]^Dim
+  Morton coords live on the finest grid (0..2^max_depth-1).
+  Divide by 2^max_depth to obtain the physical position.
+======================================================================*/
+
+template <std::size_t Dim, typename PatchIndexType>
+constexpr auto compute_patch_corner(const PatchIndexType& patch_id)
+{
+    const auto [patch_coords, patch_level] = PatchIndexType::decode(patch_id.id());
+    constexpr double inv_max_coord =
+        1.0 / static_cast<double>(1u << PatchIndexType::max_depth());
+
+    coord_vector<Dim> corner{};
+    for (std::size_t d = 0; d < Dim; ++d)
+        corner[d] = static_cast<double>(patch_coords[d]) * inv_max_coord;
+
+    return corner;
+}
+
+/*======================================================================
   Compute cell center within patch
+  cell_center = patch_corner + (local_index + 0.5) * cell_size
 ======================================================================*/
 
 template <
@@ -138,16 +159,16 @@ constexpr auto compute_cell_center(
     const idx_vector<Dim>& local_indices
 )
 {
+    const auto patch_corner = compute_patch_corner<Dim>(patch_id);
+
     const auto [patch_coords, patch_level] = PatchIndexType::decode(patch_id.id());
-    constexpr double level_scale           = 1.0;
-    double patch_size_factor = level_scale / static_cast<double>(1u << patch_level);
-    double cell_size         = patch_size_factor / static_cast<double>(PatchSize);
+    double patch_level_size                = 1.0 / static_cast<double>(1u << patch_level);
+    double cell_size = patch_level_size / static_cast<double>(PatchSize);
 
     coord_vector<Dim> cell_center{};
     for (std::size_t d = 0; d < Dim; ++d)
-        cell_center[d] = (static_cast<double>(patch_coords[d]) * PatchSize +
-                          static_cast<double>(local_indices[d]) + 0.5) *
-                         cell_size;
+        cell_center[d] =
+            patch_corner[d] + (static_cast<double>(local_indices[d]) + 0.5) * cell_size;
 
     return cell_center;
 }
