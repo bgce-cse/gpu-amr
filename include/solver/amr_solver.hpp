@@ -136,7 +136,7 @@ public:
         constexpr auto stride_y =
             patch_layout_t::padded_layout_t::shape_t::sizes()[DIM - 1];
         // Stride for Z (only used if DIM=3)
-        // TODO: MAybe use the stride accessors layout types provide
+        // TODO: Maybe use the stride accessors layout types provide
         constexpr auto stride_z =
             (DIM == 3) ? patch_layout_t::padded_layout_t::shape_t::sizes()[1] * stride_y
                        : 0;
