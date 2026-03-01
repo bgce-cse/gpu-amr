@@ -62,7 +62,7 @@ private:
 
         constexpr auto dim = std::remove_cvref_t<decltype(tree)>::rank();
         constexpr auto box_points =
-            static_cast<index_t>(utility::cx_functions::pow(2, dim)); // Changed from pow(dim, 2)
+            static_cast<index_t>(utility::cx_functions::pow(2, dim));
         static_assert(dim == 2 || dim == 3);
         constexpr auto halo_width = patch_layout_t::halo_width();
         const auto     tree_size  = tree.size();
@@ -88,11 +88,14 @@ private:
         file << "POINTS " << cell_count * box_points << ' '
              << type_repr.template operator()<typename value_type::type::type>() << '\n';
 
+        auto const* order = tree.sorted_order();   // ← iterate via sorted_order
+
         if constexpr (dim == 2)
         {
             for (std::size_t i = 0; i != tree_size; ++i)
             {
-                const auto patch_id     = tree.get_node_index_at(i);
+                const auto slot         = order[i];                       // ← slot
+                const auto patch_id     = tree.get_node_index_at(slot);  // ← slot → patch_index
                 const auto patch_origin = physics_system_t::patch_coord(patch_id);
                 const auto cell_size    = physics_system_t::cell_sizes(patch_id);
 
@@ -117,14 +120,13 @@ private:
         }
         else // dim == 3
         {
-               
             for (std::size_t i = 0; i != tree_size; ++i)
             {
-              
-                const auto patch_id     = tree.get_node_index_at(i);
+                const auto slot         = order[i];                       // ← slot
+                const auto patch_id     = tree.get_node_index_at(slot);  // ← slot → patch_index
                 const auto patch_origin = physics_system_t::patch_coord(patch_id);
                 const auto cell_size    = physics_system_t::cell_sizes(patch_id);
-                
+
                 amr::containers::manipulators::shaped_for<lc_interior_t>(
                     [&](auto const& idxs)
                     {
@@ -138,7 +140,6 @@ private:
                             patch_origin[2] +
                             static_cast<double>(idxs[0] - halo_width) * cell_size[2];
 
-                        // 8 corners of a hexahedron (VTK_VOXEL ordering)
                         file << cell_x << ' ' << cell_y << ' ' << cell_z << '\n';
                         file << cell_x + cell_size[0] << ' ' << cell_y << ' ' << cell_z << '\n';
                         file << cell_x << ' ' << cell_y + cell_size[1] << ' ' << cell_z << '\n';
@@ -196,10 +197,11 @@ private:
             }
         }
 
-        [&tree, &file, tree_size, cell_count]<std::size_t... I>(std::index_sequence<I...>)
+        [&tree, &file, tree_size, cell_count, order]   // ← capture order
+        <std::size_t... I>(std::index_sequence<I...>)
         {
             (((void)I,
-              [&tree, &file, tree_size, cell_count]()
+              [&tree, &file, tree_size, cell_count, order]()
               {
                   using element_type = typename std::tuple_element<
                       I,
@@ -210,7 +212,8 @@ private:
                   file << "LOOKUP_TABLE default\n";
                   for (size_t i = 0; i != tree_size; ++i)
                   {
-                      auto const& patch = tree.template get_patch<element_type>(i);
+                      const auto slot   = order[i];                        // ← slot
+                      auto const& patch = tree.template get_patch<element_type>(slot); // ← slot
                       amr::containers::manipulators::for_each<lc_interior_t>(
                           patch.data(),
                           [&file](auto const& p, auto const& idxs)
