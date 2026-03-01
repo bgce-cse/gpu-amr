@@ -88,7 +88,7 @@ private:
         file << "POINTS " << cell_count * box_points << ' '
              << type_repr.template operator()<typename value_type::type::type>() << '\n';
 
-        auto const* order = tree.sorted_order();   // ← iterate via sorted_order
+        auto const* order = tree.active_slots();   // ← was sorted_order()
 
         if constexpr (dim == 2)
         {
@@ -197,7 +197,7 @@ private:
             }
         }
 
-        [&tree, &file, tree_size, cell_count, order]   // ← capture order
+        [&tree, &file, tree_size, cell_count, order]   // ← same capture, no change
         <std::size_t... I>(std::index_sequence<I...>)
         {
             (((void)I,

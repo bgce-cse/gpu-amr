@@ -73,9 +73,9 @@ public:
 
     template<typename InitFunc>
     void initialize(InitFunc init_func) {
-        auto const* order = m_tree.sorted_order();
+        auto const* slots = m_tree.active_slots();
         for (std::size_t i = 0; i < m_tree.size(); ++i) {
-            auto const slot     = order[i];
+            auto const slot     = slots[i];
             auto const patch_id = m_tree.get_node_index_at(slot);
             auto const c_size   = GeometryT::cell_sizes(patch_id);
 
@@ -101,9 +101,9 @@ public:
         constexpr size_t stride_z = (DIM == 3) ?
             PatchLayoutT::padded_layout_t::shape_t::sizes()[1] * stride_y : 0;
 
-        auto const* order = m_tree.sorted_order();
+        auto const* slots = m_tree.active_slots();
         for (std::size_t i = 0; i < m_tree.size(); ++i) {
-            auto const slot     = order[i];
+            auto const slot     = slots[i];
             auto const patch_id = m_tree.get_node_index_at(slot);
             auto const c_size   = GeometryT::cell_sizes(patch_id);
 
@@ -147,9 +147,9 @@ public:
     double compute_time_step() const {
         double dt_min = std::numeric_limits<double>::max();
 
-        auto const* order = m_tree.sorted_order();
+        auto const* slots = m_tree.active_slots();
         for (std::size_t i = 0; i < m_tree.size(); ++i) {
-            auto const slot     = order[i];
+            auto const slot     = slots[i];
             auto const patch_id = m_tree.get_node_index_at(slot);
             auto const c_size   = GeometryT::cell_sizes(patch_id);
 
