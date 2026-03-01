@@ -135,12 +135,8 @@ public:
     [[nodiscard]]
     static constexpr auto nd_fanout() noexcept -> auto const& { return s_nd_fanout; }
 
-    // =========================================================
-    // Slot manager private helpers
-    // =========================================================
 private:
-    // Pop a free slot index from the flat free-list array.
-    // O(1). Called only during fragment() / recombine() / construction.
+
     [[nodiscard]]
     auto alloc_slot() noexcept -> linear_index_t
     {
@@ -148,8 +144,6 @@ private:
         return m_free_slots[--m_free_top];
     }
 
-    // Push a slot back onto the free-list.
-    // O(1). Marks slot inactive so compact() and assertions catch misuse.
     auto free_slot(linear_index_t const slot) noexcept -> void
     {
         assert(slot < m_capacity           && "ndtree: free_slot out of range");
@@ -158,58 +152,44 @@ private:
         m_free_slots[m_free_top++]   = slot;
     }
 
-    // Append a newly-allocated slot to the end of m_sorted_order.
-    // sort_buffers() will place it in the correct position later.
-    // O(1).
-    auto add_to_sorted_order(linear_index_t const slot) noexcept -> void
-    {
-        assert(m_size < m_capacity && "ndtree: sorted_order capacity exceeded");
-        m_sorted_order[m_size++] = slot;
-    }
-
-    // Remove a slot from m_sorted_order by swap-with-last.
-    // O(n) scan — acceptable since this runs only during AMR reshape
-    // (low frequency). Future O(1) path: add reverse map slot→iter_pos.
-    auto remove_from_sorted_order(linear_index_t const slot) noexcept -> void
-    {
-        for (linear_index_t i = 0; i != m_size; ++i)
-        {
-            if (m_sorted_order[i] == slot)
-            {
-                m_sorted_order[i] = m_sorted_order[--m_size]; // swap-with-last
-                return;
-            }
-        }
-        assert(false && "ndtree: slot not found in m_sorted_order");
-    }
-
-    // Write all per-slot metadata atomically.
-    // Called immediately after alloc_slot() — never on an already-active slot.
-    auto write_slot_metadata(
+   auto write_slot_metadata(
         linear_index_t    const  slot,
         patch_index_t     const  node_id,
         patch_neighbors_t const& neighbors
     ) noexcept -> void
     {
-        assert(slot < m_capacity  && "ndtree: write_slot_metadata out of range");
+        assert(slot < m_capacity    && "ndtree: write_slot_metadata out of range");
         assert(!m_slot_active[slot] && "ndtree: write_slot_metadata on active slot");
         m_linear_index_map[slot]     = node_id;
         m_neighbors[slot]            = neighbors;
         m_refine_status_buffer[slot] = RefinementStatus::Stable;
         m_slot_active[slot]          = true;
         m_index_map[node_id]         = slot;
+        m_active_slots[m_size++]     = slot; 
     }
 
-    // =========================================================
-    // Construction / destruction
-    // =========================================================
+    auto remove_slot_metadata(linear_index_t const slot) noexcept -> void
+    {
+        for (linear_index_t i = 0; i != m_size; ++i)
+        {
+            if (m_active_slots[i] == slot)
+            {
+                m_active_slots[i] = m_active_slots[--m_size];
+                return;
+            }
+        }
+        assert(false && "ndtree: slot not found in m_active_slots");
+    }
+
+
 public:
     ndtree(size_type const capacity) noexcept
-        : m_size{}
+        : m_index_map{}
+        , m_size{}
         , m_capacity{ capacity }
         , m_free_top{ capacity }
     {
-        // Patch data buffers: capacity slots each, NEVER reallocated or moved
+
         std::apply(
             [capacity](auto&... b)
             {
@@ -219,7 +199,6 @@ public:
             m_data_buffers
         );
 
-        // Per-slot metadata arrays
         m_linear_index_map =
             static_cast<pointer_t<patch_index_t>>(
                 std::malloc(capacity * sizeof(patch_index_t)));
@@ -232,21 +211,18 @@ public:
         m_slot_active =
             static_cast<pointer_t<bool>>(
                 std::malloc(capacity * sizeof(bool)));
-
-        // Slot manager: sorted_order and free-list are both flat index arrays
-        m_sorted_order =
+        m_active_slots =
             static_cast<pointer_t<linear_index_t>>(
                 std::malloc(capacity * sizeof(linear_index_t)));
         m_free_slots =
             static_cast<pointer_t<linear_index_t>>(
                 std::malloc(capacity * sizeof(linear_index_t)));
 
-        // All slots start free: free_slots = [0, 1, ..., capacity-1]
-        // m_free_top starts at capacity and decrements on each alloc_slot()
+   
         std::iota(m_free_slots, m_free_slots + capacity, linear_index_t{ 0 });
         std::fill(m_slot_active, m_slot_active + capacity, false);
 
-        // Insert root patch with periodic neighbors
+
         patch_neighbors_t root_neighbors;
         for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
              d.advance())
@@ -256,9 +232,8 @@ public:
                 typename neighbor_patch_index_variant_t::same{ patch_index_t::root() };
             root_neighbors[d.index()] = periodic_neighbor;
         }
-        auto const root_slot = alloc_slot();
+        const auto root_slot = alloc_slot();
         write_slot_metadata(root_slot, patch_index_t::root(), root_neighbors);
-        add_to_sorted_order(root_slot);
     }
 
     ~ndtree() noexcept
@@ -268,13 +243,10 @@ public:
         std::free(m_refine_status_buffer);
         std::free(m_neighbors);
         std::free(m_slot_active);
-        std::free(m_sorted_order);
+        std::free(m_active_slots);
         std::free(m_free_slots);
     }
 
-    // =========================================================
-    // Public accessors
-    // =========================================================
 public:
     [[nodiscard]]
     auto size() const noexcept -> size_type { return m_size; }
@@ -283,9 +255,9 @@ public:
     auto capacity() const noexcept -> size_type { return m_capacity; }
 
     [[nodiscard]]
-    auto sorted_order() const noexcept -> const_pointer_t<linear_index_t>
+    auto active_slots() const noexcept -> linear_index_t const*
     {
-        return m_sorted_order;
+        return m_active_slots;
     }
 
     template <concepts::MapType Map_Type>
@@ -412,9 +384,6 @@ public:
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
     }
 
-    // =========================================================
-    // Tree operations
-    // =========================================================
 public:
     template <typename Fn>
     auto reconstruct_tree(Fn&& fn) noexcept(noexcept(fn(std::declval<patch_index_t&>())))
@@ -434,7 +403,7 @@ public:
     {
         for (linear_index_t i = 0; i != m_size; ++i)
         {
-            const auto slot              = m_sorted_order[i];
+            const auto slot              = m_active_slots[i];    
             m_refine_status_buffer[slot] = fn(m_linear_index_map[slot]);
         }
     }
@@ -447,7 +416,7 @@ public:
 
         for (linear_index_t i = 0; i != m_size; ++i)
         {
-            const auto slot    = m_sorted_order[i];
+            const auto slot    = m_active_slots[i];
             const auto node_id = m_linear_index_map[slot];
             if (node_id.id() == 0) continue;
             parent_patch_idx.push_back(patch_index_t::parent_of(node_id));
@@ -461,25 +430,24 @@ public:
 
         for (linear_index_t i = 0; i != m_size; ++i)
         {
-            const auto slot = m_sorted_order[i];
+            const auto slot = m_active_slots[i];
             if (is_refine_elegible(slot))
                 m_to_refine.push_back(m_linear_index_map[slot]);
         }
         for (auto const& parent_id : parent_patch_idx)
         {
             if (is_coarsen_elegible(parent_id))
-                m_to_coarsen.push_back(parent_id);  // ← remove .id()
+                m_to_coarsen.push_back(parent_id);  
         }
     }
 
-    auto fragment(patch_index_t const node_id) -> void
+     auto fragment(patch_index_t const node_id) -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Fragmenting node " + node_id.repr());
 
         const auto parent_slot = m_index_map.at(node_id);
         assert(m_slot_active[parent_slot]);
 
-        // 1. Allocate child slots and write their metadata
         std::array<linear_index_t, s_nd_fanout> child_slots;
         for (size_type i = 0; i != s_nd_fanout; ++i)
         {
@@ -493,20 +461,13 @@ public:
                     node_id, m_neighbors[parent_slot], i);
 
             write_slot_metadata(child_slot, child_id, neighbor_arr);
-            add_to_sorted_order(child_slot);
             child_slots[i] = child_slot;
         }
 
-        // 2. Interpolate parent data into children
-        //    Reads parent_slot, writes child_slots — no other slots touched
         interpolate_patch(parent_slot, child_slots);
-
-        // 3. Update neighbor metadata symmetry
         enforce_symmetry_after_refinement(node_id);
 
-        // 4. Remove parent from sorted view and free its slot
-        //    Parent patch data buffer is now a free slot — reused on next alloc
-        remove_from_sorted_order(parent_slot);
+        remove_slot_metadata(parent_slot);
         m_index_map.erase(node_id);
         free_slot(parent_slot);
 
@@ -515,12 +476,11 @@ public:
 #endif
     }
 
-    auto recombine(patch_index_t const parent_node_id) -> void
+     auto recombine(patch_index_t const parent_node_id) -> void
     {
         using offset_t = typename patch_index_t::offset_t;
         assert(!find_index(parent_node_id).has_value());
 
-        // 1. Collect child slots before any mutation
         std::array<linear_index_t, s_nd_fanout>    child_slots;
         std::array<patch_neighbors_t, s_nd_fanout> child_neighbor_arrays{};
         for (size_type i = 0; i != s_nd_fanout; ++i)
@@ -528,27 +488,22 @@ public:
             const auto child_id   = patch_index_t::child_of(
                 parent_node_id, static_cast<offset_t>(i));
             const auto child_slot = m_index_map.at(child_id);
-            child_slots[i]            = child_slot;
-            child_neighbor_arrays[i]  = m_neighbors[child_slot];
+            child_slots[i]           = child_slot;
+            child_neighbor_arrays[i] = m_neighbors[child_slot];
         }
 
-        // 2. Allocate parent slot and write its metadata
         const auto parent_slot    = alloc_slot();
         const auto neighbor_array =
             neighbor_utils_t::compute_parent_neighbors(child_neighbor_arrays);
         write_slot_metadata(parent_slot, parent_node_id, neighbor_array);
-        add_to_sorted_order(parent_slot);
 
-        // 3. Restrict children into parent
-        //    Reads child_slots, writes parent_slot — no other slots touched
         restrict_patches(child_slots, parent_slot);
 
-        // 4. Remove children from sorted view and free their slots
         for (size_type i = 0; i != s_nd_fanout; ++i)
         {
             const auto child_id = patch_index_t::child_of(
                 parent_node_id, static_cast<offset_t>(i));
-            remove_from_sorted_order(child_slots[i]);
+            remove_slot_metadata(child_slots[i]);
             m_index_map.erase(child_id);
             free_slot(child_slots[i]);
         }
@@ -556,23 +511,16 @@ public:
         enforce_symmetry_after_recombining(parent_node_id, neighbor_array);
     }
 
-    // Batch overloads — iterate m_to_refine / m_to_coarsen
     auto fragment() -> void
     {
-        assert(is_sorted());
         for (auto i = m_to_refine.size(); i > 0; --i)
             fragment(m_to_refine[i - 1]);
-        sort_buffers();
-        assert(is_sorted());
     }
 
     auto recombine() -> void
     {
-        assert(is_sorted());
         for (const auto& node_id : m_to_coarsen)
             recombine(node_id);
-        sort_buffers();
-        assert(is_sorted());
     }
 
     auto enforce_symmetry_after_refinement(patch_index_t const parent_id) -> void
@@ -595,7 +543,6 @@ public:
                                       neighbor_category_t,
                                       typename neighbor_patch_index_variant_t::same>)
                     {
-                        // Same-level neighbor now sees finer neighbors
                         typename neighbor_patch_index_variant_t::finer::container_t
                             fine_ids{};
                         for (size_type i = 0; i != boundary_children.size(); ++i)
@@ -616,7 +563,6 @@ public:
                                            neighbor_category_t,
                                            typename neighbor_patch_index_variant_t::finer>)
                     {
-                        // Finer neighbors now see the children as same-level neighbors
                         for (size_type i = 0; i != boundary_children.size(); ++i)
                         {
                             const auto child_id = patch_index_t::child_of(
@@ -630,7 +576,6 @@ public:
                                        [opposite_d.index()] = new_neighbor;
                         }
                     }
-                    // coarser and none: no symmetry update needed
                 },
                 parent_neighbor.data
             );
@@ -657,9 +602,9 @@ public:
                                       neighbor_category_t,
                                       typename neighbor_patch_index_variant_t::same>)
                     {
-                        // neighbor_data.id is a same-level neighbor — still exists
+
                         const auto it = m_index_map.find(neighbor_data.id);
-                        if (it == m_index_map.end()) return; // periodic self-ref
+                        if (it == m_index_map.end()) return; 
                         neighbor_patch_index_variant_t new_neighbor;
                         new_neighbor.data =
                             typename neighbor_patch_index_variant_t::same{ parent_node_id };
@@ -669,12 +614,10 @@ public:
                                            neighbor_category_t,
                                            typename neighbor_patch_index_variant_t::finer>)
                     {
-                        // These finer neighbors are EXTERNAL to the recombined group —
-                        // they still exist and now see the parent as coarser
                         for (size_type i = 0; i != neighbor_data.ids.size(); ++i)
                         {
                             const auto it = m_index_map.find(neighbor_data.ids[i]);
-                            if (it == m_index_map.end()) continue; // already removed
+                            if (it == m_index_map.end()) continue; 
                             const auto contact_q =
                                 neighbor_utils_t::compute_contact_quadrant(
                                     static_cast<typename neighbor_patch_index_variant_t::
@@ -690,7 +633,6 @@ public:
                             m_neighbors[it->second][opposite_d.index()] = new_neighbor;
                         }
                     }
-                    // coarser and none: no update needed
                 },
                 parent_neighbor.data
             );
@@ -753,7 +695,6 @@ public:
             {
                 auto boundary_children = neighbor_utils_t::compute_boundary_children(d);
 
-                // Check all boundary children for this direction
                 for (auto j = 0uz; j != boundary_children.size(); ++j)
                 {
                     const auto child_id = patch_index_t::child_of(
@@ -761,7 +702,7 @@ public:
                         static_cast<typename patch_index_t::offset_t>(
                             boundary_children[j]
                         )
-                    ); // Fix: variable name
+                    ); 
                     auto const& neighbor =
                         m_neighbors[m_index_map.at(child_id)][d.index()];
 
@@ -809,34 +750,13 @@ public:
         }
     }
 
-    auto sort_buffers() noexcept -> void
-    {
-        compact(); // safety pass — should be a no-op if invariants hold
-
-        // Sort the VIEW only — sort m_sorted_order by morton index of each slot
-        // Patch data: NEVER touched
-        // All metadata arrays: NEVER touched (indexed by slot, not iter_pos)
-        std::sort(
-            m_sorted_order,
-            m_sorted_order + m_size,
-            [this](linear_index_t const a, linear_index_t const b) noexcept
-            {
-                return m_linear_index_map[a] < m_linear_index_map[b];
-            }
-        );
-
-        // GPU extension point (future):
-        // device_upload(m_sorted_order_gpu, m_sorted_order, m_size);
-
-        assert(is_sorted());
-    }
 
     constexpr auto halo_exchange_update() noexcept -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Performing halo exchange");
         for (linear_index_t i = 0; i != m_size; ++i)
         {
-            const auto slot = m_sorted_order[i];
+            const auto slot = m_active_slots[i];            
             utils::patches::halo_apply<halo_exchange_operator_impl_t, patch_direction_t>(
                 *this, slot);
         }
@@ -923,9 +843,6 @@ public:
         }
     }
 
-    // =========================================================
-    // Private helpers
-    // =========================================================
 private:
     [[nodiscard]]
     auto find_index(patch_index_t const node_id) const noexcept
@@ -943,31 +860,6 @@ private:
         return it == m_index_map.end() ? std::nullopt : std::optional{ it };
     }
 
-    // Safety pass: squeezes out any inactive slots from m_sorted_order.
-    // Should be a no-op if fragment/recombine maintain the invariant correctly.
-    // In debug builds, asserts that no inactive slots are present.
-    auto compact() noexcept -> void
-    {
-        DEFAULT_SOURCE_LOG_TRACE("Compacting tree");
-        linear_index_t write = 0;
-        for (linear_index_t read = 0; read != m_size; ++read)
-        {
-            const auto slot = m_sorted_order[read];
-            if (m_slot_active[slot])
-            {
-                m_sorted_order[write++] = slot;
-            }
-#ifdef AMR_NDTREE_ENABLE_CHECKS
-            else
-            {
-                DEFAULT_SOURCE_LOG_ERROR(
-                    "compact(): inactive slot in m_sorted_order — invariant violated");
-                assert(false);
-            }
-#endif
-        }
-        m_size = write;
-    }
 
     [[nodiscard]]
     auto is_refine_elegible(linear_index_t const slot) const noexcept -> bool
@@ -994,31 +886,7 @@ private:
         return true;
     }
 
-    [[nodiscard]]
-    auto is_sorted() const noexcept -> bool
-    {
-        for (linear_index_t i = 1; i < m_size; ++i)
-        {
-            if (!(m_linear_index_map[m_sorted_order[i - 1]] <
-                  m_linear_index_map[m_sorted_order[i]]))
-            {
-                DEFAULT_SOURCE_LOG_ERROR("sorted_order is not sorted by patch_index");
-                return false;
-            }
-        }
-        for (linear_index_t i = 0; i != m_size; ++i)
-        {
-            const auto slot    = m_sorted_order[i];
-            const auto node_id = m_linear_index_map[slot];
-            if (!m_index_map.contains(node_id) || m_index_map.at(node_id) != slot)
-            {
-                DEFAULT_SOURCE_LOG_ERROR("index_map inconsistent with m_sorted_order");
-                return false;
-            }
-        }
-        return true;
-    }
-
+   
 #ifdef AMR_NDTREE_ENABLE_CHECKS
     auto check_index_map() const noexcept -> void
     {
@@ -1048,14 +916,14 @@ private:
     index_map_t                m_index_map;             // patch_index → slot
     deconstructed_buffers_t    m_data_buffers;          // [field][slot] — NEVER moves
     linear_index_map_t         m_linear_index_map;      // [slot] → patch_index
-    linear_index_array_t       m_sorted_order;          // [iter_pos] → slot
-    linear_index_array_t       m_free_slots;            // flat free-list array
+    linear_index_array_t       m_active_slots;          // [iter_pos] → slot (unordered)
+    linear_index_array_t       m_free_slots;            // flat free-list stack
     pointer_t<bool>            m_slot_active;           // [slot] → is live
     flat_refine_status_array_t m_refine_status_buffer;  // [slot] → RefinementStatus
     neighbor_buffer_t          m_neighbors;             // [slot] → patch_neighbors_t
-    size_type                  m_size;                  // active patches in m_sorted_order
+    size_type                  m_size;                  // active patch count
     size_type                  m_capacity;              // total allocated slots
-    size_type                  m_free_top;              // next free index in m_free_slots
+    size_type                  m_free_top;              // stack pointer into m_free_slots
     std::vector<patch_index_t> m_to_refine;
     std::vector<patch_index_t> m_to_coarsen;
 };
