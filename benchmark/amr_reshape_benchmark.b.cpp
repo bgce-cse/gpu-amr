@@ -13,7 +13,6 @@
 #include <numeric>
 #include <vector>
 
-// ── Exact same aliases as bench_fvm_solver_integration.b.cpp ─────────
 constexpr std::size_t N    = 10;
 constexpr std::size_t M    = 10;
 constexpr std::size_t Halo = 2;
@@ -25,7 +24,6 @@ using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
 using tree_t         = amr::ndt::tree::ndtree<amr::cell::EulerCell2D, patch_index_t, patch_layout_t>;
 using status_t       = tree_t::RefinementStatus;
 
-// ── Timing helpers ────────────────────────────────────────────────────
 using bench_clock_t = std::chrono::steady_clock;
 using duration_t    = std::chrono::duration<double, std::micro>;
 
@@ -35,7 +33,6 @@ static auto elapsed_us(bench_clock_t::time_point start) -> double
     return duration_t(bench_clock_t::now() - start).count();
 }
 
-// ── Build a uniformly refined tree at a given depth ───────────────────
 static auto make_uniform_tree(int depth) -> tree_t
 {
     const std::size_t capacity = static_cast<std::size_t>(1) << (depth * 2 + 4);
@@ -47,48 +44,10 @@ static auto make_uniform_tree(int depth) -> tree_t
         tree.apply_refine_coarsen();
         tree.balancing();
         tree.fragment();
-        tree.sort_buffers();
     }
     return tree;
 }
 
-// ── Benchmark: sort_buffers only ──────────────────────────────────────
-static void bench_sort_buffers(int depth, int repetitions)
-{
-    auto tree = make_uniform_tree(depth);
-
-    // Warm up
-    for (int i = 0; i < 3; ++i) tree.sort_buffers();
-
-    std::vector<double> times(repetitions);
-    for (int r = 0; r < repetitions; ++r)
-    {
-        // Disorder m_sorted_order by doing a fragment without sort
-        tree.update_refine_flags([](auto const&) { return status_t::Refine; });
-        tree.apply_refine_coarsen();
-        tree.balancing();
-        tree.fragment(); // leaves m_sorted_order disordered
-
-        auto t0   = now();
-        tree.sort_buffers();
-        times[r] = elapsed_us(t0);
-
-        // Recombine back so next iteration starts from same tree size
-        tree.update_refine_flags([](auto const&) { return status_t::Coarsen; });
-        tree.apply_refine_coarsen();
-        tree.recombine();
-    }
-
-    const double mean = std::accumulate(times.begin(), times.end(), 0.0) / repetitions;
-    const double mn   = *std::min_element(times.begin(), times.end());
-    const double mx   = *std::max_element(times.begin(), times.end());
-
-    std::printf(
-        "[sort_buffers  ] depth=%d  patches=%6zu  mean=%8.2f us  min=%8.2f us  max=%8.2f us\n",
-        depth, tree.size(), mean, mn, mx);
-}
-
-// ── Benchmark: fragment + recombine ───────────────────────────────────
 static void bench_fragment_recombine(int depth, int repetitions)
 {
     std::vector<double> times_frag(repetitions);
@@ -98,7 +57,6 @@ static void bench_fragment_recombine(int depth, int repetitions)
 
     for (int r = 0; r < repetitions; ++r)
     {
-        // ── fragment pass ────────────────────────────────────────────
         {
             auto tree             = make_uniform_tree(depth);
             n_patches_before_frag = tree.size();
@@ -108,30 +66,25 @@ static void bench_fragment_recombine(int depth, int repetitions)
             tree.balancing();
 
             auto t0       = now();
-            tree.fragment();   // batch fragment — does NOT call sort_buffers inside
+            tree.fragment();
             times_frag[r] = elapsed_us(t0);
         }
 
-        // ── recombine pass ───────────────────────────────────────────
-        // Build depth+1 tree, then coarsen the deepest leaves back down.
-        // Must use the exact same pipeline as reconstruct_tree so
-        // m_to_coarsen is populated correctly before recombine() is called.
         {
             auto tree            = make_uniform_tree(depth + 1);
             n_patches_before_rec = tree.size();
 
             tree.update_refine_flags([depth](auto const& idx)
             {
-                // Only the deepest leaves get Coarsen — others Stable
                 return patch_index_t::level(idx) == depth + 1
                     ? status_t::Coarsen
                     : status_t::Stable;
             });
-            tree.apply_refine_coarsen();  // populates m_to_coarsen
-            tree.balancing();             // may remove some from m_to_coarsen
+            tree.apply_refine_coarsen();
+            tree.balancing();
 
             auto t1      = now();
-            tree.recombine();   // batch recombine
+            tree.recombine();
             times_rec[r] = elapsed_us(t1);
         }
     }
@@ -155,7 +108,6 @@ static void bench_fragment_recombine(int depth, int repetitions)
         depth, n_patches_before_rec, rmean, rmn, rmx);
 }
 
-// ── Benchmark: full AMR cycle ─────────────────────────────────────────
 static void bench_full_amr_cycle(int depth, int repetitions)
 {
     auto tree = make_uniform_tree(depth);
@@ -166,11 +118,9 @@ static void bench_full_amr_cycle(int depth, int repetitions)
         auto t0 = now();
         tree.reconstruct_tree([depth](auto const& idx)
         {
-            // Refine patches at the deepest level → forces real work
-            // Stable for everything else → realistic mixed workload
             const auto lvl = patch_index_t::level(idx);
-            if (lvl < depth)     return status_t::Refine;
-            if (lvl == depth)    return status_t::Stable;
+            if (lvl < depth)  return status_t::Refine;
+            if (lvl == depth) return status_t::Stable;
             return status_t::Coarsen;
         });
         times[r] = elapsed_us(t0);
@@ -189,13 +139,12 @@ int main()
 {
     constexpr int repetitions = 50;
 
-    std::printf("=== Tree reshape benchmark (Release build) ===\n");
+    std::printf("=== AMR reshape benchmark ===\n");
     std::printf("patch_flat_size = %u  |  repetitions = %d\n\n",
         static_cast<unsigned>(patch_layout_t::flat_size()), repetitions);
 
     for (int depth : { 2, 3, 4, 5 })
     {
-        bench_sort_buffers(depth, repetitions);
         bench_fragment_recombine(depth, repetitions);
         bench_full_amr_cycle(depth, repetitions);
         std::printf("\n");
