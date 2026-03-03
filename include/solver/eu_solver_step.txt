@@ -107,8 +107,10 @@ total:
     N+2dN+(1+d)(2d+9+4N)+(1+2d)(3d+8) = 17+5N+30d+8dN+8d^2
 
 
+Measured performance against ideal: (on fvm_solver_integration.e)
 i7 9750h
-
-18GB/s (single core)
-peak updates: 75e9
+    18GB/s (single core)
+d=2, N=5
+Ideal Memory ops per cell: (2+2d)8N=240/cell
+peak updates: CPU Bandwidth/bytes_per_cell = 18e9/240 = 75e6
 23e6/75e6 = 30%
