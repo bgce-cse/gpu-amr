@@ -18,6 +18,24 @@ struct vtk_print
     static constexpr bool host_is_little_endian =
         std::endian::native == std::endian::little;
 
+    template <utility::concepts::Arithmetic T>
+    static constexpr auto type_repr()
+    {
+        if constexpr (std::is_same_v<T, float>)
+        {
+            return "float";
+        }
+        else if constexpr (std::is_same_v<T, double>)
+        {
+            return "double";
+        }
+        else if constexpr (std::is_same_v<T, int>)
+        {
+            return "int";
+        }
+        utility::error_handling::assert_unreachable();
+    };
+
 public:
     using physics_system_t = Physics_System;
 
@@ -73,25 +91,8 @@ private:
         const auto     tree_size  = tree.size();
         const auto     cell_count = tree_size * data_layout_t::elements();
 
-        constexpr auto type_repr = []<utility::concepts::Arithmetic T>
-        {
-            if constexpr (std::is_same_v<T, float>)
-            {
-                return "float";
-            }
-            else if constexpr (std::is_same_v<T, double>)
-            {
-                return "double";
-            }
-            else if constexpr (std::is_same_v<T, int>)
-            {
-                return "int";
-            }
-            utility::error_handling::assert_unreachable();
-        };
-
-        file << "POINTS " << cell_count * box_points << ' '
-             << type_repr.template operator()<arithmetic_t>() << '\n';
+        file << "POINTS " << cell_count * box_points << ' ' << type_repr<arithmetic_t>()
+             << '\n';
 
         if constexpr (dim == 2)
         {
@@ -225,17 +226,16 @@ private:
             }
         }
 
-        [&tree, &file, tree_size, cell_count, &type_repr]<std::size_t... I>(std::index_sequence<I...>)
+        [&tree, &file, tree_size, cell_count]<std::size_t... I>(std::index_sequence<I...>)
         {
             (((void)I,
-              [&tree, &file, tree_size, cell_count, &type_repr]()
+              [&tree, &file, tree_size, cell_count]()
               {
                   using element_type = typename std::tuple_element<
                       I,
                       typename tree_t::deconstructed_raw_map_types_t>::type;
                   file << "SCALARS " << element_type::name() << ' '
-                       << type_repr.template operator()<typename element_type::type>()
-                       << " 1\n";
+                       << type_repr<typename element_type::type>() << " 1\n";
                   file << "LOOKUP_TABLE default\n";
                   for (size_t i = 0; i != tree_size; ++i)
                   {

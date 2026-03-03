@@ -364,7 +364,8 @@ public:
         {
             fragment(m_to_refine[i - 1]);
         }
-        sort_buffers();
+        // sort_buffers();
+        compact();
         CONTRACTS_CHECK(is_sorted());
     }
 
@@ -375,7 +376,8 @@ public:
         {
             recombine(node_id);
         }
-        sort_buffers();
+        // sort_buffers();
+        compact();
         CONTRACTS_CHECK(is_sorted());
     }
 

@@ -1,12 +1,12 @@
 #ifndef AMR_INCLUDED_MORTON
 #define AMR_INCLUDED_MORTON
 
+#include "utility/contracts.hpp"
 #include <array>
 #include <bitset>
 #include <climits>
 #include <cstdint>
 #include <iostream>
-#include "utility/contracts.hpp"
 #include <libmorton/morton.h>
 #include <utility>
 
@@ -31,13 +31,13 @@ public:
     };
 
     using depth_t     = decltype(Depth);
-    using mask_t      = uint64_t;
+    using mask_t      = std::uint64_t;
     using coord_array = std::array<uint32_t, 2>;
     // TODO: These types must be an input
-    using offset_t    = uint32_t;
-    using size_type   = uint32_t;
+    using offset_t    = std::uint32_t;
+    using size_type   = std::uint32_t;
     using direction_t = direction;
-    using level_t     = uint8_t;
+    using level_t     = std::uint8_t;
 
     static constexpr size_type s_depth = Depth;
     static constexpr size_type s_rank  = 2u;
@@ -107,15 +107,18 @@ public:
         uint32_t offset = 1u << (s_depth - level);
         coords[0] &= ~offset;
         coords[1] &= ~offset;
-        CONTRACTS_CHECK(isvalid_coord(coords, level - 1) && "invalid parent coordiantes");
+        CONTRACTS_CHECK(
+            isvalid_coord(coords, level_t(level - level_t{ 1 })) &&
+            "invalid parent coordiantes"
+        );
 
-        return morton_id(encode(coords, level - 1));
+        return morton_id(encode(coords, level_t(level - level_t{ 1 })));
     }
 
     static constexpr std::pair<coord_array, level_t> decode(mask_t id)
     {
-        level_t level     = id & 0x3F;
-        mask_t  morton_id = id >> 6;
+        const level_t level     = static_cast<level_t>(id & 0x3FULL);
+        mask_t        morton_id = id >> 6;
 
         uint_fast32_t x, y;
         libmorton::morton2D_64_decode(morton_id, x, y);
@@ -241,12 +244,12 @@ public:
     };
 
     using depth_t     = decltype(Depth);
-    using mask_t      = uint64_t;
+    using mask_t      = std::uint64_t;
     using coord_array = std::array<uint32_t, 3>;
-    using offset_t    = uint32_t;
-    using size_type   = uint32_t;
+    using offset_t    = std::uint32_t;
+    using size_type   = std::uint32_t;
     using direction_t = direction;
-    using level_t     = uint8_t;
+    using level_t     = std::uint8_t;
 
     static constexpr size_type s_depth = Depth;
     static constexpr size_type s_rank  = 3u;
@@ -321,15 +324,17 @@ public:
         coords[0] &= ~offset;
         coords[1] &= ~offset;
         coords[2] &= ~offset;
-        CONTRACTS_CHECK(isvalid_coord(coords, level - 1) && "invalid parent coordinates");
+        CONTRACTS_CHECK(
+            isvalid_coord(coords, level_t(level - 1)) && "invalid parent coordinates"
+        );
 
-        return morton_id(encode(coords, level - 1));
+        return morton_id(encode(coords, level_t(level - 1)));
     }
 
     static constexpr std::pair<coord_array, level_t> decode(mask_t id)
     {
-        level_t  level     = id & 0x3F;
-        uint64_t morton_id = id >> 6;
+        const level_t level     = static_cast<level_t>(id & 0x3FULL);
+        uint64_t      morton_id = id >> 6;
 
         uint_fast32_t x, y, z;
         libmorton::morton3D_64_decode(morton_id, x, y, z);

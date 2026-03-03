@@ -1,0 +1,61 @@
+Euler equation (conservative form)
+\frac{\partial{U}}{\partial t} + \nabla \cdot F(U) = 0
+
+U: Conservative quantities
+U = [\rho, \rho u, \rho v, \rho w, E].T
+
+F(U): flux tensor **
+F(U) = [\rho u, \rho u^2 + p, \rho uv, \rho uw, u(E+p)]
+// I belive that the +p term depends on the direction where the flux is being
+// computed
+
+(1)
+U^{n+1}_i = U^n_i - \sum_{d=1}^{Dim}\frac{\Delta t}{\delta
+x_d}(F_{i+1/2}^{(d)}-F_{i-1/2}^{(d)})
+
+(2)
+F_{i+1/2}: flux at the interface between i and i+i
+F_{i+1/2}=\frac{1}{2}(F(U_L) + F(U_R))-\frac{1}{2}S_{max}(U_R - U_L)
+
+(3)
+F(U) = **
+
+(4)
+S_{max} = max(\abs{u_L}+a_L, \abs{u_R}+a_R)
+
+(5)
+u_{L,R} = \frac{\rho u}{\rho}
+
+(6)
+a_{L,R} = \sqrt{gamma * p / \rho}
+
+
+Roofline analysis:
+
+Memory operations:
+(1) W: N; R: d, 1, N+2d(2); Reuse: N
+(2) R: 2N, 2(3), (4); Reuse: 1, 3N
+(3) W: N; R: N
+(4) R: 2(5) + 2(6); Reuse: 8
+(5) 2
+(6) 3
+
+Total (with reuse):
+Write: 3N
+Read: 1+d+N+2d(2N+2N-3N-1+10-8)-N = 1+d+N+2d(N+1)-N = 1+2d+2dN
+
+Arithmetic operations:
+(1) N(-), d(/), dN(-,*), 2d(2)
+(2) N(+,2*,2-), 2(3), (4)
+(3) 1(*), d(2*), 1(+), 1(*,+)
+(4) 2(abs, +), 1(max), 2(5), 2(6)
+(5) 1(/)
+(6) 1(sqrt, *, /)
+
+Total:
+N(-), d(/), dN(-,*), 2d(N(+,2*,2-), 2(1(*), d(2*), 1(+), 1(*,+)), (2(abs, +),
+1(max), 2(/), 2(sqrt, *, /))) =
+N(-), dN(-,*), d(2N(+,2*,2-), 8d(*), 1(2max, 4abs, 4sqrt, 12+, 12*, 5/))
+~
+N, 2dN, 29d, 10dN, 8d^2
+

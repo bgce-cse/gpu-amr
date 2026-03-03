@@ -10,13 +10,12 @@
 #include "solver/amr_solver.hpp"
 #include "solver/cell_types.hpp"
 #include "solver/physics_system.hpp"
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
-#include <functional>
 #include <iostream>
 #include <string>
-#include <vector>
 
 int main()
 {
@@ -40,11 +39,11 @@ int main()
     using physics_t =
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
-    amr::ndt::print::vtk_print<physics_t> printer("euler_print");
+    // amr::ndt::print::vtk_print<physics_t> printer("euler_print");
 
     double            tmax            = 400; // Example tmax, adjust as needed
-    double            print_frequency = 5.0; // Print every 10 seconds
-    const std::string output_prefix   = "solver_integration_test_refine";
+    // double            print_frequency = 5.0; // Print every 10 seconds
+    // const std::string output_prefix   = "solver_integration_test_refine";
 
     int inital_refinement = 3;
 
@@ -145,11 +144,14 @@ int main()
 
     // Main Simulation Loop
     double t               = 0.0;
-    double next_print_time = print_frequency;
+    // double next_print_time = print_frequency;
     int    step            = 1;
-    int    output_counter  = 1;
+    // int    output_counter  = 1;
 
     std::cout << "\nStarting AMR simulation...\n";
+
+    std::size_t cell_update_count = 0;
+    const auto  start             = std::chrono::steady_clock::now();
 
     while (t < tmax)
     {
@@ -159,6 +161,7 @@ int main()
 
         solver.time_step(dt);
         solver.get_tree().halo_exchange_update();
+        cell_update_count += solver.get_tree().size();
 
         if (step % 5 == 0)
         {
@@ -169,18 +172,24 @@ int main()
         t += dt;
 
         // Print only when we've passed the next print time
-        if (t >= next_print_time)
-        {
-            std::string file_extension =
-                "_iteration_" + std::to_string(output_counter) + ".vtk";
-            // printer.print(solver.get_tree(), file_extension);
-            printer.print(solver.get_tree(), file_extension);
-            next_print_time += print_frequency;
-            output_counter++;
-        }
+        // if (t >= next_print_time)
+        // {
+        //     std::string file_extension =
+        //         "_iteration_" + std::to_string(output_counter) + ".vtk";
+        //     // printer.print(solver.get_tree(), file_extension);
+        //     printer.print(solver.get_tree(), file_extension);
+        //     next_print_time += print_frequency;
+        //     output_counter++;
+        // }
 
         step++;
     }
+    const auto                          end      = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> duration = end - start;
+    std::cout << "Updated cells: " << cell_update_count << '\n';
+    std::cout << "Duration: " << duration.count() << '\n';
+    std::cout << "Updates per second: " << (double)cell_update_count / duration.count()
+              << '\n';
 
     std::cout << "\nSimulation completed. Files in vtk_output/ directory." << std::endl;
 

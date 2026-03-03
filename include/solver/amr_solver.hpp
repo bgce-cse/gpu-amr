@@ -35,14 +35,14 @@ public:
 
 private:
     TreeT              m_tree;
-    arithmetic_t const gamma; // Specific heat ratio
-    arithmetic_t const cfl;   // CFL number
+    arithmetic_t const m_gamma; // Specific heat ratio
+    arithmetic_t const m_cfl;   // CFL number
 
 public:
     amr_solver(size_t capacity, arithmetic_t gamma_ = 1.4, arithmetic_t cfl_ = 0.1)
         : m_tree(capacity)
-        , gamma(gamma_)
-        , cfl(cfl_)
+        , m_gamma(gamma_)
+        , m_cfl(cfl_)
     {
         // Dummy dimensions were removed from new EulerPhysics.hpp
         static_assert(DIM == 2 || DIM == 3, "Error: Wrong dimension");
@@ -91,12 +91,12 @@ public:
 
     arithmetic_t get_gamma() const noexcept
     {
-        return gamma;
+        return m_gamma;
     }
 
     arithmetic_t get_cfl() const noexcept
     {
-        return cfl;
+        return m_cfl;
     }
 
     void initialize(auto&& init_func)
@@ -120,7 +120,7 @@ public:
                     // IC -> Primitive -> Conservative
                     const auto prim = std::invoke(std::forward<decltype(fn)>(fn), coords);
                     amr::containers::static_vector<arithmetic_t, NVAR> cons;
-                    EquationT::primitiveToConservative(prim, cons, gamma);
+                    EquationT::primitiveToConservative(prim, cons, m_gamma);
 
                     set_full_state(p_idx, linear_idx, cons);
                 },
@@ -129,7 +129,7 @@ public:
         }
     }
 
-    void time_step(const arithmetic_t dt)
+    auto time_step(const arithmetic_t dt) -> void
     {
         constexpr auto patch_data_size = data_layout_t::flat_size();
         // Stride for moving "up" or "down" in the patch (Y-direction)
@@ -170,9 +170,11 @@ public:
                         const auto U_R = get_full_state(p_idx, linear_idx + stride);
 
                         // TODO: Remove out paramters if possible
+                        // TODO: Evaluate merging both calls into one since they share
+                        // input params
                         amr::containers::static_vector<arithmetic_t, NVAR> fL, fR;
-                        EquationT::rusanovFlux(U_L, U_cell, fL, d, gamma);
-                        EquationT::rusanovFlux(U_cell, U_R, fR, d, gamma);
+                        EquationT::rusanovFlux(U_L, U_cell, fL, d, m_gamma);
+                        EquationT::rusanovFlux(U_cell, U_R, fR, d, m_gamma);
 
                         for (int k = 0; k < NVAR; ++k)
                         {
@@ -197,7 +199,7 @@ public:
         }
     }
 
-    arithmetic_t compute_time_step() const
+    auto compute_time_step() const -> arithmetic_t
     {
         // TODO: We could have a tighter upper bound here.
         //       maybe there is some other theoretical limit we can use instead
@@ -229,7 +231,7 @@ public:
                         for (int d = 0; d < DIM; ++d)
                         {
                             const arithmetic_t speed =
-                                EquationT::getMaxSpeed(U, d, gamma);
+                                EquationT::getMaxSpeed(U, d, m_gamma);
                             // TODO: This magic number should at least have a name
                             // TODO: Is this value special in any way?
                             if (speed > 1e-12)
@@ -247,7 +249,7 @@ public:
                 }
             }
         );
-        return cfl * dt;
+        return m_cfl * dt;
     }
 };
 

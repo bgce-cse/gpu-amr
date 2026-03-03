@@ -34,7 +34,7 @@ public:
         double                                              gamma
     )
     {
-        double rho = cons[0];
+        const double rho = cons[0];
 
         // Density (rho)
         prim[0] = rho;
@@ -48,7 +48,7 @@ public:
         }
 
         // Pressure (p)
-        double E = cons[DIM + 1];
+        const double E = cons[DIM + 1];
         prim[DIM + 1] =
             (gamma - 1.0) *
             (E - 0.5 * rho * vel_squared); // ((gamma-1) * (E - 0.5*rho*|u|^2))
@@ -117,11 +117,9 @@ public:
         for (int dim = 0; dim < DIM; dim++)
         {
             flux[1 + dim] = rho * u_dir * prim[1 + dim]; // (rho*u*v)
-            if (dim == direction)
-            {
-                flux[1 + dim] += p; // Pressure term only in flux direction (p)
-            } // (rho*u_d*u_i + p*delta_di)
         }
+        flux[1 + direction] += p; // Pressure term only in flux direction (p)
+        // (rho*u_d*u_i + p*delta_di)
 
         // Energy flux (u * (E + p))
         flux[DIM + 1] = u_dir * (cons[DIM + 1] + p);
@@ -137,11 +135,13 @@ public:
         const amr::containers::static_vector<double, NVAR>& cons,
         double                                              gamma
     )
+
     {
         amr::containers::static_vector<double, NVAR> prim;
         conservativeToPrimitive(cons, prim, gamma);
-        double rho = prim[0];
-        double p   = prim[DIM + 1];
+        // TODO: Theses accesses should be std::get<Rho>(prim) and std::get<P>(prim)
+        const double rho = prim[0];
+        const double p   = prim[DIM + 1];
         return std::sqrt(gamma * p / rho);
     }
 
@@ -167,25 +167,31 @@ public:
         computeFlux(UL, fluxL, direction, gamma);
         computeFlux(UR, fluxR, direction, gamma);
 
+        // TODO: The full conservative to primitive conversion is done but only
+        // one value is used. Please **FIX, twice**
         // Convert to primitive for wave speed calculation
         amr::containers::static_vector<double, NVAR> primL, primR;
         conservativeToPrimitive(UL, primL, gamma);
         conservativeToPrimitive(UR, primR, gamma);
 
         // Sound speeds
-        double aL = computeSoundSpeed(UL, gamma);
-        double aR = computeSoundSpeed(UR, gamma);
+        const double aL = computeSoundSpeed(UL, gamma);
+        const double aR = computeSoundSpeed(UR, gamma);
 
         // Velocity in the flux direction
-        double uL = primL[1 + direction];
-        double uR = primR[1 + direction];
+        const double uL = primL[1 + direction];
+        const double uR = primR[1 + direction];
 
         // Maximum wave speed: smax = max(|u_L| + a_L, |u_R| + a_R)
-        double smax = std::max(std::abs(uL) + aL, std::abs(uR) + aR);
+        const double smax = std::max(std::abs(uL) + aL, std::abs(uR) + aR);
 
         // Rusanov flux: F* = 0.5*(FL + FR) - 0.5*smax*(UR - UL)
         for (int k = 0; k < NVAR; k++)
         {
+            // TODO: Can the two multiplications by 0.5 be changed by just one?
+            // Solution seems to change slighlty so I cannot do it immediately
+            // This also means that the compiler is issuing both, meaning that
+            // merging them would save one multiplication
             flux[k] = 0.5 * (fluxL[k] + fluxR[k]) - 0.5 * smax * (UR[k] - UL[k]);
         }
     }

@@ -168,7 +168,7 @@ public:
     [[nodiscard]]
     static constexpr auto opposite(direction const& d) noexcept -> direction
     {
-        if (!is_negative(d)) [[assume(d.idx_ > index_t{})]];
+        // if (!is_negative(d)) [[assume(d.idx_ > index_t{})]];
         return direction(is_negative(d) ? d.idx_ + index_t{ 1 } : d.idx_ - index_t{ 1 });
     }
 
