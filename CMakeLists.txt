@@ -91,61 +91,61 @@ target_link_libraries(gpu_amr
 # Compiler flags
 # ----------------------------
 set(PROJECT_WARNINGS
-    # -fbounds-check
+    -fbounds-check
     -fvisibility=hidden
     -pedantic
     -Wall
     -Wconversion
     -Wdangling-else
     -Wdouble-promotion
-    # -Wduplicated-branches
-    # -Wduplicated-cond
+    -Wduplicated-branches
+    -Wduplicated-cond
     -Werror
-    # -Wpadded
+    -Wpadded
     -Wredundant-decls
     -Wextra
     -Wfloat-equal
     -Wformat
-    # -Winvalid-pch
-    # -Wlogical-op
-    # -Wmisleading-indentation
-    # -Wnull-dereference
-    # -Wodr
+    -Winvalid-pch
+    -Wlogical-op
+    -Wmisleading-indentation
+    -Wnull-dereference
+    -Wodr
     -Wpointer-arith
-    # -Wrestrict
-    # -Wreturn-local-addr
+    -Wrestrict
+    -Wreturn-local-addr
     -Wshadow
-    # -Wswitch-default
+    -Wswitch-default
     -Wswitch-enum
     -Wuninitialized
     -Wvla
 )
 
 set(PROJECT_DIAGNOSTICS
-	# -fconcepts-diagnostics-depth=3
+	-fconcepts-diagnostics-depth=3
 	-fdiagnostics-color=auto
-	# -fdiagnostics-path-format=inline-events
-	# -fdiagnostics-show-caret
-	# -fdiagnostics-show-template-tree
-	# -ftime-report
+	-fdiagnostics-path-format=inline-events
+	-fdiagnostics-show-caret
+	-fdiagnostics-show-template-tree
+	-ftime-report
 )
 
 set(PROJECT_DEBUG_INFO
 	-fno-omit-frame-pointer
-	# -fvar-tracking
-	# -fvar-tracking-assignments
-	# -ggdb3
-	# -gvariable-location-views
-	# -ginline-points
-	# -gstatement-frontiers
+	-fvar-tracking
+	-fvar-tracking-assignments
+	-ggdb3
+	-gvariable-location-views
+	-ginline-points
+	-gstatement-frontiers
 )
 
 set(PROJECT_DEBUG_FLAGS
 	-ffinite-math-only
 	-fmax-errors=15
-	# -fno-eliminate-unused-debug-symbols
-	# -fno-inline
-	# -fno-default-inline
+	-fno-eliminate-unused-debug-symbols
+	-fno-inline
+	-fno-default-inline
 	-march=native
 	-mavx
 	-O0
@@ -156,6 +156,7 @@ set(PROJECT_RELEASE_FLAGS
 	-ffast-math
 	-fno-trapping-math
 	-fstrength-reduce
+    # -stdpar=gpu
 	-march=native
 	-mavx
 	-O3
@@ -171,15 +172,15 @@ set(REL_DEB_INFO_CXX_FLAGS
 )
 
 set(PROJECT_SANITIZERS
-	# -fsanitize=address
-	# -fsanitize=bounds
-	# -fsanitize=float-cast-overflow
-	# -fsanitize=float-divide-by-zero
-	# -fsanitize=integer-divide-by-zero
-	# -fsanitize=leak
-	# -fsanitize=null
-	# -fsanitize=signed-integer-overflow
-	# -fsanitize=undefined
+	-fsanitize=address
+	-fsanitize=bounds
+	-fsanitize=float-cast-overflow
+	-fsanitize=float-divide-by-zero
+	-fsanitize=integer-divide-by-zero
+	-fsanitize=leak
+	-fsanitize=null
+	-fsanitize=signed-integer-overflow
+	-fsanitize=undefined
 )
 
 set(CONSTEXPR_LIMIT_FLAGS

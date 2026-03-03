@@ -33,7 +33,7 @@ private:
     {
         std::remove_cvref_t<decltype(s_sizes)> strides{};
         strides[s_rank - 1] = size_type{ 1 };
-        for (rank_t d = s_rank - 1; d-- > 0;)
+        for (auto d = std::size_t{ s_rank - 1 }; d-- > std::size_t{};)
         {
             strides[d] = strides[d + 1] * s_sizes[d + 1];
         }

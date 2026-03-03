@@ -141,7 +141,7 @@ public:
             (DIM == 3) ? patch_layout_t::padded_layout_t::shape_t::sizes()[1] * stride_y
                        : 0;
 
-        for (std::size_t p_idx = 0; p_idx < m_tree.size(); ++p_idx)
+        for (std::size_t p_idx = 0; p_idx != m_tree.size(); ++p_idx)
         {
             const auto patch_id = m_tree.get_node_index_at(p_idx);
             const auto c_size   = GeometryT::cell_sizes(patch_id);
@@ -226,7 +226,7 @@ public:
                         // Ask Equation for max wave speed in each direction
                         // TODO: The level of abstraction here is incorrect in my
                         // opiniton. Iterating over the dimensions and calling it
-                        // direction is heavily missleading.
+                        // direction (in getMaxSpeed) is heavily missleading.
                         // Look at neighbor::direction as a suggested alternative.
                         for (int d = 0; d < DIM; ++d)
                         {

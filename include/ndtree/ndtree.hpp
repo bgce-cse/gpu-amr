@@ -130,8 +130,20 @@ public:
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
 
 private:
-    static constexpr auto s_fragmentation_patch_maps =
-        amr::ndt::utils::patches::fragmentation_patch_maps<patch_layout_t, s_1d_fanout>();
+    static constexpr auto fragmentation_patch_maps(
+        const size_type      patch_idx,
+        const linear_index_t linear_idx
+    ) noexcept -> typename patch_layout_t::index_t
+    {
+#if defined(__clang__) || defined(__NVCOMPILER)
+        static const auto s_fragmentation_patch_maps = amr::ndt::utils::patches::
+            fragmentation_patch_maps<patch_layout_t, s_1d_fanout>();
+#else
+        static constexpr auto s_fragmentation_patch_maps = amr::ndt::utils::patches::
+            fragmentation_patch_maps<patch_layout_t, s_1d_fanout>();
+#endif
+        return s_fragmentation_patch_maps[patch_idx][linear_idx];
+    }
 
 public:
     [[nodiscard]]
@@ -906,7 +918,7 @@ public:
                     continue;
                 }
                 const auto to_linear_idx =
-                    s_fragmentation_patch_maps[patch_idx][linear_idx];
+                    fragmentation_patch_maps(patch_idx, linear_idx);
 
                 std::apply(
                     [to, to_linear_idx, child_patch_index, linear_idx](auto&... b)
@@ -952,7 +964,7 @@ public:
                     continue;
                 }
                 const auto from_linear_idx =
-                    s_fragmentation_patch_maps[patch_idx][linear_idx];
+                    fragmentation_patch_maps(patch_idx, linear_idx);
                 std::apply(
                     [child_patch_index, from, from_linear_idx, linear_idx](auto&... b)
                     {

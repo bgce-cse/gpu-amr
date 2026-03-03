@@ -58,7 +58,7 @@ constexpr auto is_halo_cell(typename Layout::index_t linear_index) noexcept -> b
 
 template <concepts::PatchLayout Patch_Layout, std::integral auto Fanout>
 [[nodiscard]]
-consteval auto fragmentation_patch_maps() noexcept
+constexpr auto fragmentation_patch_maps() noexcept
     -> containers::utils::types::tensor::hypercube_t<
         containers::static_tensor<
             typename Patch_Layout::index_t,

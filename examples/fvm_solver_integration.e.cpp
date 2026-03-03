@@ -161,7 +161,7 @@ int main()
 
         solver.time_step(dt);
         solver.get_tree().halo_exchange_update();
-        cell_update_count += solver.get_tree().size();
+        cell_update_count += solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
 
         if (step % 5 == 0)
         {
