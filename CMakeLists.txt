@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(gpu_amr VERSION 0.1 LANGUAGES CXX)
+project(gpu_amr VERSION 0.1 LANGUAGES CXX CUDA)
 
 # ----------------------------
 # Global settings
@@ -200,3 +200,24 @@ add_subdirectory(benchmark)
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Sanitizers enabled (Debug only): ${ENABLE_SANITIZERS}")
 message(STATUS "Examles log level: ${LOG_LEVEL}")
+
+# Enable Cuda
+find_package(CUDAToolkit REQUIRED)
+
+add_library(gpu_solver STATIC
+    ${PROJECT_SOURCE_DIR}/include/solver/gpu_patch_update.cu
+)
+
+target_include_directories(gpu_solver PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(gpu_solver PUBLIC
+    CUDA::cudart
+)
+
+set_target_properties(gpu_solver PROPERTIES
+    CUDA_STANDARD 17
+    CUDA_STANDARD_REQUIRED ON
+    CUDA_SEPARABLE_COMPILATION ON
+)

@@ -1,5 +1,5 @@
-#ifndef AMR_SOLVER_HPP
-#define AMR_SOLVER_HPP
+#ifndef AMR_SOLVER_MUSCL_HPP
+#define AMR_SOLVER_MUSCL_HPP
 
 #include "ndtree/ndtree.hpp"
 #include "cell_types.hpp"
@@ -9,7 +9,7 @@
 #include <functional>
 
 template<typename TreeT, typename PhysicsT, int DIM>
-class amr_solver {
+class amr_solver_MUSCL {
 private:
     TreeT m_tree;
     double gamma;       // Specific heat ratio
@@ -22,7 +22,7 @@ public:
     using EulerPhysicsSolver = EulerPhysics<DIM>;
     static constexpr int NVAR = EulerPhysicsSolver::NVAR;
 
-    amr_solver(size_t capacity, double gamma_ = 1.4, double cfl_ = 0.3)
+    amr_solver_MUSCL(size_t capacity, double gamma_ = 1.4, double cfl_ = 0.3)  //0.3
         : m_tree(capacity), gamma(gamma_), cfl(cfl_) {
         // Dummy dimensions were removed from new EulerPhysics.hpp
         static_assert(DIM == 2 || DIM == 3, "Error: Wrong dimensions");
@@ -229,6 +229,8 @@ public:
                     continue;
                 }
 
+                amr::containers::static_vector<double, NVAR> UL, UR;
+
                 // Extract the current conservative state U_cell
                 amr::containers::static_vector<double, NVAR> U_cell = {
                     rho_patch[linear_idx],
@@ -238,51 +240,103 @@ public:
                 };
 
                 // Placeholder for fluxes on each face
-                amr::containers::static_vector<double, NVAR> flux_left;
-                amr::containers::static_vector<double, NVAR> flux_right;
-                amr::containers::static_vector<double, NVAR> flux_bottom;
-                amr::containers::static_vector<double, NVAR> flux_top;
+                amr::containers::static_vector<double, NVAR> Fx_minus;
+                amr::containers::static_vector<double, NVAR> Fx_plus;
+                amr::containers::static_vector<double, NVAR> Fy_plus;
+                amr::containers::static_vector<double, NVAR> Fy_minus;
 
-                // --- Calculate fluxes for the right face (X-direction) ---
-                amr::containers::static_vector<double, NVAR> U_right_neighbor = {
+                // --- Calculate fluxes for the X-direction ---
+                amr::containers::static_vector<double, NVAR> U_xp1 = {
                     rho_patch[linear_idx + 1],
                     rhou_patch[linear_idx + 1],
                     rhov_patch[linear_idx + 1],
                     e_patch[linear_idx + 1]
                 };
-                EulerPhysicsSolver::rusanovFlux(U_cell, U_right_neighbor, flux_right, Direction::X, gamma);
                 
-                // --- Calculate fluxes for the left face (X-direction) ---
-                amr::containers::static_vector<double, NVAR> U_left_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_xm1 = {
                     rho_patch[linear_idx - 1],
                     rhou_patch[linear_idx - 1],
                     rhov_patch[linear_idx - 1],
                     e_patch[linear_idx - 1]
                 };
-                EulerPhysicsSolver::rusanovFlux(U_left_neighbor, U_cell, flux_left, Direction::X, gamma);
 
-                // --- Calculate fluxes for the top face (Y-direction) ---
-                amr::containers::static_vector<double, NVAR> U_top_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_xm2 = {
+                    rho_patch[linear_idx - 2],
+                    rhou_patch[linear_idx - 2],
+                    rhov_patch[linear_idx - 2],
+                    e_patch[linear_idx - 2]
+                };
+
+                // Reconstruction with higher-order scheme (MUSCL)
+                reconstructMUSCL(
+                    U_xm1,   // i-1
+                    U_cell,       // i
+                    U_xp1,  // i+1
+                    UL,       // U_{i+1/2}^-  (from cell i)
+                    UR        // U_{i+1/2}^+  (from cell i+1)
+                );
+
+                EulerPhysicsSolver::rusanovFlux(UL, UR, Fx_plus, Direction::X, gamma);   // Use (i−1, i, i+1) to build states at i+1/2
+
+                // Reconstruction with higher-order scheme (MUSCL)
+                reconstructMUSCL(
+                    U_xm2,   // i-2
+                    U_xm1,    // i-1
+                    U_cell,  // i
+                    UL,       // U_{i-1/2}^-  (from cell i-1)
+                    UR        // U_{i-1/2}^+  (from cell i)
+                );
+
+                EulerPhysicsSolver::rusanovFlux(UL, UR, Fx_minus, Direction::X, gamma);   // Use (i−2, i-1, i) to build states at i-1/2
+
+                // --- Calculate fluxes for the Y-direction ---
+                amr::containers::static_vector<double, NVAR> U_ym1 = {
                     rho_patch[linear_idx - patch_size_padded_x],
                     rhou_patch[linear_idx - patch_size_padded_x],
                     rhov_patch[linear_idx - patch_size_padded_x],
                     e_patch[linear_idx - patch_size_padded_x]
                 };
-                EulerPhysicsSolver::rusanovFlux(U_cell, U_top_neighbor, flux_top, Direction::Y, gamma);
 
-                // --- Calculate fluxes for the bottom face (Y-direction) --- 
-                amr::containers::static_vector<double, NVAR> U_bottom_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_ym2 = {
+                    rho_patch[linear_idx - 2 * patch_size_padded_x],
+                    rhou_patch[linear_idx - 2 * patch_size_padded_x],
+                    rhov_patch[linear_idx - 2 * patch_size_padded_x],
+                    e_patch[linear_idx - 2 * patch_size_padded_x]
+                };
+
+                amr::containers::static_vector<double, NVAR> U_yp1 = {
                     rho_patch[linear_idx + patch_size_padded_x],
                     rhou_patch[linear_idx + patch_size_padded_x],
                     rhov_patch[linear_idx + patch_size_padded_x],
                     e_patch[linear_idx + patch_size_padded_x]
                 };
-                EulerPhysicsSolver::rusanovFlux(U_bottom_neighbor, U_cell, flux_bottom, Direction::Y, gamma);
+
+                // Reconstruction (j+1/2)
+                reconstructMUSCL(
+                    U_ym1,   
+                    U_cell,
+                    U_yp1,  
+                    UL,                
+                    UR              
+                );
+
+                EulerPhysicsSolver::rusanovFlux(UL, UR, Fy_plus, Direction::Y, gamma);
+
+                // Reconstruction (j-1/2)
+                reconstructMUSCL(
+                    U_ym2,   
+                    U_ym1,
+                    U_cell,  
+                    UL,                
+                    UR              
+                );
+
+                EulerPhysicsSolver::rusanovFlux(UL, UR, Fy_minus, Direction::Y, gamma);
                 
                 // Apply the finite volume update to the temporary buffer
                 for (int k = 0; k < NVAR; ++k) {
-                    U_new_patch_buffer[linear_idx][k] = U_cell[k] - (dt / dx) * (flux_right[k] - flux_left[k])
-                                            - (dt / dy) * (flux_top[k] - flux_bottom[k]);
+                    U_new_patch_buffer[linear_idx][k] = U_cell[k] - (dt / dx) * (Fx_plus[k] - Fx_minus[k])
+                                            - (dt / dy) * (Fy_plus[k] - Fy_minus[k]);
                 }
 
             } // end cell loop
@@ -332,6 +386,8 @@ public:
                     continue;
                 }
 
+                amr::containers::static_vector<double, NVAR> UL, UR;
+
                 // Extract the current conservative state U_cell
                 amr::containers::static_vector<double, NVAR> U_cell = {
                     rho_patch[linear_idx],
@@ -342,74 +398,155 @@ public:
                 };
 
                 // Placeholder for fluxes on each face
-                amr::containers::static_vector<double, NVAR> flux_left;
-                amr::containers::static_vector<double, NVAR> flux_right;
-                amr::containers::static_vector<double, NVAR> flux_bottom;
-                amr::containers::static_vector<double, NVAR> flux_top;
-                amr::containers::static_vector<double, NVAR> flux_back;
-                amr::containers::static_vector<double, NVAR> flux_front;
+                amr::containers::static_vector<double, NVAR> Fx_minus;
+                amr::containers::static_vector<double, NVAR> Fx_plus;
+                amr::containers::static_vector<double, NVAR> Fy_plus;
+                amr::containers::static_vector<double, NVAR> Fy_minus;
+                amr::containers::static_vector<double, NVAR> Fz_minus;
+                amr::containers::static_vector<double, NVAR> Fz_plus;
 
-                // --- Calculate fluxes for the right face (X-direction) ---
-                amr::containers::static_vector<double, NVAR> U_right_neighbor = {
+                // --- Calculate fluxes for the X-direction ---
+                amr::containers::static_vector<double, NVAR> U_xp1 = {
                     rho_patch[linear_idx + 1],
                     rhou_patch[linear_idx + 1],
                     rhov_patch[linear_idx + 1],
                     rhow_patch[linear_idx + 1],
                     e_patch[linear_idx + 1]
                 };
-                EulerPhysicsSolver::rusanovFlux(U_cell, U_right_neighbor, flux_right, Direction::X, gamma);
                 
-                // --- Calculate fluxes for the left face (X-direction) ---
-                amr::containers::static_vector<double, NVAR> U_left_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_xm1 = {
                     rho_patch[linear_idx - 1],
                     rhou_patch[linear_idx - 1],
                     rhov_patch[linear_idx - 1],
                     rhow_patch[linear_idx - 1],
                     e_patch[linear_idx - 1]
                 };
-                EulerPhysicsSolver::rusanovFlux(U_left_neighbor, U_cell, flux_left, Direction::X, gamma);
+      
+                amr::containers::static_vector<double, NVAR> U_xm2 = {
+                    rho_patch[linear_idx - 2],
+                    rhou_patch[linear_idx - 2],
+                    rhov_patch[linear_idx - 2],
+                    rhow_patch[linear_idx - 2],
+                    e_patch[linear_idx - 2]
+                };
 
-                // --- Calculate fluxes for the top face (Y-direction) ---
-                amr::containers::static_vector<double, NVAR> U_top_neighbor = {
+                // Reconstruction (i+1/2)
+                reconstructMUSCL(
+                    U_xm1,   
+                    U_cell,         
+                    U_xp1,  
+                    UL, 
+                    UR
+                );
+
+                EulerPhysicsSolver::rusanovFlux(UL, UR, Fx_plus, Direction::X, gamma);
+
+                // Reconstruction (i-1/2)
+                reconstructMUSCL(
+                    U_xm2,   
+                    U_xm1,         
+                    U_cell,  
+                    UL, 
+                    UR
+                );
+
+                EulerPhysicsSolver::rusanovFlux(UL, UR, Fx_minus, Direction::X, gamma);
+
+                // --- Calculate fluxes for the Y-direction ---
+                amr::containers::static_vector<double, NVAR> U_ym1 = {
                     rho_patch[linear_idx - patch_size_padded_x],
                     rhou_patch[linear_idx - patch_size_padded_x],
                     rhov_patch[linear_idx - patch_size_padded_x],
                     rhow_patch[linear_idx - patch_size_padded_x],
                     e_patch[linear_idx - patch_size_padded_x]
                 };
-                EulerPhysicsSolver::rusanovFlux(U_cell, U_top_neighbor, flux_top, Direction::Y, gamma);
 
-                // --- Calculate fluxes for the bottom face (Y-direction) --- 
-                amr::containers::static_vector<double, NVAR> U_bottom_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_ym2 = {
+                    rho_patch[linear_idx - 2 * patch_size_padded_x],
+                    rhou_patch[linear_idx - 2 * patch_size_padded_x],
+                    rhov_patch[linear_idx - 2 * patch_size_padded_x],
+                    rhow_patch[linear_idx - 2 * patch_size_padded_x],
+                    e_patch[linear_idx - 2 * patch_size_padded_x]
+                };
+
+                amr::containers::static_vector<double, NVAR> U_yp1 = {
                     rho_patch[linear_idx + patch_size_padded_x],
                     rhou_patch[linear_idx + patch_size_padded_x],
                     rhov_patch[linear_idx + patch_size_padded_x],
                     rhow_patch[linear_idx + patch_size_padded_x],
                     e_patch[linear_idx + patch_size_padded_x]
                 };
-                EulerPhysicsSolver::rusanovFlux(U_bottom_neighbor, U_cell, flux_bottom, Direction::Y, gamma);
+                
+                // Reconstruction (j+1/2)
+                reconstructMUSCL(
+                    U_ym1,   
+                    U_cell,         
+                    U_yp1,  
+                    UL, 
+                    UR
+                );
 
-                // --- Calculate fluxes for the front face (Z-direction) ---
-                amr::containers::static_vector<double, NVAR> U_front_neighbor = {
+                EulerPhysicsSolver::rusanovFlux(UL, UR, Fy_plus, Direction::Y, gamma);
+
+                // Reconstruction (j-1/2)
+                reconstructMUSCL(
+                    U_ym2,   
+                    U_ym1,         
+                    U_cell,  
+                    UL, 
+                    UR
+                );
+
+                EulerPhysicsSolver::rusanovFlux(UL, UR, Fy_minus, Direction::Y, gamma);
+
+                // --- Calculate fluxes for the Z-direction ---
+                amr::containers::static_vector<double, NVAR> U_zp1 = {
                     rho_patch[linear_idx + patch_size_padded_x * patch_size_padded_y],
                     rhou_patch[linear_idx + patch_size_padded_x * patch_size_padded_y],
                     rhov_patch[linear_idx + patch_size_padded_x * patch_size_padded_y],
                     rhow_patch[linear_idx + patch_size_padded_x * patch_size_padded_y],
                     e_patch[linear_idx + patch_size_padded_x * patch_size_padded_y]
                 };
-                EulerPhysicsSolver::rusanovFlux(U_front_neighbor, U_cell, flux_front, Direction::Z, gamma);
 
-                // --- Calculate fluxes for the back face (Z-direction) --- 
-                amr::containers::static_vector<double, NVAR> U_back_neighbor = {
+                amr::containers::static_vector<double, NVAR> U_zm1 = {
                     rho_patch[linear_idx - patch_size_padded_x * patch_size_padded_y],
                     rhou_patch[linear_idx - patch_size_padded_x * patch_size_padded_y],
                     rhov_patch[linear_idx - patch_size_padded_x * patch_size_padded_y],
                     rhow_patch[linear_idx - patch_size_padded_x * patch_size_padded_y],
                     e_patch[linear_idx - patch_size_padded_x * patch_size_padded_y]
                 };
-                EulerPhysicsSolver::rusanovFlux(U_cell, U_back_neighbor, flux_back, Direction::Z, gamma);
+
+                amr::containers::static_vector<double, NVAR> U_zm2 = {
+                    rho_patch[linear_idx - 2 * patch_size_padded_x * patch_size_padded_y],
+                    rhou_patch[linear_idx - 2 * patch_size_padded_x * patch_size_padded_y],
+                    rhov_patch[linear_idx - 2 * patch_size_padded_x * patch_size_padded_y],
+                    rhow_patch[linear_idx - 2 * patch_size_padded_x * patch_size_padded_y],
+                    e_patch[linear_idx - 2 * patch_size_padded_x * patch_size_padded_y]
+                };
                 
+                // Reconstruction (k+1/2)
+                reconstructMUSCL(
+                    U_zm1,   
+                    U_cell,         
+                    U_zp1,  
+                    UL, 
+                    UR
+                );
+
+                EulerPhysicsSolver::rusanovFlux(UL, UR, Fz_plus, Direction::Z, gamma);
+
+                // Reconstruction (k-1/2)
+                reconstructMUSCL(
+                    U_zm2,   
+                    U_zm1,         
+                    U_cell,  
+                    UL, 
+                    UR
+                );
+
+                EulerPhysicsSolver::rusanovFlux(UL, UR, Fz_minus, Direction::Z, gamma);
                 
+  
                 // Apply the finite volume update to the temporary buffer
                 auto patch_id = m_tree.get_node_index_at(patch_idx);
                 auto level = patch_id.level();
@@ -421,9 +558,9 @@ public:
                 double dz = cell_size;
                 
                 for (int k = 0; k < NVAR; ++k) {
-                    U_new_patch_buffer[linear_idx][k] = U_cell[k] - (dt / dx) * (flux_right[k] - flux_left[k])
-                                            - (dt / dy) * (flux_top[k] - flux_bottom[k])
-                                            - (dt / dz) * (flux_front[k] - flux_back[k]);
+                    U_new_patch_buffer[linear_idx][k] = U_cell[k] - (dt / dx) * (Fx_plus[k] - Fx_minus[k])
+                                            - (dt / dy) * (Fy_plus[k] - Fy_minus[k])
+                                            - (dt / dz) * (Fz_plus[k] - Fz_minus[k]);
                 }
 
             } // end cell loop
@@ -553,13 +690,36 @@ public:
 
         return cfl * dt_min;
     }
+
+    template<int NVAR>
+    static void reconstructMUSCL(
+        const amr::containers::static_vector<double, NVAR>& Um,
+        const amr::containers::static_vector<double, NVAR>& U0,
+        const amr::containers::static_vector<double, NVAR>& Up,
+        amr::containers::static_vector<double, NVAR>& UL,
+        amr::containers::static_vector<double, NVAR>& UR
+    ) {
+        for (int k = 0; k < NVAR; ++k) {
+            double dL = U0[k] - Um[k];
+            double dR = Up[k] - U0[k];
+            double slope = minmod(dL, dR);
+
+            UL[k] = U0[k] + 0.5 * slope;
+            UR[k] = Up[k] - 0.5 * slope;
+        }
+    }
+
+    static double minmod(double a, double b) {
+    if (a * b <= 0.0) return 0.0;
+    return (std::abs(a) < std::abs(b)) ? a : b;
+    }
 };
 
 // Typedefs
 template<typename TreeT, typename PhysicsT>
-using amr_solver_2d = amr_solver<TreeT, PhysicsT, 2>;
+using amr_solver_2d = amr_solver_MUSCL<TreeT, PhysicsT, 2>;
 
 template<typename TreeT, typename PhysicsT>
-using amr_solver_3d = amr_solver<TreeT, PhysicsT, 3>;
+using amr_solver_3d = amr_solver_MUSCL<TreeT, PhysicsT, 3>;
 
-#endif // AMR_SOLVER_HPP
+#endif // AMR_SOLVER_MUSCL_HPP

@@ -9,6 +9,8 @@
 #include "solver/amr_solver.hpp"
 #include "solver/cell_types.hpp"
 #include "solver/physics_system.hpp"
+#include "solver/gpu_patch_update.cuh"
+#include "solver/gpu_data_transfer.hpp"
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -56,7 +58,8 @@ int main()
         return tree_t::refine_status_t::Refine;
     };
 
-    auto acousticWaveCriterion = [&](const patch_index_t& idx)
+    /*
+        auto acousticWaveCriterion = [&](const patch_index_t& idx)
     {
         // Define Thresholds and Limits
         constexpr double REFINE_RHO_THRESHOLD  = 0.53;
@@ -94,6 +97,7 @@ int main()
 
         return tree_t::refine_status_t::Stable;
     };
+    */
 
     // Parameters for the Acoustic Pulse
     constexpr double RHO_BG    = 0.5;
@@ -137,6 +141,12 @@ int main()
     solver.initialize(acousticPulseIC);
     solver.get_tree().halo_exchange_update();
 
+    auto packed = pack_tree_state_2d<tree_t, patch_layout_t>(solver.get_tree());
+
+    std::size_t total_cells = packed.num_patches * packed.P;
+
+    DeviceSoA2D d = cuda_alloc_soa(total_cells);
+
     // Print initial state
     // printer.print(solver.get_tree(), "_iteration_0.vtk");
 
@@ -151,17 +161,58 @@ int main()
     while (t < tmax)
     {
         double dt = solver.compute_time_step();
+        packed = pack_tree_state_2d<tree_t, patch_layout_t>(solver.get_tree());
+
+        cuda_h2d(d,
+                packed.rho,
+                packed.rhou,
+                packed.rhov,
+                packed.E);
 
         std::cout << "Step " << step << ", t=" << t << ", dt=" << dt << std::endl;
 
-        solver.time_step(dt);
+        //solver.time_step(dt);
+        launch_patch_update(
+            d.rho, d.rhou, d.rhov, d.E,
+            static_cast<int>(packed.num_patches),
+            dt, 1.4
+        );
+
+        // Check launch errors
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            std::cerr << "CUDA launch error: "
+                    << cudaGetErrorString(err) << std::endl;
+        }
+
+        cudaDeviceSynchronize();
+
+        cuda_d2h(
+            d,
+            packed.rho,
+            packed.rhou,
+            packed.rhov,
+            packed.E
+        );
+
+        unpack_tree_state_2d<tree_t, patch_layout_t>(
+            solver.get_tree(),
+            packed.rho,
+            packed.rhou,
+            packed.rhov,
+            packed.E
+        );
+
         solver.get_tree().halo_exchange_update();
 
+        /*
         if (step % 5 == 0)
         {
             solver.get_tree().reconstruct_tree(acousticWaveCriterion);
             solver.get_tree().halo_exchange_update();
         }
+        */
 
         t += dt;
 

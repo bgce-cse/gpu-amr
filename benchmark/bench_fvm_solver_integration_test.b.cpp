@@ -15,16 +15,19 @@
 #include <string>
 #include "utility/logging.hpp"
 #include <vector>
+#include <fstream>
+
 
 int main()
 {
     std::cout << "Hello AMR world\n";
-    constexpr std::size_t N    = 10;
-    constexpr std::size_t M    = 10;
+    constexpr std::size_t N    = 20;
+    constexpr std::size_t M    = 20;
     constexpr std::size_t Halo = 2;
 
     constexpr double physics_x = 1000;
     constexpr double physics_y = 1000;
+    double t_output = 5;
 
 
     constexpr std::array<double, 2> physics_lengths = {physics_x, physics_y};
@@ -40,19 +43,20 @@ int main()
 
     using physics_t = amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
-    double            tmax          = 400;
+    [[maybe_unused]] double            tmax          = 400;
 
-    int inital_refinement = 3;
+    [[maybe_unused]] int inital_refinement = 3;
 
     // Instantiate the AMR solver.
     amr_solver_MUSCL<tree_t,physics_t, 2> solver(1000000); // Provide initial capacity for tree
 
-    auto refineAll = [&]([[maybe_unused]]
+    [[maybe_unused]] auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
     {
         return tree_t::refine_status_t::Refine;
     };
 
+    [[maybe_unused]]
     auto acousticWaveCriterion = [&](const patch_index_t& idx)
     {
         // Define Thresholds and Limits
@@ -93,44 +97,37 @@ int main()
     };
 
     // Parameters for the Acoustic Pulse
-    constexpr double RHO_BG         = 0.5;
-    constexpr double P_BG           = 1.0;
-    constexpr double AMPLITUDE      = 10.0;
-    constexpr double PULSE_WIDTH_SQ = 0.01; // sigma^2
-    constexpr double CENTER_X       = 0.5;
-    constexpr double CENTER_Y       = 0.5;
+    //constexpr double RHO_BG         = 0.5;
+    //constexpr double P_BG           = 1.0;
+    //constexpr double AMPLITUDE      = 10.0;
+    //constexpr double PULSE_WIDTH_SQ = 0.01; // sigma^2
+    //constexpr double CENTER_X       = 0.5;
+    //constexpr double CENTER_Y       = 0.5;
 
     // The initial condition function (auto IC = [](){})
-    auto acousticPulseIC = [](double x,
-                              double y) -> amr::containers::static_vector<double, 4>
+    constexpr double EPS = 0.1;
+    constexpr double C   = 1.0;
+
+    auto manufacturedIC = [](double x, double y)
+        -> amr::containers::static_vector<double, 4>
     {
         amr::containers::static_vector<double, 4> prim;
 
-        // Calculate distance squared from the center
-        double dx   = x - CENTER_X;
-        double dy   = y - CENTER_Y;
-        double r_sq = dx * dx + dy * dy;
+        double rho = 1.0 + EPS * std::sin(2.0 * M_PI * (x + y));
+        double u   = C;
+        double v   = C;
+        double p   = 1.0;
 
-        // Calculate the density/pressure perturbation
-        double perturbation = AMPLITUDE * std::exp(-r_sq / PULSE_WIDTH_SQ);
-
-        // Set primitive variables: [rho, u, v, p]
-        prim[0] = RHO_BG + (perturbation * 0.2); // Density (rho)
-        prim[1] = 0.0;                           // X-velocity (u)
-        prim[2] = 0.0;                           // Y-velocity (v)
-        prim[3] = P_BG + perturbation;           // Pressure (p)
+        prim[0] = rho;
+        prim[1] = u;
+        prim[2] = v;
+        prim[3] = p;
 
         return prim;
     };
 
-    std::cout << "Initializing solver..." << std::endl;
-    for (int i = 0; i < inital_refinement; i++)
-    {
-        solver.get_tree().reconstruct_tree(refineAll);
-        solver.get_tree().halo_exchange_update();
-    }
 
-    solver.initialize(acousticPulseIC);
+    solver.initialize(manufacturedIC);
     solver.get_tree().halo_exchange_update();
 
     // Main Simulation Loop
@@ -139,23 +136,35 @@ int main()
 
     std::cout << "\nStarting AMR simulation...\n";
 
-    while (t < tmax)
+    while (t < t_output)
     {
         double dt = solver.compute_time_step();
 
-        std::cout << "Step " << step << ", t=" << t << ", dt=" << dt << '\n';
+        //std::cout << "Step " << step << ", t=" << t << ", dt=" << dt << '\n';
 
         solver.time_step(dt);
         solver.get_tree().halo_exchange_update();
 
-        if (step % 5 == 0)
-        {
-            solver.get_tree().reconstruct_tree(acousticWaveCriterion);
-            solver.get_tree().halo_exchange_update();
-        }
         t += dt;
         step++;
     }
+    std::cout << "Final t = " << t << "\n";
+
+    std::vector<double> rho_snapshot;
+
+    auto& tree = solver.get_tree();
+
+    for (std::size_t patch_idx = 0; patch_idx < tree.size(); ++patch_idx) {
+        const auto& rho_patch = tree.template get_patch<amr::cell::Rho>(patch_idx);
+
+        for (std::size_t i = 0; i < patch_layout_t::flat_size(); ++i) {
+            if (amr::ndt::utils::patches::is_halo_cell<patch_layout_t>(i)) continue;
+            rho_snapshot.push_back(rho_patch[i]);
+        }
+    }
+
+    std::ofstream out("rho_N20.txt");
+    for (double v : rho_snapshot) out << v << "\n";
 
     std::cout << "\nSimulation completed.\n";
     return 0;
