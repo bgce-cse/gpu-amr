@@ -12,6 +12,7 @@
 #include "dg_helpers/tree_builder.hpp"
 #include "generated_config.hpp"
 #include "ndtree/print_dg_tree_v2.hpp"
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
@@ -118,23 +119,34 @@ struct DGSolver
         // tree_builder.initialize(4);
         write_output(printer, timestep, time);
 
+        std::size_t processed_cell_count = 0;
+        const auto  start                = std::chrono::steady_clock::now();
+
         while (time < Policy::EndTime)
         {
             double dt_min = dt;
             advance_patches(dt, dt_min);
             dt = std::min(dt, dt_min);
 
+            processed_cell_count +=
+                tree().size() * tree_t::patch_layout_t::data_layout_t::flat_size();
+
             time += dt;
             ++timestep;
 
             apply_amr(timestep, next_amr_step);
 
-            if (time >= next_plot_time) // time >= next_plot_time
+            if (time >= next_plot_time)
             {
                 write_output(printer, timestep, time);
                 next_plot_time += params.plot_interval;
             }
         }
+        const auto end      = std::chrono::steady_clock::now();
+        const auto duration = std::chrono::duration<double>(end - start).count();
+        std::cout << "Processed cells:\t" << processed_cell_count << '\n';
+        std::cout << "Processed cells/s\t: " << (double)processed_cell_count / duration
+                  << '\n';
     }
 
 private:
