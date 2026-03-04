@@ -88,14 +88,14 @@ private:
         file << "POINTS " << cell_count * box_points << ' '
              << type_repr.template operator()<typename value_type::type::type>() << '\n';
 
-        auto const* order = tree.active_slots();   // ← was sorted_order()
+        auto const* order = tree.active_slots();   
 
         if constexpr (dim == 2)
         {
             for (std::size_t i = 0; i != tree_size; ++i)
             {
-                const auto slot         = order[i];                       // ← slot
-                const auto patch_id     = tree.get_node_index_at(slot);  // ← slot → patch_index
+                const auto slot         = order[i];                       
+                const auto patch_id     = tree.get_node_index_at(slot);  
                 const auto patch_origin = physics_system_t::patch_coord(patch_id);
                 const auto cell_size    = physics_system_t::cell_sizes(patch_id);
 
@@ -122,8 +122,8 @@ private:
         {
             for (std::size_t i = 0; i != tree_size; ++i)
             {
-                const auto slot         = order[i];                       // ← slot
-                const auto patch_id     = tree.get_node_index_at(slot);  // ← slot → patch_index
+                const auto slot         = order[i];                       
+                const auto patch_id     = tree.get_node_index_at(slot);  
                 const auto patch_origin = physics_system_t::patch_coord(patch_id);
                 const auto cell_size    = physics_system_t::cell_sizes(patch_id);
 
@@ -212,8 +212,8 @@ private:
                   file << "LOOKUP_TABLE default\n";
                   for (size_t i = 0; i != tree_size; ++i)
                   {
-                      const auto slot   = order[i];                        // ← slot
-                      auto const& patch = tree.template get_patch<element_type>(slot); // ← slot
+                      const auto slot   = order[i];                     
+                      auto const& patch = tree.template get_patch<element_type>(slot); 
                       amr::containers::manipulators::for_each<lc_interior_t>(
                           patch.data(),
                           [&file](auto const& p, auto const& idxs)
