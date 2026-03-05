@@ -243,9 +243,8 @@ private:
                   file << "LOOKUP_TABLE default\n";
                   for (size_t i = 0; i != tree_size; ++i)
                   {
-                      const auto  slot = order[i]; // ← slot
-                      auto const& patch =
-                          tree.template get_patch<element_type>(slot); // ← slot
+                      const auto slot   = order[i];                     
+                      auto const& patch = tree.template get_patch<element_type>(slot); 
                       amr::containers::manipulators::for_each<lc_interior_t>(
                           patch.data(),
                           [&file](auto const& p, auto const& idxs)
