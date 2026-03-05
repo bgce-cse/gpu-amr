@@ -371,26 +371,20 @@ public:
 
     auto fragment() -> void
     {
-        CONTRACTS_CHECK(is_sorted());
         for (auto i = m_to_refine.size(); i > 0; --i)
         {
             fragment(m_to_refine[i - 1]);
         }
-        // sort_buffers();
         compact();
-        CONTRACTS_CHECK(is_sorted());
     }
 
     auto recombine() -> void
     {
-        CONTRACTS_CHECK(is_sorted());
         for (const auto& node_id : m_to_coarsen)
         {
             recombine(node_id);
         }
-        // sort_buffers();
         compact();
-        CONTRACTS_CHECK(is_sorted());
     }
 
     template <typename Fn>
@@ -783,84 +777,6 @@ private:
         return it == m_index_map.end() ? std::nullopt : std::optional{ it };
     }
 
-    // TODO: make private
-public:
-    auto sort_buffers() noexcept -> void
-    {
-        compact();
-        std::sort(
-            m_reorder_buffer,
-            &m_reorder_buffer[m_size],
-            [this](auto const i, auto const j)
-            { return m_linear_index_map[i] < m_linear_index_map[j]; }
-        );
-
-        linear_index_t        backup_start_pos;
-        patch_index_t         backup_node_index;
-        refine_status_t       backup_refine_status;
-        deconstructed_types_t backup_patch;
-        patch_neighbors_t     backup_neighbors;
-
-        for (linear_index_t i = 0; i != back_idx();)
-        {
-            auto src = m_reorder_buffer[i];
-            if (i == src)
-            {
-                ++i;
-                continue;
-            }
-
-            backup_start_pos     = i;
-            backup_node_index    = m_linear_index_map[i];
-            backup_refine_status = m_refine_status_buffer[i];
-            backup_neighbors     = m_neighbors[i];
-
-            // Backup entire patch
-            [this, i, &backup_patch]<std::size_t... I>(std::index_sequence<I...>)
-            {
-                ((void)(std::get<I>(backup_patch) = std::get<I>(m_data_buffers)[i]), ...);
-            }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
-
-            auto dst = i;
-            do
-            {
-                m_linear_index_map[dst]     = m_linear_index_map[src];
-                m_refine_status_buffer[dst] = m_refine_status_buffer[src];
-                m_neighbors[dst]            = m_neighbors[src];
-
-                // Copy entire patches
-                std::apply(
-                    [dst, src](auto&... b) { ((void)(b[dst] = b[src]), ...); },
-                    m_data_buffers
-                );
-
-                m_index_map[m_linear_index_map[dst]] = dst;
-                m_reorder_buffer[dst]                = dst;
-                dst                                  = src;
-                src                                  = m_reorder_buffer[src];
-                CONTRACTS_CHECK(src != dst);
-            } while (src != backup_start_pos);
-
-            m_linear_index_map[dst]     = backup_node_index;
-            m_refine_status_buffer[dst] = backup_refine_status;
-            m_neighbors[dst]            = backup_neighbors;
-
-            // Restore backed up patch
-            [this, dst, &backup_patch]<std::size_t... I>(std::index_sequence<I...>)
-            {
-                ((void)(std::get<I>(m_data_buffers)[dst] = std::get<I>(backup_patch)),
-                 ...);
-            }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
-
-            m_index_map[backup_node_index] = dst;
-            m_reorder_buffer[dst]          = dst;
-        }
-        CONTRACTS_CHECK(is_sorted());
-        CONTRACTS_CHECK(
-            std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size])
-        );
-    }
-
 public:
     [[nodiscard]]
     auto gather_node(linear_index_t const i) const noexcept -> map_type
@@ -1075,29 +991,6 @@ private:
         std::apply(
             [i, j](auto&... b) { ((void)std::swap(b[i], b[j]), ...); }, m_data_buffers
         );
-    }
-
-    [[nodiscard]]
-    auto is_sorted() const noexcept -> bool
-    {
-        if (std::ranges::is_sorted(
-                m_linear_index_map, &m_linear_index_map[m_size], std::less{}
-            ))
-        {
-            for (linear_index_t i = 0; i != m_size; ++i)
-            {
-                CONTRACTS_CHECK(m_index_map.contains(m_linear_index_map[i]));
-                if (m_index_map.at(m_linear_index_map[i]) != i)
-                {
-                    DEFAULT_SOURCE_LOG_ERROR("index map is not correct");
-                    return false;
-                }
-            }
-            return true;
-        }
-        DEFAULT_SOURCE_LOG_ERROR("linear index is not sorted");
-
-        return false;
     }
 
 #ifdef AMR_NDTREE_ENABLE_CHECKS

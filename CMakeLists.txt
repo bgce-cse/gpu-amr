@@ -6,10 +6,11 @@ project(gpu_amr VERSION 0.1 LANGUAGES CXX)
 # ----------------------------
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_VERBOSE_MAKEFILE ON)
 
-if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
+if(NOT CMAKE_CONFIGURATION_TYPES)
+    if(NOT CMAKE_BUILD_TYPE)
+        set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+    endif()
 endif()
 
 # ----------------------------
@@ -27,7 +28,7 @@ set_property(CACHE EXECUTION PROPERTY STRINGS SEQ PAR)
 # ----------------------------
 # Output dir
 # ----------------------------
-set(OUTPUT_DIR_EXAMPLES   ${CMAKE_BINARY_DIR}/bin/examples/$<CONFIG>)
+set(OUTPUT_DIR_EXAMPLES   ${CMAKE_BINARY_DIR}/bin/examples)
 set(OUTPUT_DIR_BENCHMARKS ${CMAKE_BINARY_DIR}/bin/benchmarks)
 
 # ----------------------------
@@ -71,6 +72,23 @@ set_property(CACHE LOG_LEVEL PROPERTY STRINGS
     TRACE DEBUG INFO WARNING ERROR FATAL OFF)
 
 # ----------------------------
+# Options
+# ----------------------------
+include(cmake/amr_compiler_options.cmake)
+
+# ----------------------------
+# Print Status
+# ----------------------------
+message(STATUS "----------------------------")
+message(STATUS "gpu_amr configuration summary:")
+message(STATUS "  Build type       : ${CMAKE_BUILD_TYPE}")
+message(STATUS "  Execution policy : ${EXECUTION}")
+message(STATUS "  Log level        : ${LOG_LEVEL}")
+message(STATUS "  Sanitizers       : ${ENABLE_SANITIZERS}")
+message(STATUS "  Output dir       : ${OUTPUT_DIR_EXAMPLES}")
+message(STATUS "----------------------------")
+
+# ----------------------------
 # Core taget
 # ----------------------------
 add_library(gpu_amr INTERFACE)
@@ -85,108 +103,20 @@ target_include_directories(gpu_amr INTERFACE
 target_link_libraries(gpu_amr
     INTERFACE TBB::tbb
     INTERFACE utility_logging
+    INTERFACE amr_compiler_options
 )
 
 # ----------------------------
 # Compiler flags
 # ----------------------------
-set(PROJECT_WARNINGS
-    -fbounds-check
-    -fvisibility=hidden
-    -pedantic
-    -Wall
-    -Wconversion
-    -Wdangling-else
-    -Wdouble-promotion
-    -Wduplicated-branches
-    -Wduplicated-cond
-    -Werror
-    -Wpadded
-    -Wredundant-decls
-    -Wextra
-    -Wfloat-equal
-    -Wformat
-    -Winvalid-pch
-    -Wlogical-op
-    -Wmisleading-indentation
-    -Wnull-dereference
-    -Wodr
-    -Wpointer-arith
-    -Wrestrict
-    -Wreturn-local-addr
-    -Wshadow
-    -Wswitch-default
-    -Wswitch-enum
-    -Wuninitialized
-    -Wvla
-)
+if(NOT DEFINED AMR_WARNINGS)
+    message(FATAL_ERROR "Compiler warning flags not provided. Use a toolchain file.")
+endif()
+if(NOT DEFINED AMR_DIAGNOSTICS)
+    message(FATAL_ERROR "Compiler diagnostic flags not provided. Use a toolchain file.")
+endif()
 
-set(PROJECT_DIAGNOSTICS
-	-fconcepts-diagnostics-depth=3
-	-fdiagnostics-color=auto
-	-fdiagnostics-path-format=inline-events
-	-fdiagnostics-show-caret
-	-fdiagnostics-show-template-tree
-	-ftime-report
-)
-
-set(PROJECT_DEBUG_INFO
-	-fno-omit-frame-pointer
-	-fvar-tracking
-	-fvar-tracking-assignments
-	-ggdb3
-	-gvariable-location-views
-	-ginline-points
-	-gstatement-frontiers
-)
-
-set(PROJECT_DEBUG_FLAGS
-	-ffinite-math-only
-	-fmax-errors=15
-	-fno-eliminate-unused-debug-symbols
-	-fno-inline
-	-fno-default-inline
-	-march=native
-	-mavx
-	-O0
-)
-
-set(PROJECT_RELEASE_FLAGS
-	-fno-math-errno
-	-ffast-math
-	-fno-trapping-math
-	-fstrength-reduce
-    # -stdpar=gpu
-	-march=native
-	-mavx
-	-O3
-)
-
-set(REL_DEB_INFO_CXX_FLAGS
-	-fno-math-errno
-	-fno-trapping-math
-	-fstrength-reduce
-	-march=native
-	-mavx
-	-O2
-)
-
-set(PROJECT_SANITIZERS
-	-fsanitize=address
-	-fsanitize=bounds
-	-fsanitize=float-cast-overflow
-	-fsanitize=float-divide-by-zero
-	-fsanitize=integer-divide-by-zero
-	-fsanitize=leak
-	-fsanitize=null
-	-fsanitize=signed-integer-overflow
-	-fsanitize=undefined
-)
-
-set(CONSTEXPR_LIMIT_FLAGS
-    # -fconstexpr-ops-limit=10000000000
-    # -fconstexpr-loop-limit=1048576
-)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ----------------------------
 # Policy targets
@@ -210,24 +140,6 @@ target_compile_definitions(amr_tests INTERFACE
     AMR_EXECUTION=${EXECUTION}
 )
 
-foreach(tgt amr_examples amr_benchmarks amr_tests)
-    target_compile_options(${tgt} INTERFACE
-        ${PROJECT_WARNINGS}
-        ${PROJECT_DIAGNOSTICS}
-        ${CONSTEXPR_LIMIT_FLAGS}
-
-        $<$<CONFIG:Debug>:${PROJECT_DEBUG_FLAGS} ${PROJECT_DEBUG_INFO}>
-        $<$<CONFIG:Release>:${PROJECT_RELEASE_FLAGS}>
-        $<$<CONFIG:RelWithDebInfo>:${REL_DEB_INFO_CXX_FLAGS} ${PROJECT_DEBUG_INFO}>
-
-        $<$<AND:$<CONFIG:Debug>,$<BOOL:${ENABLE_SANITIZERS}>>:${PROJECT_SANITIZERS}>
-    )
-
-    target_link_options(${tgt} INTERFACE
-        $<$<AND:$<CONFIG:Debug>,$<BOOL:${ENABLE_SANITIZERS}>>:${PROJECT_SANITIZERS}>
-    )
-endforeach()
-
 # ----------------------------
 # CMake Subdirectories
 # ----------------------------
@@ -235,11 +147,3 @@ endforeach()
 add_subdirectory(examples)
 add_subdirectory(tests)
 add_subdirectory(benchmark)
-
-# ----------------------------
-# Status
-# ----------------------------
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "Sanitizers enabled (Debug only): ${ENABLE_SANITIZERS}")
-message(STATUS "Log level: ${LOG_LEVEL}")
-message(STATUS "Execution policy: ${EXECUTION}" )
