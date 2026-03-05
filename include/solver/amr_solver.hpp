@@ -105,13 +105,13 @@ public:
     {
         for (std::size_t i = 0; i < m_tree.size(); ++i)
         {
-            auto const slot     = m_tree.get_active_slot_at(i);
-            auto const patch_id = m_tree.get_node_index_at(slot);
+            // auto const slot     = m_tree.get_active_slot_at(i);
+            auto const patch_id = m_tree.get_node_index_at(i);
             auto const c_size   = GeometryT::cell_sizes(patch_id);
 
             amr::containers::manipulators::shaped_for<
                 typename patch_layout_t::interior_iteration_control_t>(
-                [this, slot, patch_id, &c_size](auto&& fn, auto const& idxs)
+                [this, i, patch_id, &c_size](auto&& fn, auto const& idxs)
                 {
                     const auto linear_idx = padded_layout_t::linear_index(idxs);
                     // Dimension-agnostic coordinate fetch
@@ -124,7 +124,7 @@ public:
                     amr::containers::static_vector<double, NVAR> cons;
                     EquationT::primitiveToConservative(prim, cons, m_gamma);
 
-                    set_full_state(slot, linear_idx, cons);
+                    set_full_state(i, linear_idx, cons);
                 },
                 std::forward<decltype(init_func)>(init_func)
             );
@@ -141,8 +141,8 @@ public:
 
         for (std::size_t i = 0; i < m_tree.size(); ++i)
         {
-            auto const slot     = m_tree.get_active_slot_at(i);
-            auto const patch_id = m_tree.get_node_index_at(slot);
+            // auto const slot     = m_tree.get_active_slot_at(i);
+            auto const patch_id = m_tree.get_node_index_at(i);
             auto const c_size   = GeometryT::cell_sizes(patch_id);
 
             std::vector<amr::containers::static_vector<double, NVAR>> update_buffer(
@@ -152,10 +152,10 @@ public:
             int buffer_idx = 0;
             amr::containers::manipulators::shaped_for<
                 typename patch_layout_t::interior_iteration_control_t>(
-                [this, slot, dt, &c_size](auto& out_buffer, auto& out_i, auto const& idxs)
+                [this, i, dt, &c_size](auto& out_buffer, auto& out_i, auto const& idxs)
                 {
                     const auto linear_idx = padded_layout_t::linear_index(idxs);
-                    const auto U_cell     = get_full_state(slot, linear_idx);
+                    const auto U_cell     = get_full_state(i, linear_idx);
                     out_buffer[out_i]     = U_cell;
 
                     // Generic loop over dimensions (X, Y, Z)
@@ -163,8 +163,8 @@ public:
                     {
                         const auto stride = (d == 0) ? 1 : (d == 1 ? stride_y : stride_z);
 
-                        const auto U_L = get_full_state(slot, linear_idx - stride);
-                        const auto U_R = get_full_state(slot, linear_idx + stride);
+                        const auto U_L = get_full_state(i, linear_idx - stride);
+                        const auto U_R = get_full_state(i, linear_idx + stride);
 
                         // TODO: Remove out paramters if possible
                         // TODO: Evaluate merging both calls into one since they share
@@ -186,10 +186,10 @@ public:
             buffer_idx = 0;
             amr::containers::manipulators::shaped_for<
                 typename patch_layout_t::interior_iteration_control_t>(
-                [this, slot, &update_buffer](auto& out_i, auto const& idxs)
+                [this, i, &update_buffer](auto& out_i, auto const& idxs)
                 {
                     const auto linear_idx = padded_layout_t::linear_index(idxs);
-                    set_full_state(slot, linear_idx, update_buffer[out_i++]);
+                    set_full_state(i, linear_idx, update_buffer[out_i++]);
                 },
                 buffer_idx
             );
@@ -210,17 +210,17 @@ public:
             std::cend(r),
             [this, &dt](auto const i) mutable
             {
-                auto const slot = m_tree.get_active_slot_at(i);
+                // auto const slot = m_tree.get_active_slot_at(i);
                 auto       local_dt{ std::numeric_limits<arithmetic_t>::max() };
-                const auto patch_id = m_tree.get_node_index_at(slot);
+                const auto patch_id = m_tree.get_node_index_at(i);
                 const auto c_size   = GeometryT::cell_sizes(patch_id);
 
                 amr::containers::manipulators::shaped_for<
                     typename patch_layout_t::interior_iteration_control_t>(
-                    [this, slot, &c_size](arithmetic_t& out_dt, auto const& idxs)
+                    [this, i, &c_size](arithmetic_t& out_dt, auto const& idxs)
                     {
                         const auto linear_idx = padded_layout_t::linear_index(idxs);
-                        const auto U          = get_full_state(slot, linear_idx);
+                        const auto U          = get_full_state(i, linear_idx);
 
                         // Ask Equation for max wave speed in each direction
                         // TODO: The level of abstraction here is incorrect in my

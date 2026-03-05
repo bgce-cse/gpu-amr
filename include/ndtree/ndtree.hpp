@@ -1,6 +1,9 @@
 #ifndef AMR_INCLUDED_NDTREE
 #define AMR_INCLUDED_NDTREE
 
+#define DEBUG
+#undef NDEBUG
+
 #include "config/definitions.hpp"
 #include "ndconcepts.hpp"
 #include "ndtype_traits.hpp"
@@ -24,6 +27,8 @@
 #include <utility>
 #include <variant>
 #include <vector>
+
+#define AMR_NDTREE_ENABLE_CHECKS
 
 #ifndef NDEBUG
 #    define AMR_NDTREE_CHECKBOUNDS
@@ -161,16 +166,21 @@ private:
     [[nodiscard]]
     auto alloc_slot() noexcept -> linear_index_t
     {
-        assert(m_free_top > 0 && "ndtree: out of patch slots — increase capacity");
-        return m_free_slots[--m_free_top];
+        assert(
+            m_free_top < m_capacity && "ndtree: out of patch slots — increase capacity"
+        );
+        const auto ret             = m_free_slots[m_free_top];
+        m_free_slots[m_free_top++] = m_capacity;
+        return ret;
     }
 
     auto free_slot(linear_index_t const slot) noexcept -> void
     {
+        assert(m_free_top > 0 && "ndtree: no slots are currenlty allocated");
         assert(slot < m_capacity && "ndtree: free_slot out of range");
         assert(m_slot_active[slot] && "ndtree: double-free of slot");
         m_slot_active[slot]        = false;
-        m_free_slots[m_free_top++] = slot;
+        m_free_slots[--m_free_top] = slot;
     }
 
     auto write_slot_metadata(
@@ -179,6 +189,7 @@ private:
         patch_neighbors_t const& neighbors
     ) noexcept -> void
     {
+        DEFAULT_SOURCE_LOG_TRACE("Trying to allocate at slot: {}\n", slot);
         assert(slot < m_capacity && "ndtree: write_slot_metadata out of range");
         assert(!m_slot_active[slot] && "ndtree: write_slot_metadata on active slot");
         m_linear_index_map[slot]     = node_id;
@@ -207,7 +218,7 @@ public:
         : m_index_map{} // , m_slot_active(m_capacity, false)
         , m_size{}
         , m_capacity{ capacity }
-        , m_free_top{ capacity }
+        , m_free_top{}
     {
         std::apply(
             [capacity](auto&... b)
@@ -428,6 +439,7 @@ public:
         balancing();
         fragment();
         recombine();
+        compact();
     }
 
     template <typename Fn>
@@ -540,7 +552,6 @@ public:
             m_index_map.erase(child_id);
             free_slot(child_slots[i]);
         }
-        // TODO: Sort free slots
 
         enforce_symmetry_after_recombining(parent_node_id, neighbor_array);
     }
@@ -942,39 +953,73 @@ private:
     auto compact() noexcept -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Compacting tree");
-        auto tail = m_size;
-        for (linear_index_t head = 0; head != m_size; ++head)
+        size_type write = 0;
+        for (linear_index_t i = 0; i != m_size; ++i)
         {
-            if (m_slot_active[head])
+            const auto read = m_active_slots[i];
+            if (read < m_size)
             {
                 continue;
             }
             else
             {
-                for (; tail != m_capacity;)
+                for (; write != m_size;)
                 {
-                    if (m_slot_active[++tail])
+                    const auto w = write++;
+                    if (m_slot_active[w])
                     {
-                        block_buffer_swap(head, tail);
+                        continue;
+                    }
+                    else
+                    {
+                        block_buffer_swap(w, read);
+                        m_active_slots[i]                  = w;
+                        m_index_map[m_linear_index_map[w]] = w;
+                        auto it                            = std::find(
+                            m_free_slots + m_free_top, m_free_slots + m_capacity, w
+                        );
+                        assert(it != m_free_slots + m_capacity);
+                        *it = read;
+                        break;
                     }
                 }
             }
         }
+
+        assert(m_index_map.size() == m_size);
+        for (linear_index_t i = 0; i != m_size; ++i)
+        {
+            [[maybe_unused]]
+            const auto slot = m_active_slots[i];
+            assert(slot < m_size);
+            assert(m_slot_active[slot]);
+            assert(m_index_map[m_linear_index_map[slot]] == slot);
+        }
+        for (linear_index_t i = 0; i != m_size; ++i)
+        {
+            assert(m_slot_active[i]);
+        }
+        for (linear_index_t i = m_size; i != m_capacity; ++i)
+        {
+            assert(!m_slot_active[i]);
+        }
+        check_index_map();
     }
 
     [[gnu::always_inline, gnu::flatten]]
     auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
         -> void
+
     {
-        CONTRACTS_CHECK(i < m_size);
-        CONTRACTS_CHECK(j < m_size);
+        CONTRACTS_CHECK(i < m_capacity);
+        CONTRACTS_CHECK(j < m_capacity);
+        CONTRACTS_CHECK(i < m_size || j < m_size);
         if (i == j)
         {
             return;
         }
 
         CONTRACTS_CHECK(m_linear_index_map[i] != m_linear_index_map[j]);
-        std::swap(m_index_map[i], m_index_map[j]);
         std::swap(m_linear_index_map[i], m_linear_index_map[j]);
         std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
         std::swap(m_neighbors[i], m_neighbors[j]);

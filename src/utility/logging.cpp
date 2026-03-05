@@ -41,7 +41,7 @@ auto default_logger::init() -> void
             spdlog::critical("std::terminate called");
             spdlog::dump_backtrace();
             spdlog::shutdown();
-            std::abort();
+            std::exit(EXIT_FAILURE);
         };
         std::set_terminate(terminate_handler);
 
