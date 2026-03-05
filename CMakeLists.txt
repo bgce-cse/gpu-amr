@@ -7,7 +7,6 @@ project(gpu_amr VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_VERBOSE_MAKEFILE ON)
-set(CMAKE_BUILD_PARALLEL_LEVEL 12)
 
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
@@ -19,12 +18,11 @@ endif()
 option(ENABLE_SANITIZERS "Enable runtime sanitizers (Debug only)" ON)
 
 # ----------------------------
-# Logging
+# Execution policy
 # ----------------------------
-set(LOG_LEVEL "INFO" CACHE STRING "Logging level")
+set(EXECUTION "SEQ" CACHE STRING "Execution policy")
 
-set_property(CACHE LOG_LEVEL PROPERTY STRINGS
-    TRACE DEBUG INFO WARNING ERROR FATAL OFF)
+set_property(CACHE EXECUTION PROPERTY STRINGS SEQ PAR)
 
 # ----------------------------
 # Output dir
@@ -38,7 +36,42 @@ set(OUTPUT_DIR_BENCHMARKS ${CMAKE_BINARY_DIR}/bin/benchmarks)
 find_package(TBB REQUIRED)
 
 # ----------------------------
-# Core code target (headers-only for now)
+# Logging
+# ----------------------------
+if(NOT TARGET spdlog)
+    # Stand-alone build
+    find_package(spdlog REQUIRED)
+endif()
+
+add_library(utility_logging
+    src/utility/logging.cpp
+)
+
+target_include_directories(utility_logging
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(utility_logging
+    PUBLIC spdlog::spdlog
+)
+
+target_compile_definitions(utility_logging PUBLIC
+    # SPDLOG_USE_STD_FORMAT
+    LOGGING_BUILD_TYPE="$<CONFIG>"
+    LOGGING_EXECUTION="${EXECUTION}"
+    LOGGING_GIT_HASH="${GIT_HASH}"
+    LOGGING_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
+    LOGGING_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
+)
+
+set(LOG_LEVEL "INFO" CACHE STRING "Logging level")
+
+set_property(CACHE LOG_LEVEL PROPERTY STRINGS
+    TRACE DEBUG INFO WARNING ERROR FATAL OFF)
+
+# ----------------------------
+# Core taget
 # ----------------------------
 add_library(gpu_amr INTERFACE)
 
@@ -49,40 +82,43 @@ target_include_directories(gpu_amr INTERFACE
     ${PROJECT_SOURCE_DIR}/lib
 )
 
-target_link_libraries(gpu_amr INTERFACE
-    TBB::tbb
+target_link_libraries(gpu_amr
+    INTERFACE TBB::tbb
+    INTERFACE utility_logging
 )
 
 # ----------------------------
 # Compiler flags
 # ----------------------------
 set(PROJECT_WARNINGS
-	-fbounds-check
-	-fvisibility=hidden
-	-pedantic
-	-Wall
-	-Wconversion
-	-Wdangling-else
-	-Wdouble-promotion
-	-Wduplicated-branches
-	-Wduplicated-cond
-	-Werror
-	-Wextra
-	-Wfloat-equal
-	-Wformat
-	-Winvalid-pch
-	-Wlogical-op
-	-Wmisleading-indentation
-	-Wnull-dereference
-	-Wodr
-	-Wpointer-arith
-	-Wrestrict
-	-Wreturn-local-addr
-	-Wshadow
-	-Wswitch-default
-	-Wswitch-enum
-	-Wuninitialized
-	-Wvla
+    -fbounds-check
+    -fvisibility=hidden
+    -pedantic
+    -Wall
+    -Wconversion
+    -Wdangling-else
+    -Wdouble-promotion
+    -Wduplicated-branches
+    -Wduplicated-cond
+    -Werror
+    -Wpadded
+    -Wredundant-decls
+    -Wextra
+    -Wfloat-equal
+    -Wformat
+    -Winvalid-pch
+    -Wlogical-op
+    -Wmisleading-indentation
+    -Wnull-dereference
+    -Wodr
+    -Wpointer-arith
+    -Wrestrict
+    -Wreturn-local-addr
+    -Wshadow
+    -Wswitch-default
+    -Wswitch-enum
+    -Wuninitialized
+    -Wvla
 )
 
 set(PROJECT_DIAGNOSTICS
@@ -91,6 +127,7 @@ set(PROJECT_DIAGNOSTICS
 	-fdiagnostics-path-format=inline-events
 	-fdiagnostics-show-caret
 	-fdiagnostics-show-template-tree
+	-ftime-report
 )
 
 set(PROJECT_DEBUG_INFO
@@ -116,8 +153,10 @@ set(PROJECT_DEBUG_FLAGS
 
 set(PROJECT_RELEASE_FLAGS
 	-fno-math-errno
+	-ffast-math
 	-fno-trapping-math
 	-fstrength-reduce
+    # -stdpar=gpu
 	-march=native
 	-mavx
 	-O3
@@ -145,8 +184,8 @@ set(PROJECT_SANITIZERS
 )
 
 set(CONSTEXPR_LIMIT_FLAGS
-    -fconstexpr-ops-limit=10000000000
-    -fconstexpr-loop-limit=1048576
+    # -fconstexpr-ops-limit=10000000000
+    # -fconstexpr-loop-limit=1048576
 )
 
 # ----------------------------
@@ -158,14 +197,17 @@ add_library(amr_tests INTERFACE)
 
 target_compile_definitions(amr_examples INTERFACE
     AMR_LOG_LEVEL=${LOG_LEVEL}
+    AMR_EXECUTION=${EXECUTION}
 )
 
 target_compile_definitions(amr_benchmarks INTERFACE
     AMR_LOG_LEVEL=OFF
+    AMR_EXECUTION=${EXECUTION}
 )
 
 target_compile_definitions(amr_tests INTERFACE
-    AMR_LOG_LEVEL=WARNING
+    AMR_LOG_LEVEL=OFF
+    AMR_EXECUTION=${EXECUTION}
 )
 
 foreach(tgt amr_examples amr_benchmarks amr_tests)
@@ -199,4 +241,5 @@ add_subdirectory(benchmark)
 # ----------------------------
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Sanitizers enabled (Debug only): ${ENABLE_SANITIZERS}")
-message(STATUS "Examles log level: ${LOG_LEVEL}")
+message(STATUS "Log level: ${LOG_LEVEL}")
+message(STATUS "Execution policy: ${EXECUTION}" )

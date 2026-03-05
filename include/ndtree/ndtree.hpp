@@ -1,6 +1,7 @@
 #ifndef AMR_INCLUDED_NDTREE
 #define AMR_INCLUDED_NDTREE
 
+#include "config/definitions.hpp"
 #include "ndconcepts.hpp"
 #include "ndtype_traits.hpp"
 #include "ndutils.hpp"
@@ -14,6 +15,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
+#include <execution>
 #include <numeric>
 #include <ranges>
 #include <tuple>
@@ -21,6 +23,7 @@
 #include <unordered_map>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #ifndef NDEBUG
 #    define AMR_NDTREE_CHECKBOUNDS
@@ -39,11 +42,11 @@ template <
 class ndtree
 {
 public:
-    using map_type       = T;
-    using size_type      = std::size_t;
-    using patch_index_t  = Patch_Index;
-    using linear_index_t = size_type;
-    using patch_layout_t = Patch_Layout;
+    using map_type          = T;
+    using size_type         = std::size_t;
+    using patch_index_t     = Patch_Index;
+    using linear_index_t    = size_type;
+    using patch_layout_t    = Patch_Layout;
     using neighbor_utils_t  = neighbors::neighbor_utils<patch_index_t, patch_layout_t>;
     using patch_direction_t = typename neighbor_utils_t::direction_t;
     template <typename Identifier_Type>
@@ -73,7 +76,8 @@ private:
     static_assert(
         std::ranges::all_of(
             patch_layout_t::data_layout_t::sizes(),
-            [](auto const& e) { return e >= static_cast<decltype(e)>(s_halo_width * s_1d_fanout); }
+            [](auto const& e)
+            { return e >= static_cast<decltype(e)>(s_halo_width * s_1d_fanout); }
         ),
         "The halo must not span more than one finer neighbor cell"
     );
@@ -125,18 +129,35 @@ public:
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
 
 private:
-    static constexpr auto s_fragmentation_patch_maps =
-        amr::ndt::utils::patches::fragmentation_patch_maps<patch_layout_t, s_1d_fanout>();
+    static constexpr auto fragmentation_patch_maps(
+        const size_type      patch_idx,
+        const linear_index_t linear_idx
+    ) noexcept -> typename patch_layout_t::index_t
+    {
+#if defined(__clang__) || defined(__NVCOMPILER)
+        static const auto s_fragmentation_patch_maps = amr::ndt::utils::patches::
+            fragmentation_patch_maps<patch_layout_t, s_1d_fanout>();
+#else
+        static constexpr auto s_fragmentation_patch_maps = amr::ndt::utils::patches::
+            fragmentation_patch_maps<patch_layout_t, s_1d_fanout>();
+#endif
+        return s_fragmentation_patch_maps[patch_idx][linear_idx];
+    }
 
 public:
     [[nodiscard]]
-    static constexpr auto rank() noexcept -> auto const& { return s_rank; }
+    static constexpr auto rank() noexcept -> auto const&
+    {
+        return s_rank;
+    }
 
     [[nodiscard]]
-    static constexpr auto nd_fanout() noexcept -> auto const& { return s_nd_fanout; }
+    static constexpr auto nd_fanout() noexcept -> auto const&
+    {
+        return s_nd_fanout;
+    }
 
 private:
-
     [[nodiscard]]
     auto alloc_slot() noexcept -> linear_index_t
     {
@@ -146,26 +167,26 @@ private:
 
     auto free_slot(linear_index_t const slot) noexcept -> void
     {
-        assert(slot < m_capacity           && "ndtree: free_slot out of range");
-        assert(m_slot_active[slot]         && "ndtree: double-free of slot");
-        m_slot_active[slot]          = false;
-        m_free_slots[m_free_top++]   = slot;
+        assert(slot < m_capacity && "ndtree: free_slot out of range");
+        assert(m_slot_active[slot] && "ndtree: double-free of slot");
+        m_slot_active[slot]        = false;
+        m_free_slots[m_free_top++] = slot;
     }
 
-   auto write_slot_metadata(
-        linear_index_t    const  slot,
-        patch_index_t     const  node_id,
+    auto write_slot_metadata(
+        linear_index_t const     slot,
+        patch_index_t const      node_id,
         patch_neighbors_t const& neighbors
     ) noexcept -> void
     {
-        assert(slot < m_capacity    && "ndtree: write_slot_metadata out of range");
+        assert(slot < m_capacity && "ndtree: write_slot_metadata out of range");
         assert(!m_slot_active[slot] && "ndtree: write_slot_metadata on active slot");
         m_linear_index_map[slot]     = node_id;
         m_neighbors[slot]            = neighbors;
         m_refine_status_buffer[slot] = RefinementStatus::Stable;
         m_slot_active[slot]          = true;
         m_index_map[node_id]         = slot;
-        m_active_slots[m_size++]     = slot; 
+        m_active_slots[m_size++]     = slot;
     }
 
     auto remove_slot_metadata(linear_index_t const slot) noexcept -> void
@@ -181,47 +202,44 @@ private:
         assert(false && "ndtree: slot not found in m_active_slots");
     }
 
-
 public:
     ndtree(size_type const capacity) noexcept
-        : m_index_map{}
+        : m_index_map{} // , m_slot_active(m_capacity, false)
         , m_size{}
         , m_capacity{ capacity }
         , m_free_top{ capacity }
     {
-
         std::apply(
             [capacity](auto&... b)
             {
                 ((void)(b = static_cast<pointer_t<value_t<decltype(b)>>>(
-                    std::malloc(capacity * sizeof(value_t<decltype(b)>)))), ...);
+                            std::malloc(capacity * sizeof(value_t<decltype(b)>))
+                        )),
+                 ...);
             },
             m_data_buffers
         );
 
-        m_linear_index_map =
-            static_cast<pointer_t<patch_index_t>>(
-                std::malloc(capacity * sizeof(patch_index_t)));
-        m_refine_status_buffer =
-            static_cast<pointer_t<refine_status_t>>(
-                std::malloc(capacity * sizeof(refine_status_t)));
-        m_neighbors =
-            static_cast<pointer_t<patch_neighbors_t>>(
-                std::malloc(capacity * sizeof(patch_neighbors_t)));
+        m_linear_index_map = static_cast<pointer_t<patch_index_t>>(
+            std::malloc(capacity * sizeof(patch_index_t))
+        );
+        m_refine_status_buffer = static_cast<pointer_t<refine_status_t>>(
+            std::malloc(capacity * sizeof(refine_status_t))
+        );
+        m_neighbors = static_cast<pointer_t<patch_neighbors_t>>(
+            std::malloc(capacity * sizeof(patch_neighbors_t))
+        );
         m_slot_active =
-            static_cast<pointer_t<bool>>(
-                std::malloc(capacity * sizeof(bool)));
-        m_active_slots =
-            static_cast<pointer_t<linear_index_t>>(
-                std::malloc(capacity * sizeof(linear_index_t)));
-        m_free_slots =
-            static_cast<pointer_t<linear_index_t>>(
-                std::malloc(capacity * sizeof(linear_index_t)));
+            static_cast<pointer_t<bool>>(std::malloc(capacity * sizeof(bool)));
+        m_active_slots = static_cast<pointer_t<linear_index_t>>(
+            std::malloc(capacity * sizeof(linear_index_t))
+        );
+        m_free_slots = static_cast<pointer_t<linear_index_t>>(
+            std::malloc(capacity * sizeof(linear_index_t))
+        );
 
-   
         std::iota(m_free_slots, m_free_slots + capacity, linear_index_t{ 0 });
         std::fill(m_slot_active, m_slot_active + capacity, false);
-
 
         patch_neighbors_t root_neighbors;
         for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
@@ -249,10 +267,16 @@ public:
 
 public:
     [[nodiscard]]
-    auto size() const noexcept -> size_type { return m_size; }
+    auto size() const noexcept -> size_type
+    {
+        return m_size;
+    }
 
     [[nodiscard]]
-    auto capacity() const noexcept -> size_type { return m_capacity; }
+    auto capacity() const noexcept -> size_type
+    {
+        return m_capacity;
+    }
 
     [[nodiscard]]
     auto active_slots() const noexcept -> linear_index_t const*
@@ -260,19 +284,26 @@ public:
         return m_active_slots;
     }
 
+    [[nodiscard]]
+    auto get_active_slot_at(linear_index_t const i) const noexcept -> linear_index_t
+    {
+        return m_active_slots[i];
+    }
+
     template <concepts::MapType Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
     auto get_patch(linear_index_t const slot) noexcept -> patch_t<Map_Type>&
     {
         return const_cast<patch_t<Map_Type>&>(
-            std::as_const(*this).template get_patch<Map_Type>(slot));
+            std::as_const(*this).template get_patch<Map_Type>(slot)
+        );
     }
 
     template <concepts::MapType Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
     auto get_patch(linear_index_t const slot) const noexcept -> patch_t<Map_Type> const&
     {
-        assert(slot < m_capacity   && "get_patch: slot out of range");
+        assert(slot < m_capacity && "get_patch: slot out of range");
         assert(m_slot_active[slot] && "get_patch: slot not active");
         return std::get<Map_Type::index()>(m_data_buffers)[slot];
     }
@@ -282,7 +313,8 @@ public:
     auto get_patch(patch_index_t const patch_idx) noexcept -> patch_t<Map_Type>&
     {
         return const_cast<patch_t<Map_Type>&>(
-            std::as_const(*this).template get_patch<Map_Type>(patch_idx));
+            std::as_const(*this).template get_patch<Map_Type>(patch_idx)
+        );
     }
 
     template <concepts::MapType Map_Type>
@@ -291,14 +323,14 @@ public:
         -> patch_t<Map_Type> const&
     {
         const auto slot = m_index_map.at(patch_idx);
-        assert(slot < m_capacity   && "get_patch: slot out of range");
+        assert(slot < m_capacity && "get_patch: slot out of range");
         assert(m_slot_active[slot] && "get_patch: slot not active");
         return std::get<Map_Type::index()>(m_data_buffers)[slot];
     }
 
     [[nodiscard, gnu::always_inline, gnu::flatten]]
     auto get_neighbor_at(
-        linear_index_t   const   slot,
+        linear_index_t const     slot,
         patch_direction_t const& d
     ) const noexcept -> neighbor_patch_index_variant_t
     {
@@ -331,10 +363,9 @@ public:
                 {
                     return ret_t{
                         typename ret_t::coarser{ get_linear_index_at(n.id),
-                                                 n.contact_quadrant }
+                                                n.contact_quadrant }
                     };
-                }
-            },
+                } },
             neighbor.data
         );
     }
@@ -349,8 +380,10 @@ public:
     [[nodiscard]]
     auto get_linear_index_at(patch_index_t const node_id) const noexcept -> linear_index_t
     {
-        assert(m_index_map.find(node_id) != m_index_map.end()
-               && "get_linear_index_at: patch_index not found");
+        assert(
+            m_index_map.find(node_id) != m_index_map.end() &&
+            "get_linear_index_at: patch_index not found"
+        );
         return m_index_map.at(node_id);
     }
 
@@ -380,7 +413,8 @@ public:
         [this, &v, slot]<std::size_t... I>(std::index_sequence<I...>)
         {
             ((void)(std::get<I>(m_data_buffers)[slot] =
-                        std::get<I>(v.data_tuple()).value), ...);
+                        std::get<I>(v.data_tuple()).value),
+             ...);
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
     }
 
@@ -403,7 +437,7 @@ public:
     {
         for (linear_index_t i = 0; i != m_size; ++i)
         {
-            const auto slot              = m_active_slots[i];    
+            const auto slot              = m_active_slots[i];
             m_refine_status_buffer[slot] = fn(m_linear_index_map[slot]);
         }
     }
@@ -431,17 +465,15 @@ public:
         for (linear_index_t i = 0; i != m_size; ++i)
         {
             const auto slot = m_active_slots[i];
-            if (is_refine_elegible(slot))
-                m_to_refine.push_back(m_linear_index_map[slot]);
+            if (is_refine_elegible(slot)) m_to_refine.push_back(m_linear_index_map[slot]);
         }
         for (auto const& parent_id : parent_patch_idx)
         {
-            if (is_coarsen_elegible(parent_id))
-                m_to_coarsen.push_back(parent_id);  
+            if (is_coarsen_elegible(parent_id)) m_to_coarsen.push_back(parent_id);
         }
     }
 
-     auto fragment(patch_index_t const node_id) -> void
+    auto fragment(patch_index_t const node_id) -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Fragmenting node " + node_id.repr());
 
@@ -452,13 +484,14 @@ public:
         for (size_type i = 0; i != s_nd_fanout; ++i)
         {
             const auto child_id = patch_index_t::child_of(
-                node_id, static_cast<typename patch_index_t::offset_t>(i));
+                node_id, static_cast<typename patch_index_t::offset_t>(i)
+            );
             assert(!find_index(child_id).has_value());
 
             const auto child_slot   = alloc_slot();
-            const auto neighbor_arr =
-                neighbor_utils_t::compute_child_neighbors(
-                    node_id, m_neighbors[parent_slot], i);
+            const auto neighbor_arr = neighbor_utils_t::compute_child_neighbors(
+                node_id, m_neighbors[parent_slot], i
+            );
 
             write_slot_metadata(child_slot, child_id, neighbor_arr);
             child_slots[i] = child_slot;
@@ -476,7 +509,7 @@ public:
 #endif
     }
 
-     auto recombine(patch_index_t const parent_node_id) -> void
+    auto recombine(patch_index_t const parent_node_id) -> void
     {
         using offset_t = typename patch_index_t::offset_t;
         assert(!find_index(parent_node_id).has_value());
@@ -485,14 +518,14 @@ public:
         std::array<patch_neighbors_t, s_nd_fanout> child_neighbor_arrays{};
         for (size_type i = 0; i != s_nd_fanout; ++i)
         {
-            const auto child_id   = patch_index_t::child_of(
-                parent_node_id, static_cast<offset_t>(i));
-            const auto child_slot = m_index_map.at(child_id);
+            const auto child_id =
+                patch_index_t::child_of(parent_node_id, static_cast<offset_t>(i));
+            const auto child_slot    = m_index_map.at(child_id);
             child_slots[i]           = child_slot;
             child_neighbor_arrays[i] = m_neighbors[child_slot];
         }
 
-        const auto parent_slot    = alloc_slot();
+        const auto parent_slot = alloc_slot();
         const auto neighbor_array =
             neighbor_utils_t::compute_parent_neighbors(child_neighbor_arrays);
         write_slot_metadata(parent_slot, parent_node_id, neighbor_array);
@@ -501,12 +534,13 @@ public:
 
         for (size_type i = 0; i != s_nd_fanout; ++i)
         {
-            const auto child_id = patch_index_t::child_of(
-                parent_node_id, static_cast<offset_t>(i));
+            const auto child_id =
+                patch_index_t::child_of(parent_node_id, static_cast<offset_t>(i));
             remove_slot_metadata(child_slots[i]);
             m_index_map.erase(child_id);
             free_slot(child_slots[i]);
         }
+        // TODO: Sort free slots
 
         enforce_symmetry_after_recombining(parent_node_id, neighbor_array);
     }
@@ -528,11 +562,11 @@ public:
         for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
              d.advance())
         {
-            const auto opposite_d = patch_direction_t::opposite(d);
-            const auto boundary_children =
-                neighbor_utils_t::compute_boundary_children(d);
+            const auto opposite_d        = patch_direction_t::opposite(d);
+            const auto boundary_children = neighbor_utils_t::compute_boundary_children(d);
 
-            auto const& parent_neighbor = m_neighbors[m_index_map.at(parent_id)][d.index()];
+            auto const& parent_neighbor =
+                m_neighbors[m_index_map.at(parent_id)][d.index()];
 
             std::visit(
                 [&](auto const& neighbor_data)
@@ -550,25 +584,30 @@ public:
                             const auto child_id = patch_index_t::child_of(
                                 parent_id,
                                 static_cast<typename patch_index_t::offset_t>(
-                                    boundary_children[i]));
+                                    boundary_children[i]
+                                )
+                            );
                             fine_ids[i] = child_id;
                         }
                         neighbor_patch_index_variant_t new_neighbor;
                         new_neighbor.data =
                             typename neighbor_patch_index_variant_t::finer{ fine_ids };
-                        m_neighbors[m_index_map.at(neighbor_data.id)][opposite_d.index()] =
-                            new_neighbor;
+                        m_neighbors[m_index_map.at(neighbor_data.id)]
+                                   [opposite_d.index()] = new_neighbor;
                     }
                     else if constexpr (std::is_same_v<
                                            neighbor_category_t,
-                                           typename neighbor_patch_index_variant_t::finer>)
+                                           typename neighbor_patch_index_variant_t::
+                                               finer>)
                     {
                         for (size_type i = 0; i != boundary_children.size(); ++i)
                         {
                             const auto child_id = patch_index_t::child_of(
                                 parent_id,
                                 static_cast<typename patch_index_t::offset_t>(
-                                    boundary_children[i]));
+                                    boundary_children[i]
+                                )
+                            );
                             neighbor_patch_index_variant_t new_neighbor;
                             new_neighbor.data =
                                 typename neighbor_patch_index_variant_t::same{ child_id };
@@ -583,14 +622,14 @@ public:
     }
 
     auto enforce_symmetry_after_recombining(
-        patch_index_t     const  parent_node_id,
+        patch_index_t const      parent_node_id,
         patch_neighbors_t const& parent_neighbor_array
     ) -> void
     {
         for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
              d.advance())
         {
-            const auto opposite_d   = patch_direction_t::opposite(d);
+            const auto  opposite_d      = patch_direction_t::opposite(d);
             auto const& parent_neighbor = parent_neighbor_array[d.index()];
 
             std::visit(
@@ -602,36 +641,48 @@ public:
                                       neighbor_category_t,
                                       typename neighbor_patch_index_variant_t::same>)
                     {
-
                         const auto it = m_index_map.find(neighbor_data.id);
-                        if (it == m_index_map.end()) return; 
+                        if (it == m_index_map.end()) return;
                         neighbor_patch_index_variant_t new_neighbor;
-                        new_neighbor.data =
-                            typename neighbor_patch_index_variant_t::same{ parent_node_id };
+                        new_neighbor.data = typename neighbor_patch_index_variant_t::same{
+                            parent_node_id
+                        };
                         m_neighbors[it->second][opposite_d.index()] = new_neighbor;
                     }
                     else if constexpr (std::is_same_v<
                                            neighbor_category_t,
-                                           typename neighbor_patch_index_variant_t::finer>)
+                                           typename neighbor_patch_index_variant_t::
+                                               finer>)
                     {
                         for (size_type i = 0; i != neighbor_data.ids.size(); ++i)
                         {
                             const auto it = m_index_map.find(neighbor_data.ids[i]);
-                            if (it == m_index_map.end()) continue; 
+                            if (it == m_index_map.end()) continue;
                             const auto contact_q =
                                 neighbor_utils_t::compute_contact_quadrant(
-                                    static_cast<typename neighbor_patch_index_variant_t::
-                                                    index_t>(i),
+                                    static_cast<
+                                        typename neighbor_patch_index_variant_t::index_t>(
+                                        i
+                                    ),
                                     opposite_d
                                 );
                             neighbor_patch_index_variant_t new_neighbor;
                             new_neighbor.data =
                                 typename neighbor_patch_index_variant_t::coarser{
-                                    parent_node_id,
-                                    contact_q
+                                    parent_node_id, contact_q
                                 };
                             m_neighbors[it->second][opposite_d.index()] = new_neighbor;
                         }
+                    }
+                    else if constexpr (std::is_same_v<
+                                           neighbor_category_t,
+                                           typename neighbor_patch_index_variant_t::
+                                               coarser>)
+                    {
+                        CONTRACTS_CHECK(
+                            false && "Having a coarser neighbor after recombining does "
+                                     "not make sense."
+                        );
                     }
                 },
                 parent_neighbor.data
@@ -702,7 +753,7 @@ public:
                         static_cast<typename patch_index_t::offset_t>(
                             boundary_children[j]
                         )
-                    ); 
+                    );
                     auto const& neighbor =
                         m_neighbors[m_index_map.at(child_id)][d.index()];
 
@@ -750,15 +801,15 @@ public:
         }
     }
 
-
     constexpr auto halo_exchange_update() noexcept -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Performing halo exchange");
         for (linear_index_t i = 0; i != m_size; ++i)
         {
-            const auto slot = m_active_slots[i];            
+            const auto slot = m_active_slots[i];
             utils::patches::halo_apply<halo_exchange_operator_impl_t, patch_direction_t>(
-                *this, slot);
+                *this, slot
+            );
         }
     }
 
@@ -776,8 +827,8 @@ public:
                 for (linear_index_t k = 0; k != patch_size; ++k)
                 {
                     if (utils::patches::is_halo_cell<patch_layout_t>(k)) continue;
-                    ((b[parent_slot][k] =
-                          static_cast<unwrap_value_t<decltype(b)>>(0)), ...);
+                    ((b[parent_slot][k] = static_cast<unwrap_value_t<decltype(b)>>(0)),
+                     ...);
                 }
             },
             m_data_buffers
@@ -790,12 +841,13 @@ public:
             {
                 if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx)) continue;
                 const auto to_linear_idx =
-                    s_fragmentation_patch_maps[patch_idx][linear_idx];
+                    fragmentation_patch_maps(patch_idx, linear_idx);
                 std::apply(
                     [parent_slot, to_linear_idx, child_slot, linear_idx](auto&... b)
                     {
                         ((void)(b[parent_slot][to_linear_idx] +=
-                                    b[child_slot][linear_idx]), ...);
+                                b[child_slot][linear_idx]),
+                         ...);
                     },
                     m_data_buffers
                 );
@@ -809,7 +861,8 @@ public:
                 {
                     if (utils::patches::is_halo_cell<patch_layout_t>(k)) continue;
                     ((b[parent_slot][k] /=
-                          static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)), ...);
+                      static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)),
+                     ...);
                 }
             },
             m_data_buffers
@@ -817,25 +870,26 @@ public:
     }
 
     auto interpolate_patch(
-        linear_index_t const                            parent_slot,
-        std::array<linear_index_t, s_nd_fanout> const&  child_slots
+        linear_index_t const                           parent_slot,
+        std::array<linear_index_t, s_nd_fanout> const& child_slots
     ) noexcept -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Patch interpolation");
         for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
         {
             const auto child_slot = child_slots[patch_idx];
-            for (linear_index_t linear_idx = 0;
-                 linear_idx != patch_layout_t::flat_size(); ++linear_idx)
+            for (linear_index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
+                 ++linear_idx)
             {
                 if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx)) continue;
                 const auto from_linear_idx =
-                    s_fragmentation_patch_maps[patch_idx][linear_idx];
+                    fragmentation_patch_maps(patch_idx, linear_idx);
                 std::apply(
                     [child_slot, parent_slot, from_linear_idx, linear_idx](auto&... b)
                     {
                         ((void)(b[child_slot][linear_idx] =
-                                    b[parent_slot][from_linear_idx]), ...);
+                                    b[parent_slot][from_linear_idx]),
+                         ...);
                     },
                     m_data_buffers
                 );
@@ -860,7 +914,6 @@ private:
         return it == m_index_map.end() ? std::nullopt : std::optional{ it };
     }
 
-
     [[nodiscard]]
     auto is_refine_elegible(linear_index_t const slot) const noexcept -> bool
     {
@@ -876,17 +929,63 @@ private:
         for (size_type i = 0; i != s_nd_fanout; ++i)
         {
             const auto child = patch_index_t::child_of(
-                parent_id, static_cast<typename patch_index_t::offset_t>(i));
+                parent_id, static_cast<typename patch_index_t::offset_t>(i)
+            );
             const auto it = find_index(child);
             if (!it.has_value()) return false;
             const auto slot = it.value()->second;
-            if (m_refine_status_buffer[slot] != RefinementStatus::Coarsen)
-                return false;
+            if (m_refine_status_buffer[slot] != RefinementStatus::Coarsen) return false;
         }
         return true;
     }
 
-   
+    auto compact() noexcept -> void
+    {
+        DEFAULT_SOURCE_LOG_TRACE("Compacting tree");
+        auto tail = m_size;
+        for (linear_index_t head = 0; head != m_size; ++head)
+        {
+            if (m_slot_active[head])
+            {
+                continue;
+            }
+            else
+            {
+                for (; tail != m_capacity;)
+                {
+                    if (m_slot_active[++tail])
+                    {
+                        block_buffer_swap(head, tail);
+                    }
+                }
+            }
+        }
+    }
+
+    [[gnu::always_inline, gnu::flatten]]
+    auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
+        -> void
+    {
+        CONTRACTS_CHECK(i < m_size);
+        CONTRACTS_CHECK(j < m_size);
+        if (i == j)
+        {
+            return;
+        }
+
+        CONTRACTS_CHECK(m_linear_index_map[i] != m_linear_index_map[j]);
+        std::swap(m_index_map[i], m_index_map[j]);
+        std::swap(m_linear_index_map[i], m_linear_index_map[j]);
+        std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
+        std::swap(m_neighbors[i], m_neighbors[j]);
+        std::swap(m_slot_active[i], m_slot_active[j]);
+        // m_slot_active.swap(m_slot_active[i], m_slot_active[j]);
+
+        std::apply(
+            [i, j](auto&... b) { ((void)std::swap(b[i], b[j]), ...); }, m_data_buffers
+        );
+    }
+
 #ifdef AMR_NDTREE_ENABLE_CHECKS
     auto check_index_map() const noexcept -> void
     {
@@ -911,19 +1010,18 @@ private:
     }
 #endif
 
-
 private:
-    index_map_t                m_index_map;             // patch_index → slot
-    deconstructed_buffers_t    m_data_buffers;          // [field][slot] — NEVER moves
-    linear_index_map_t         m_linear_index_map;      // [slot] → patch_index
-    linear_index_array_t       m_active_slots;          // [iter_pos] → slot (unordered)
-    linear_index_array_t       m_free_slots;            // flat free-list stack
-    pointer_t<bool>            m_slot_active;           // [slot] → is live
-    flat_refine_status_array_t m_refine_status_buffer;  // [slot] → RefinementStatus
-    neighbor_buffer_t          m_neighbors;             // [slot] → patch_neighbors_t
-    size_type                  m_size;                  // active patch count
-    size_type                  m_capacity;              // total allocated slots
-    size_type                  m_free_top;              // stack pointer into m_free_slots
+    index_map_t                m_index_map;            // patch_index → slot
+    deconstructed_buffers_t    m_data_buffers;         // [field][slot] — NEVER moves
+    linear_index_map_t         m_linear_index_map;     // [slot] → patch_index
+    linear_index_array_t       m_active_slots;         // [iter_pos] → slot (unordered)
+    linear_index_array_t       m_free_slots;           // flat free-list stack
+    pointer_t<bool>            m_slot_active;          // [slot] → is live
+    flat_refine_status_array_t m_refine_status_buffer; // [slot] → RefinementStatus
+    neighbor_buffer_t          m_neighbors;            // [slot] → patch_neighbors_t
+    size_type                  m_size;                 // active patch count
+    size_type                  m_capacity;             // total allocated slots
+    size_type                  m_free_top;             // stack pointer into m_free_slots
     std::vector<patch_index_t> m_to_refine;
     std::vector<patch_index_t> m_to_coarsen;
 };

@@ -4,8 +4,8 @@
 #include "containers/static_shape.hpp"
 #include "containers/static_tensor.hpp"
 #include "containers/static_vector.hpp"
+#include "utility/contracts.hpp"
 #include "utility/random.hpp"
-#include <cassert>
 #include <cstdlib>
 #include <iostream>
 
@@ -15,9 +15,9 @@ int main()
     constexpr auto N = 3;
     constexpr auto M = 2;
     using F          = int;
-    using tensor5_t   = static_tensor<F, static_layout<static_shape<N, 3, 4, 2, 3>>>;
-    using tensor2_t   = static_tensor<F, static_layout<static_shape<N, N, N>>>;
-    using tensor3_t   = static_tensor<F, static_layout<static_shape<M, M>>>;
+    using tensor5_t  = static_tensor<F, static_layout<static_shape<N, 3, 4, 2, 3>>>;
+    using tensor2_t  = static_tensor<F, static_layout<static_shape<N, N, N>>>;
+    using tensor3_t  = static_tensor<F, static_layout<static_shape<M, M>>>;
     std::cout << tensor5_t::elements() << '\n';
     for (int i = 0; i != tensor5_t::rank(); ++i)
     {
@@ -31,7 +31,7 @@ int main()
         std::cout << "stride: " << tensor5_t::stride(i) << '\n';
     }
     tensor5_t t{};
-    F        check{};
+    F         check{};
     std::iota(std::begin(t), std::end(t), check);
     amr::containers::manipulators::apply(
         t,
@@ -39,7 +39,7 @@ int main()
         {
             const auto& e = a[idxs...];
             std::cout << e << '\n';
-            assert((e == check++));
+            CONTRACTS_CHECK((e == check++));
         }
     );
 

@@ -5,7 +5,6 @@
 #include "allocator_utils.hpp"
 #include "utility/error_handling.hpp"
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <concepts>
 #include <cstddef>
@@ -60,7 +59,7 @@ public:
         , m_release_list{}
         , m_size{ n }
     {
-        assert(m_size >= size_type{ 1 });
+        CONTRACTS_CHECK(m_size >= size_type{ 1 });
         m_free_list.reserve(m_size);
         m_release_list.reserve(m_size);
         allocate_buffer(m_size);
@@ -92,7 +91,7 @@ public:
             grow();
         }
         const auto p = m_free_list.back();
-        assert(p);
+        CONTRACTS_CHECK(p);
 #if ALLOCATOR_DEBUG_INITIALIZE
         utils::fill_buffer(p, s_block_alloc_size, ALLOCATOR_DEBUG_ALLOC_VALUE);
 #endif
@@ -118,7 +117,7 @@ public:
 
     inline auto deallocate_one(pointer p) -> void
     {
-        assert(!std::ranges::contains(m_free_list, p));
+        CONTRACTS_CHECK(!std::ranges::contains(m_free_list, p));
         m_free_list.push_back(p);
 #if ALLOCATOR_DEBUG_INITIALIZE
         utils::fill_buffer(p, s_block_alloc_size, ALLOCATOR_DEBUG_RELEASE_VALUE);
@@ -146,13 +145,13 @@ private:
     auto allocate_buffer(size_type const n, [[maybe_unused]] pointer const hint = nullptr)
         -> pointer
     {
-        assert(n > 0);
+        CONTRACTS_CHECK(n > 0);
         static_assert(s_block_alloc_size % s_alignment == 0);
         const auto underlying_buffer_size = n * s_block_alloc_size;
-        assert(underlying_buffer_size % s_alignment == 0);
+        CONTRACTS_CHECK(underlying_buffer_size % s_alignment == 0);
         const auto buffer =
             static_cast<pointer>(std::aligned_alloc(s_alignment, underlying_buffer_size));
-        assert(buffer);
+        CONTRACTS_CHECK(buffer);
         m_release_list.emplace_back(buffer, underlying_buffer_size);
 #if ALLOCATOR_DEBUG_INITIALIZE
         utils::fill_buffer(buffer, underlying_buffer_size, ALLOCATOR_DEBUG_INIT_VALUE);
@@ -162,8 +161,8 @@ private:
         [[assume(n > 0)]];
         for (auto p = buffer; p != buffer_end; p += s_block_alloc_size)
         {
-            assert(std::less_equal{}(p, buffer_end));
-            assert(std::less_equal{}(p + s_block_alloc_size, buffer_end));
+            CONTRACTS_CHECK(std::less_equal{}(p, buffer_end));
+            CONTRACTS_CHECK(std::less_equal{}(p + s_block_alloc_size, buffer_end));
             m_free_list.push_back(p);
         }
         return buffer;

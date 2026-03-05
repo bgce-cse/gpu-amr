@@ -1,0 +1,116 @@
+Euler equation (conservative form)
+\frac{\partial{U}}{\partial t} + \nabla \cdot F(U) = 0
+
+U: Conservative quantities
+U = [\rho, \rho u, \rho v, \rho w, E].T
+
+F(U): flux tensor **
+F(U) = [\rho u, \rho u^2 + p, \rho uv, \rho uw, u(E+p)]
+// I belive that the +p term depends on the direction where the flux is being
+// computed
+
+(1) Solver update
+U^{n+1}_i = U^n_i - \sum_{d=1}^{Dim}\frac{\Delta t}{\delta
+x_d}(F_{i+1/2}^{(d)}-F_{i-1/2}^{(d)})
+
+(2) Rusanov flux
+F_{i+1/2}: flux at the interface between i and i+i
+F_{i+1/2}=\frac{1}{2}(F(U_L) + F(U_R))-\frac{1}{2}S_{max}(U_R - U_L)
+
+(3) Flux calculation
+F(U) = u * [\rho, \rho u, \rho v, \rho w, E + p] + p_{u,v,w}
+
+(4) Lax Friedrichs thing
+S_{max} = max(\abs{u_L}+a_L, \abs{u_R}+a_R)
+
+(5)
+u_{L,R} = \frac{\rho u}{\rho}
+
+(6) sound speed computation
+a_{L,R} = \sqrt{gamma * p / \rho}
+
+
+Roofline analysis:
+
+Memory operations:
+(1) 
+    L: d, 1, N+4dN + 2(2)
+    S: N+dN
+    R: N
+(2)
+    L: 2N, 2(3), (4)
+    R: 1, 3N
+    +2 c2p
+(3)
+    S: N
+    L: N
+    +1 c2p
+(4)
+    L: 2(5) + 2(6)
+    R: 8
+(5)
+    L: 2
+(6)
+    L: 2N
+    +1 c2p
+
+Total (with reuse):
+Write: 3N
+Read: 1+d+N+2d(2N+2N-3N-1+10-8)-N = 1+d+N+2d(N+1)-N = 1+2d+2dN
+
+Arithmetic operations:
+(1) N(-), d(/), dN(-,*), 2d(2)
+(2) N(+,2*,2-), 2(3), (4)
+(3) 1(*), d(2*), 1(+), 1(*,+)
+(4) 2(abs, +), 1(max), 2(5), 2(6)
+(5) 1(/)
+(6) 1(sqrt, *, /)
+
+Total:
+N(-), d(/), dN(-,*), 2d(N(+,2*,2-), 2(1(*), d(2*), 1(+), 1(*,+)), (2(abs, +),
+1(max), 2(/), 2(sqrt, *, /))) =
+N(-), dN(-,*), d(2N(+,2*,2-), 8d(*), 1(2max, 4abs, 4sqrt, 12+, 12*, 5/))
+~
+N, 2dN, 29d, 10dN, 8d^2
+
+
+Ideal:
+Memory Ops:
+    (1+2d) states of size N
+    N writes
+total: (2+2d)N doubles
+       (2+2d)8N bytes
+Computation:
+For each state:
+    c2p:
+        each: 3(*), 2(-), d(+, *, /)
+        count: 3d+5
+    sound speed:
+        each: 1(sqrt, *, /)
+        count: 2d
+        total: 3
+    repeat: (1+2d)
+    total: (1+2d)(3d+8)
+flux calculation:
+    flux:
+        each: 2(*), 1(+), 2d(*)
+        count: 2d+4
+    lax-friedrichs:
+        each: max, 2abs, 2(+)
+        count: 5
+    count: N(+, -, 2*)
+    repeat (1+d)
+    total: (1+d)(2d+9+4N) 
+update:
+    total: N+2dN
+total:
+    N+2dN+(1+d)(2d+9+4N)+(1+2d)(3d+8) = 17+5N+30d+8dN+8d^2
+
+
+Measured performance against ideal: (on fvm_solver_integration.e)
+i7 9750h
+    18GB/s (single core)
+d=2, N=5
+Ideal Memory ops per cell: (2+2d)8N=240/cell
+peak updates: CPU Bandwidth/bytes_per_cell = 18e9/240 = 75e6
+23e6/75e6 = 30%

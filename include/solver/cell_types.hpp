@@ -111,10 +111,20 @@ struct E3D
     type value;
 };
 
-struct Scalar {
+struct Scalar
+{
     using type = double;
-    static constexpr auto index() noexcept -> std::size_t { return 0; }
-    static constexpr auto name() noexcept -> std::string_view { return "Scalar"; }
+
+    static constexpr auto index() noexcept -> std::size_t
+    {
+        return 0;
+    }
+
+    static constexpr auto name() noexcept -> std::string_view
+    {
+        return "Scalar";
+    }
+
     type value;
 };
 
@@ -205,17 +215,26 @@ auto operator<<(std::ostream& os, EulerCell3D const& c) -> std::ostream&
               << ", E3D: " << std::get<E3D>(c.data_tuple()).value;
 }
 
-struct AdvectionCell {
+struct AdvectionCell
+{
     using deconstructed_types_map_t = std::tuple<Scalar>;
-    AdvectionCell(double val) {
+
+    AdvectionCell(double val)
+    {
         std::get<Scalar>(m_data).value = val;
     }
 
-    auto data_tuple() -> auto& { return m_data; }
-    auto data_tuple() const -> auto const& { return m_data; }
+    auto data_tuple() -> auto&
+    {
+        return m_data;
+    }
+
+    auto data_tuple() const -> auto const&
+    {
+        return m_data;
+    }
 
     deconstructed_types_map_t m_data;
-
 };
 
 } // namespace amr::cell

@@ -4,7 +4,6 @@
 #include "utility/utility_concepts.hpp"
 #include "utility/contracts.hpp"
 #include <array>
-#include <cassert>
 
 #ifndef NDEBUG
 #    define AMR_CONTAINERS_CHECKBOUNDS
@@ -55,7 +54,7 @@ public:
     [[nodiscard]]
     static constexpr auto size(index_t const i) noexcept -> size_type
     {
-        utility::contracts::assert_index(i, s_rank);
+        utility::contracts::check_index(i, s_rank);
         using container_index_t =
             typename std::remove_cvref_t<decltype(s_sizes)>::size_type;
         return s_sizes[static_cast<container_index_t>(i)];

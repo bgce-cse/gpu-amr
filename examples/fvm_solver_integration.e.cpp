@@ -6,17 +6,16 @@
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
 #include "ndtree/vtk_print.hpp"
+#include "solver/EulerPhysics.hpp"
 #include "solver/amr_solver.hpp"
 #include "solver/cell_types.hpp"
 #include "solver/physics_system.hpp"
-#include "solver/EulerPhysics.hpp"
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
-#include <functional>
 #include <iostream>
 #include <string>
-#include <vector>
 
 int main()
 {
@@ -42,14 +41,16 @@ int main()
 
     amr::ndt::print::vtk_print<physics_t> printer("euler_print");
 
-    double            tmax            = 400;  // Example tmax, adjust as needed
+    double            tmax            = 400; // Example tmax, adjust as needed
     double            print_frequency = 5.0; // Print every 10 seconds
     const std::string output_prefix   = "solver_integration_test_refine";
 
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(1000000,1.4,0.3); // Provide initial capacity for tree
+    amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(
+        1000000, 1.4, 0.3
+    ); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
@@ -75,10 +76,7 @@ int main()
         for (std::size_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
              ++linear_idx)
         {
-            if (rho_patch[linear_idx] > max_rho_value)
-            {
-                max_rho_value = rho_patch[linear_idx];
-            }
+            max_rho_value = std::max(rho_patch[linear_idx], max_rho_value);
         }
 
         // Hard check for refinement limit
@@ -106,11 +104,12 @@ int main()
     constexpr double CENTER_Y = 0.5 * physics_y;
 
     // The initial condition function (auto IC = [](){})
-    auto acousticPulseIC = [&](auto const& coords) -> amr::containers::static_vector<double, 4>
+    auto acousticPulseIC =
+        [&](auto const& coords) -> amr::containers::static_vector<double, 4>
     {
-        double x = coords[0];
-        double y = coords[1];
-        
+        const double x = coords[0];
+        const double y = coords[1];
+
         amr::containers::static_vector<double, 4> prim;
 
         // Calculate distance squared from the center
@@ -141,7 +140,7 @@ int main()
     solver.get_tree().halo_exchange_update();
 
     // Print initial state
-    // printer.print(solver.get_tree(), "_iteration_0.vtk");
+    printer.print(solver.get_tree(), "_iteration_0.vtk");
 
     // Main Simulation Loop
     double t               = 0.0;
@@ -149,16 +148,20 @@ int main()
     int    step            = 1;
     int    output_counter  = 1;
 
-    std::cout << "\nStarting AMR simulation..." << std::endl;
+    std::cout << "\nStarting AMR simulation...\n";
+
+    std::size_t cell_update_count = 0;
+    const auto  start             = std::chrono::steady_clock::now();
 
     while (t < tmax)
     {
-        double dt = solver.compute_time_step();
+        const double dt = solver.compute_time_step();
 
-        std::cout << "Step " << step << ", t=" << t << ", dt=" << dt << std::endl;
+        DEFAULT_SOURCE_LOG_INFO("Step: {},\tt: {:.5f},\tdt: {:.5f} ", step, t, dt);
 
         solver.time_step(dt);
         solver.get_tree().halo_exchange_update();
+        cell_update_count += solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
 
         if (step % 5 == 0)
         {
@@ -173,7 +176,7 @@ int main()
         {
             std::string file_extension =
                 "_iteration_" + std::to_string(output_counter) + ".vtk";
-            // printer.print(solver.get_tree(), file_extension);
+            printer.print(solver.get_tree(), file_extension);
             printer.print(solver.get_tree(), file_extension);
             next_print_time += print_frequency;
             output_counter++;
@@ -181,6 +184,12 @@ int main()
 
         step++;
     }
+    const auto                          end      = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> duration = end - start;
+    std::cout << "Updated cells: " << cell_update_count << '\n';
+    std::cout << "Duration: " << duration.count() << '\n';
+    std::cout << "Updates per second: " << (double)cell_update_count / duration.count()
+              << '\n';
 
     std::cout << "\nSimulation completed. Files in vtk_output/ directory." << std::endl;
 

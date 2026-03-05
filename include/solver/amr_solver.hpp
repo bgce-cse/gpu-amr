@@ -1,12 +1,16 @@
 #ifndef AMR_SOLVER_HPP
 #define AMR_SOLVER_HPP
 
-#include "ndtree/ndtree.hpp"
-#include "cell_types.hpp"
 #include "EulerPhysics.hpp"
+#include "cell_types.hpp"
+#include "config/definitions.hpp"
+#include "containers/container_manipulations.hpp"
+#include "ndtree/ndtree.hpp"
 #include "physics_system.hpp"
+#include <algorithm>
+#include <execution>
+#include <limits>
 #include <vector>
-#include <functional>
 
 /**
  * @brief AMR Solver
@@ -15,25 +19,37 @@
  * @tparam EquationT The physical model (Euler, Advection, etc.)
  * @tparam DIM Dimensionality
  */
-template<typename TreeT, typename GeometryT, typename EquationT, int DIM>
-class amr_solver {
+template <typename TreeT, typename GeometryT, typename EquationT, int DIM>
+class amr_solver
+{
+public:
+    using tree_t               = TreeT;
+    using patch_layout_t       = typename tree_t::patch_layout_t;
+    using patch_index_t        = typename tree_t::patch_index_t;
+    using linear_index_t       = typename tree_t::linear_index_t;
+    using data_layout_t        = typename patch_layout_t::data_layout_t;
+    using padded_layout_t      = typename patch_layout_t::padded_layout_t;
+    static constexpr auto NVAR = EquationT::NVAR;
+    // TODO: Make a template
+    using arithmetic_t = double;
+
 private:
-    TreeT m_tree;
-    double gamma;       // Specific heat ratio
-    double cfl;         // CFL number
+    TreeT              m_tree;
+    arithmetic_t const m_gamma; // Specific heat ratio
+    arithmetic_t const m_cfl;   // CFL number
 
 public:
-    using PatchLayoutT = typename TreeT::patch_layout_t;
-    using PatchIndexT = typename TreeT::patch_index_t;
-    static constexpr int NVAR = EquationT::NVAR;
-
-    amr_solver(size_t capacity, double gamma_ = 1.4, double cfl_ = 0.1)
-        : m_tree(capacity), gamma(gamma_), cfl(cfl_) {
+    amr_solver(size_t capacity, arithmetic_t gamma_ = 1.4, arithmetic_t cfl_ = 0.1)
+        : m_tree(capacity)
+        , m_gamma(gamma_)
+        , m_cfl(cfl_)
+    {
         // Dummy dimensions were removed from new EulerPhysics.hpp
-        static_assert(DIM == 2 || DIM == 3, "Error: Wrong dimensions");
-        }
+        static_assert(DIM == 2 || DIM == 3, "Error: Wrong dimension");
+    }
 
-    TreeT& get_tree() {
+    TreeT& get_tree()
+    {
         return m_tree;
     }
 
@@ -41,140 +57,206 @@ public:
      * @brief Helper to gather the full conservative state from a specific cell
      *        NOTE: patch_idx is now a SLOT, not an iteration position
      */
-    auto get_full_state(std::size_t slot, std::size_t linear_idx) const {
-        amr::containers::static_vector<double, NVAR> state;
-        auto fill_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+    auto
+        get_full_state(const linear_index_t patch_idx, const std::size_t linear_idx) const
+    {
+        // Static loop over the FieldTags defined in the Equation policy
+        auto fill_state = [&]<std::size_t... Is>(std::index_sequence<Is...>)
+        {
+            amr::containers::static_vector<arithmetic_t, NVAR> state;
             ((state[Is] = m_tree.template get_patch<
-                typename std::tuple_element_t<Is, typename EquationT::FieldTags>
-              >(static_cast<typename TreeT::linear_index_t>(slot))[linear_idx]), ...);
+                          typename std::tuple_element<Is, typename EquationT::FieldTags>::
+                              type>(patch_idx)[linear_idx]),
+             ...);
+            return state;
         };
-        fill_state(std::make_index_sequence<NVAR>{});
-        return state;
+        return fill_state(std::make_index_sequence<NVAR>{});
     }
 
-    void set_full_state(std::size_t slot, std::size_t linear_idx,
-                        const amr::containers::static_vector<double, NVAR>& state) {
-        auto write_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+    void set_full_state(
+        const linear_index_t                                      patch_idx,
+        const std::size_t                                         linear_idx,
+        const amr::containers::static_vector<arithmetic_t, NVAR>& state
+    )
+    {
+        auto write_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) -> void
+        {
             ((m_tree.template get_patch<
-                typename std::tuple_element_t<Is, typename EquationT::FieldTags>
-              >(static_cast<typename TreeT::linear_index_t>(slot))[linear_idx] =
-                  state[Is]), ...);
+                  typename std::tuple_element<Is, typename EquationT::FieldTags>::type>(
+                  patch_idx
+              )[linear_idx] = state[Is]),
+             ...);
         };
         write_state(std::make_index_sequence<NVAR>{});
     }
 
-    double get_gamma() const {
-        return gamma;
+    arithmetic_t get_gamma() const noexcept
+    {
+        return m_gamma;
     }
 
-    double get_cfl() const {
-        return cfl;
+    arithmetic_t get_cfl() const noexcept
+    {
+        return m_cfl;
     }
 
-    template<typename InitFunc>
-    void initialize(InitFunc init_func) {
-        auto const* slots = m_tree.active_slots();
-        for (std::size_t i = 0; i < m_tree.size(); ++i) {
-            auto const slot     = slots[i];
+    template <typename InitFunc>
+    void initialize(InitFunc init_func)
+    {
+        for (std::size_t i = 0; i < m_tree.size(); ++i)
+        {
+            auto const slot     = m_tree.get_active_slot_at(i);
             auto const patch_id = m_tree.get_node_index_at(slot);
             auto const c_size   = GeometryT::cell_sizes(patch_id);
 
-            for (std::size_t l_idx = 0; l_idx < PatchLayoutT::flat_size(); ++l_idx) {
-                if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(l_idx)) continue;
+            amr::containers::manipulators::shaped_for<
+                typename patch_layout_t::interior_iteration_control_t>(
+                [this, slot, patch_id, &c_size](auto&& fn, auto const& idxs)
+                {
+                    const auto linear_idx = padded_layout_t::linear_index(idxs);
+                    // Dimension-agnostic coordinate fetch
+                    const auto cell_origin = GeometryT::cell_coord(patch_id, linear_idx);
+                    std::array<arithmetic_t, DIM> coords;
+                    for (int d = 0; d < DIM; ++d)
+                        coords[d] = cell_origin[d] + 0.5 * c_size[d];
 
-                auto cell_origin = GeometryT::cell_coord(patch_id, l_idx);
-                std::array<double, DIM> coords;
-                for(int d = 0; d < DIM; ++d) coords[d] = cell_origin[d] + 0.5 * c_size[d];
+                    const auto prim = std::invoke(std::forward<decltype(fn)>(fn), coords);
+                    amr::containers::static_vector<double, NVAR> cons;
+                    EquationT::primitiveToConservative(prim, cons, m_gamma);
 
-                auto prim = init_func(coords);
-                amr::containers::static_vector<double, NVAR> cons;
-                EquationT::primitiveToConservative(prim, cons, gamma);
-
-                set_full_state(slot, l_idx, cons);
-            }
+                    set_full_state(slot, linear_idx, cons);
+                },
+                std::forward<decltype(init_func)>(init_func)
+            );
         }
     }
 
-    void time_step(double dt) {
-        constexpr size_t patch_flat_size = PatchLayoutT::flat_size();
-        constexpr size_t stride_y = PatchLayoutT::padded_layout_t::shape_t::sizes()[DIM-1];
-        constexpr size_t stride_z = (DIM == 3) ?
-            PatchLayoutT::padded_layout_t::shape_t::sizes()[1] * stride_y : 0;
+    void time_step(double const dt)
+    {
+        constexpr size_t patch_flat_size = patch_layout_t::flat_size();
+        constexpr size_t stride_y =
+            patch_layout_t::padded_layout_t::shape_t::size(DIM - 1);
+        constexpr size_t stride_z =
+            (DIM == 3) ? patch_layout_t::padded_layout_t::shape_t::size(1) * stride_y : 0;
 
-        auto const* slots = m_tree.active_slots();
-        for (std::size_t i = 0; i < m_tree.size(); ++i) {
-            auto const slot     = slots[i];
+        for (std::size_t i = 0; i < m_tree.size(); ++i)
+        {
+            auto const slot     = m_tree.get_active_slot_at(i);
             auto const patch_id = m_tree.get_node_index_at(slot);
             auto const c_size   = GeometryT::cell_sizes(patch_id);
 
-            std::vector<amr::containers::static_vector<double, NVAR>>
-                update_buffer(patch_flat_size);
+            std::vector<amr::containers::static_vector<double, NVAR>> update_buffer(
+                patch_flat_size
+            );
 
-            for (std::size_t l_idx = 0; l_idx < patch_flat_size; ++l_idx) {
-                if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(l_idx)) continue;
+            int buffer_idx = 0;
+            amr::containers::manipulators::shaped_for<
+                typename patch_layout_t::interior_iteration_control_t>(
+                [this, slot, dt, &c_size](auto& out_buffer, auto& out_i, auto const& idxs)
+                {
+                    const auto linear_idx = padded_layout_t::linear_index(idxs);
+                    const auto U_cell     = get_full_state(slot, linear_idx);
+                    out_buffer[out_i]     = U_cell;
 
-                auto U_cell = get_full_state(slot, l_idx);
-                amr::containers::static_vector<double, NVAR> total_update{};
+                    // Generic loop over dimensions (X, Y, Z)
+                    for (int d = 0; d < DIM; ++d)
+                    {
+                        const auto stride = (d == 0) ? 1 : (d == 1 ? stride_y : stride_z);
 
-                for (int d = 0; d < DIM; ++d) {
-                    size_t stride = (d == 0) ? 1 : (d == 1 ? stride_y : stride_z);
+                        const auto U_L = get_full_state(slot, linear_idx - stride);
+                        const auto U_R = get_full_state(slot, linear_idx + stride);
 
-                    auto U_L = get_full_state(slot, l_idx - stride);
-                    auto U_R = get_full_state(slot, l_idx + stride);
+                        // TODO: Remove out paramters if possible
+                        // TODO: Evaluate merging both calls into one since they share
+                        // input params
+                        amr::containers::static_vector<arithmetic_t, NVAR> fL, fR;
+                        EquationT::rusanovFlux(U_L, U_cell, fL, d, m_gamma);
+                        EquationT::rusanovFlux(U_cell, U_R, fR, d, m_gamma);
 
-                    amr::containers::static_vector<double, NVAR> fL, fR;
-                    EquationT::rusanovFlux(U_L, U_cell, fL, d, gamma);
-                    EquationT::rusanovFlux(U_cell, U_R, fR, d, gamma);
-
-                    for (int k = 0; k < NVAR; ++k) {
-                        total_update[k] -= (dt / c_size[d]) * (fR[k] - fL[k]);
+                        for (int k = 0; k < NVAR; ++k)
+                        {
+                            out_buffer[out_i][k] -= (dt / c_size[d]) * (fR[k] - fL[k]);
+                        }
                     }
-                }
-
-                for (int k = 0; k < NVAR; ++k) {
-                    update_buffer[l_idx][k] = U_cell[k] + total_update[k];
-                }
-            }
-
-            for (std::size_t l_idx = 0; l_idx < patch_flat_size; ++l_idx) {
-                if (!amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(l_idx)) {
-                    set_full_state(slot, l_idx, update_buffer[l_idx]);
-                }
-            }
+                    out_i++;
+                },
+                update_buffer,
+                buffer_idx
+            );
+            buffer_idx = 0;
+            amr::containers::manipulators::shaped_for<
+                typename patch_layout_t::interior_iteration_control_t>(
+                [this, slot, &update_buffer](auto& out_i, auto const& idxs)
+                {
+                    const auto linear_idx = padded_layout_t::linear_index(idxs);
+                    set_full_state(slot, linear_idx, update_buffer[out_i++]);
+                },
+                buffer_idx
+            );
         }
     }
 
-    double compute_time_step() const {
-        double dt_min = std::numeric_limits<double>::max();
+    auto compute_time_step() const -> arithmetic_t
 
-        auto const* slots = m_tree.active_slots();
-        for (std::size_t i = 0; i < m_tree.size(); ++i) {
-            auto const slot     = slots[i];
-            auto const patch_id = m_tree.get_node_index_at(slot);
-            auto const c_size   = GeometryT::cell_sizes(patch_id);
+    {
+        // TODO: We could have a tighter upper bound here.
+        //       maybe there is some other theoretical limit we can use instead
+        std::atomic<arithmetic_t> dt{ std::numeric_limits<arithmetic_t>::max() };
 
-            for (std::size_t l_idx = 0; l_idx < PatchLayoutT::flat_size(); ++l_idx) {
-                if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(l_idx)) continue;
+        auto const r = std::views::iota(decltype(m_tree.size()){}, m_tree.size());
+        std::for_each(
+            AMR_EXECUTION_POLICY,
+            std::cbegin(r),
+            std::cend(r),
+            [this, &dt](auto const i) mutable
+            {
+                auto const slot = m_tree.get_active_slot_at(i);
+                auto       local_dt{ std::numeric_limits<arithmetic_t>::max() };
+                const auto patch_id = m_tree.get_node_index_at(slot);
+                const auto c_size   = GeometryT::cell_sizes(patch_id);
 
-                auto U = get_full_state(slot, l_idx);
+                amr::containers::manipulators::shaped_for<
+                    typename patch_layout_t::interior_iteration_control_t>(
+                    [this, slot, &c_size](arithmetic_t& out_dt, auto const& idxs)
+                    {
+                        const auto linear_idx = padded_layout_t::linear_index(idxs);
+                        const auto U          = get_full_state(slot, linear_idx);
 
-                for (int d = 0; d < DIM; ++d) {
-                    double speed = EquationT::getMaxSpeed(U, d, gamma);
-                    if (speed > 1e-12) {
-                        dt_min = std::min(dt_min, c_size[d] / speed);
-                    }
+                        // Ask Equation for max wave speed in each direction
+                        // TODO: The level of abstraction here is incorrect in my
+                        // opiniton. Iterating over the dimensions and calling it
+                        // direction (in getMaxSpeed) is heavily missleading.
+                        // Look at neighbor::direction as a suggested alternative.
+                        for (int d = 0; d < DIM; ++d)
+                        {
+                            const arithmetic_t speed =
+                                EquationT::getMaxSpeed(U, d, m_gamma);
+                            // TODO: This magic number should at least have a name
+                            // TODO: Is this value special in any way?
+                            if (speed > 1e-12)
+                            {
+                                out_dt = std::min(out_dt, c_size[d] / speed);
+                            }
+                        }
+                    },
+                    local_dt
+                );
+                auto current = dt.load();
+                while (local_dt < current && !dt.compare_exchange_weak(current, local_dt))
+                {
+                    break;
                 }
             }
-        }
-        return cfl * dt_min;
+        );
+        return m_cfl * dt;
     }
 };
 
 // Typedefs
-template<typename TreeT, typename GeometryT, typename EquationT>
+template <typename TreeT, typename GeometryT, typename EquationT>
 using amr_solver_2d = amr_solver<TreeT, GeometryT, EquationT, 2>;
 
-template<typename TreeT, typename GeometryT, typename EquationT>
+template <typename TreeT, typename GeometryT, typename EquationT>
 using amr_solver_3d = amr_solver<TreeT, GeometryT, EquationT, 3>;
 
 #endif // AMR_SOLVER_HPP
