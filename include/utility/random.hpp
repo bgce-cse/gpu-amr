@@ -3,12 +3,12 @@
 
 #include "utility_concepts.hpp"
 #include <concepts>
+#include "contracts.hpp"
 #include <type_traits>
 #ifndef NOMINMAX
 #    define NOMINMAX
 #endif
 
-#include <cassert>
 #include <random>
 
 #ifdef max
@@ -47,7 +47,7 @@ public:
     inline auto randrange(value_type min, value_type max) noexcept -> value_type
     {
         using distribution_t = std::uniform_int_distribution<value_type>;
-        assert(min <= max);
+        CONTRACTS_CHECK(min <= max);
         distribution_t uniform_dist(min, max);
         return uniform_dist(random_engine_);
     }
@@ -94,7 +94,7 @@ explicit random(unsigned int seed = std::random_device{}()) noexcept
     inline auto randrange(value_type min, value_type max) noexcept -> value_type
     {
         using distribution_t = std::uniform_real_distribution<value_type>;
-        assert(min <= max);
+        CONTRACTS_CHECK(min <= max);
         distribution_t uniform_dist(min, max);
         return uniform_dist(random_engine_);
     }

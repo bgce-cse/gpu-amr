@@ -29,6 +29,25 @@ private:
     static constexpr size_type s_flat_size  = padded_layout_t::flat_size();
     static constexpr size_type s_halo_width = Halo_Width;
 
+public:
+    [[nodiscard]]
+    static constexpr auto rank() noexcept -> rank_t
+    {
+        return s_rank;
+    }
+
+    [[nodiscard]]
+    static constexpr auto halo_width() noexcept -> size_type
+    {
+        return s_halo_width;
+    }
+
+    [[nodiscard]]
+    static constexpr auto flat_size() noexcept -> size_type
+    {
+        return s_flat_size;
+    }
+
     [[nodiscard]]
     static constexpr auto full_iteration_impl() -> auto
     {
@@ -39,11 +58,10 @@ private:
             loop_control<typename padded_layout_t::shape_t, start, end, stride>{};
     }
 
+private:
     [[nodiscard]]
-    static constexpr auto interior_iteration_impl() -> auto
+    static constexpr auto interior_iteration_control_impl() -> auto
     {
-        static constexpr auto h = halo_width();
-
         constexpr auto                                       start  = s_halo_width;
         constexpr std::make_signed_t<decltype(s_halo_width)> end    = -s_halo_width;
         constexpr auto                                       stride = index_t{ 1 };
@@ -92,28 +110,10 @@ private:
     }
 
 public:
-    using full_iteration_t     = decltype(full_iteration_impl());
-    using interior_iteration_t = decltype(interior_iteration_impl());
+    using full_iteration_t             = decltype(full_iteration_impl());
+    using interior_iteration_control_t = decltype(interior_iteration_control_impl());
     template <concepts::Direction auto Direction>
     using halo_iteration_control_t = decltype(halo_iteration_control_impl<Direction>());
-
-    [[nodiscard]]
-    static constexpr auto rank() noexcept -> rank_t
-    {
-        return s_rank;
-    }
-
-    [[nodiscard]]
-    static constexpr auto halo_width() noexcept -> size_type
-    {
-        return s_halo_width;
-    }
-
-    [[nodiscard]]
-    static constexpr auto flat_size() noexcept -> size_type
-    {
-        return s_flat_size;
-    }
 };
 
 } // namespace amr::ndt::patches

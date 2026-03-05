@@ -5,6 +5,7 @@
 #include "ndconcepts.hpp"
 #include "utility/constexpr_functions.hpp"
 #include "utility/contracts.hpp"
+#include "utility/error_handling.hpp"
 #include <cstddef>
 #include <type_traits>
 #include <variant>
@@ -33,10 +34,13 @@ struct neighbor_variant
 
     struct none
     {
+        static constexpr std::string_view s_repr = "None";
     };
 
     struct same
     {
+        static constexpr std::string_view s_repr = "Same";
+
         same(identifier_t i)
             : id{ i }
         {
@@ -47,6 +51,7 @@ struct neighbor_variant
 
     struct coarser
     {
+        static constexpr std::string_view s_repr = "Coarser";
         template <typename T>
         using container_type_t = std::array<T, s_rank>;
         using container_t      = container_type_t<index_t>;
@@ -63,6 +68,8 @@ struct neighbor_variant
 
     struct finer
     {
+        static constexpr std::string_view s_repr = "Finer";
+
         static constexpr auto num_neighbors() -> decltype(s_nd_fanout)
         {
             return s_nd_fanout / s_1d_fanout;
@@ -81,6 +88,12 @@ struct neighbor_variant
 
         container_t ids;
     };
+
+    [[nodiscard]]
+    constexpr auto repr() const noexcept -> std::string_view
+    {
+        return std::visit([](auto const& d) { return d.s_repr; }, data);
+    }
 
     using type = std::variant<none, same, finer, coarser>;
     type data  = none{};
@@ -155,7 +168,7 @@ public:
     [[nodiscard]]
     static constexpr auto opposite(direction const& d) noexcept -> direction
     {
-        if (!is_negative(d)) [[assume(d.idx_ > index_t{})]];
+        // if (!is_negative(d)) [[assume(d.idx_ > index_t{})]];
         return direction(is_negative(d) ? d.idx_ + index_t{ 1 } : d.idx_ - index_t{ 1 });
     }
 
@@ -305,7 +318,7 @@ public:
         rank_t                                           rank
     ) -> index_t
     {
-        assert(rank < coords.rank());
+        CONTRACTS_CHECK(rank < coords.rank());
 
         index_t linear_idx = 0;
         index_t multiplier = 1;
@@ -330,9 +343,7 @@ public:
     ) -> std::array<index_t, s_rank>
     {
         static_assert(s_rank > rank_t{ 1 });
-        utility::contracts::assert_index(
-            neighbor_linear_index, s_nd_fanout / s_1d_fanout
-        );
+        utility::contracts::check_index(neighbor_linear_index, s_nd_fanout / s_1d_fanout);
         return [&d](index_t idx)
         {
             std::array<index_t, s_rank> ret;
@@ -359,7 +370,7 @@ public:
     )
     {
         const auto dim = d.dimension();
-        assert(
+        CONTRACTS_CHECK(
             d.is_positive() ? self_idx[dim] == s_1d_fanout - index_t{ 1 }
                             : self_idx[dim] == index_t{}
         );
@@ -386,7 +397,7 @@ public:
     static constexpr auto compute_boundary_children(direction_t d)
     {
         static constexpr auto num_boundary_children =
-            neighbor_variant_t::finer::num_neighbors(); 
+            neighbor_variant_t::finer::num_neighbors();
         std::array<size_type, num_boundary_children> boundary_children{};
 
         const rank_t normal_rank = d.dimension();
@@ -394,8 +405,7 @@ public:
         for (index_t i = 0; i != s_nd_fanout; ++i)
         {
             auto relations = s_neighbor_relation_maps[i];
-            if (relations[d.index()] != NeighborRelation::ParentNeighbor)
-                continue;
+            if (relations[d.index()] != NeighborRelation::ParentNeighbor) continue;
 
             const auto coords = child_expansion_t::layout_t::multi_index(i);
 
@@ -405,7 +415,6 @@ public:
 
         return boundary_children;
     }
-
 
     [[nodiscard]]
     static auto compute_child_neighbors(
@@ -470,6 +479,10 @@ public:
                     {
                         return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                     }
+                    else
+                    {
+                        utility::error_handling::assert_unreachable();
+                    }
                 };
 
                 child_neighbor_array[d.index()] =
@@ -488,7 +501,8 @@ public:
         {
             auto boundary_children = compute_boundary_children(d);
 
-            // Use the first boundary child's neighbor to determine parent's neighbor type
+            // Use the first boundary child's neighbor to determine parent's neighbor
+            // type
             auto first_boundary_child_neighbor =
                 child_neighbor_arrays[boundary_children[0]][d.index()];
 
@@ -535,11 +549,15 @@ public:
                 }
                 else if constexpr (std::is_same_v<T, typename neighbor_variant_t::finer>)
                 {
-                    assert(
+                    CONTRACTS_CHECK(
                         false &&
                         "Child has finer neighbor during coarsening - unexpected!"
                     );
                     return neighbor_variant_t{ typename neighbor_variant_t::none{} };
+                }
+                else
+                {
+                    utility::error_handling::assert_unreachable();
                 }
             };
 

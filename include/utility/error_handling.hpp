@@ -1,7 +1,7 @@
 #ifndef INCLUDED_ERROR_HANDLING_UTILITY
 #define INCLUDED_ERROR_HANDLING_UTILITY
 
-#include <cassert>
+#include "contracts.hpp"
 #include <utility>
 
 namespace utility::error_handling
@@ -12,8 +12,9 @@ inline auto assert_unreachable() -> void
 {
 #ifdef NDEBUG
     std::unreachable();
+#else
+    std::terminate();
 #endif
-    assert(false);
 }
 
 } // namespace utility::error_handling

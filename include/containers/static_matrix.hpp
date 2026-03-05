@@ -5,7 +5,6 @@
 #include "static_shape.hpp"
 #include "utility/contracts.hpp"
 #include <array>
-#include <cassert>
 #include <concepts>
 #include <iomanip>
 #include <iostream>
@@ -63,7 +62,7 @@ public:
     [[nodiscard]]
     static constexpr auto size(index_t const i) noexcept -> size_type
     {
-        utility::contracts::assert_index(i, rank());
+        utility::contracts::check_index(i, rank());
         return layout_t::size(i);
     }
 
@@ -76,7 +75,7 @@ public:
     [[nodiscard]]
     static constexpr auto stride(index_t const i) noexcept -> size_type
     {
-        utility::contracts::assert_index(i, rank());
+        utility::contracts::check_index(i, rank());
         return layout_t::stride(i);
     }
 
@@ -136,8 +135,8 @@ public:
     constexpr auto assert_in_bounds(size_type const j, size_type const i) const noexcept
         -> void
     {
-        utility::contracts::assert_index(i, size(0));
-        utility::contracts::assert_index(j, size(1));
+        utility::contracts::check_index(i, size(0));
+        utility::contracts::check_index(j, size(1));
     }
 #endif
 

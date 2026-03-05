@@ -2,6 +2,7 @@
 #define AMR_INCLUDED_LOOP_CONTROL
 
 #include "container_concepts.hpp"
+#include "utility/casts.hpp"
 #include "utility/error_handling.hpp"
 #include <ranges>
 
@@ -31,15 +32,20 @@ private:
             }
             else
             {
-                auto sizes = s_sizes;
-                for (auto& e : sizes)
-                    e += Start;
-                return sizes;
+                std::array<index_t, s_rank> start{};
+                for (auto i = rank_t{}; i != s_rank; ++i)
+                    start[i] = static_cast<index_t>(
+                        utility::casts::safe_cast<decltype(Start)>(s_sizes[i]) + Start
+                    );
+                return start;
             }
         }
         else
         {
-            return Start;
+            std::array<index_t, s_rank> start{};
+            for (auto i = rank_t{}; i != s_rank; ++i)
+                start[i] = index_t{ Start[i] };
+            return start;
         }
     }();
     static constexpr auto s_end = []
@@ -53,15 +59,20 @@ private:
             }
             else
             {
-                auto sizes = s_sizes;
-                for (auto& e : sizes)
-                    e += End;
-                return sizes;
+                std::array<index_t, s_rank> end{};
+                for (auto i = rank_t{}; i != s_rank; ++i)
+                    end[i] = static_cast<index_t>(
+                        utility::casts::safe_cast<decltype(End)>(s_sizes[i]) + End
+                    );
+                return end;
             }
         }
         else
         {
-            return End;
+            std::array<index_t, s_rank> end{};
+            for (auto i = rank_t{}; i != s_rank; ++i)
+                end[i] = index_t{ End[i] };
+            return end;
         }
     }();
 
@@ -74,8 +85,7 @@ public:
 
 private:
     [[nodiscard]]
-    static constexpr auto at_idx(auto const& v, const rank_t idx) noexcept
-        -> decltype(auto)
+    static constexpr auto at_idx(auto const& v, const rank_t idx) noexcept -> index_t
     {
         using v_t = std::remove_cvref_t<decltype(v)>;
         if constexpr (std::is_arithmetic_v<v_t>)
@@ -122,7 +132,7 @@ private:
         {
             if ((at_idx(s_start, i) >= index_t{}) &&
                 (at_idx(s_start, i) <= at_idx(s_end, i)) &&
-                (at_idx(s_end, i) <= s_sizes[i] &&
+                (at_idx(s_end, i) <= index_t{ s_sizes[i] } &&
                  ((at_idx(s_end, i) - at_idx(s_start, i)) % at_idx(s_stride, i) ==
                   index_t{})))
             {
