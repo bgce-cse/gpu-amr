@@ -2,6 +2,7 @@
 #define AMR_GLOBAL_AMR_INDICATORS_HPP
 
 #include "coordinates.hpp"
+#include "generated_config.hpp"
 #include "ndtree/patch_utils.hpp"
 #include <algorithm>
 #include <array>
@@ -126,43 +127,62 @@ struct GradientAMRIndicator
     {
         using multi_index_t = typename DofTensor::multi_index_t;
 
-        // Track min / max of the first Dim components (momentum)
-        // and accumulate density for averaging.
-        constexpr std::size_t DENSITY_IDX = Dim; // Euler layout: [mom..., rho, E]
-        constexpr double      eps         = 1.0e-10;
-
-        std::array<double, Dim> vmin{};
-        std::array<double, Dim> vmax{};
-        for (std::size_t d = 0; d < Dim; ++d)
+        // Advection: track only the first DOF (variable 0).
+        // Euler:     momentum variation normalized by cell-mean density.
+        if constexpr (Policy::equation == amr::config::EquationType::Advection)
         {
-            vmin[d] = std::numeric_limits<double>::max();
-            vmax[d] = std::numeric_limits<double>::lowest();
+            double vmin = std::numeric_limits<double>::max();
+            double vmax = std::numeric_limits<double>::lowest();
+
+            multi_index_t idx{};
+            do
+            {
+                const double val = static_cast<double>(dof_tensor[idx][0]);
+                vmin             = std::min(vmin, val);
+                vmax             = std::max(vmax, val);
+            } while (idx.increment());
+
+            return vmax - vmin;
         }
-        double      rho_sum = 0.0;
-        std::size_t count   = 0;
-
-        multi_index_t idx{};
-        do
+        else
         {
-            const auto& nodal_val = dof_tensor[idx];
+            // Euler layout: [mom_0, ..., mom_{Dim-1}, rho, E]
+            constexpr std::size_t DENSITY_IDX = Dim;
+            constexpr double      eps         = 1.0e-10;
+
+            std::array<double, Dim> vmin{};
+            std::array<double, Dim> vmax{};
             for (std::size_t d = 0; d < Dim; ++d)
             {
-                vmin[d] = std::min(vmin[d], static_cast<double>(nodal_val[d]));
-                vmax[d] = std::max(vmax[d], static_cast<double>(nodal_val[d]));
+                vmin[d] = std::numeric_limits<double>::max();
+                vmax[d] = std::numeric_limits<double>::lowest();
             }
-            rho_sum += static_cast<double>(nodal_val[DENSITY_IDX]);
-            ++count;
-        } while (idx.increment());
+            double      rho_sum = 0.0;
+            std::size_t count   = 0;
 
-        // Normalise by cell-mean density to get a velocity variation
-        const double mean_rho = (count > 0) ? rho_sum / static_cast<double>(count) : 1.0;
-        const double inv_rho  = 1.0 / (std::abs(mean_rho) + eps);
+            multi_index_t idx{};
+            do
+            {
+                const auto& nodal_val = dof_tensor[idx];
+                for (std::size_t d = 0; d < Dim; ++d)
+                {
+                    vmin[d] = std::min(vmin[d], static_cast<double>(nodal_val[d]));
+                    vmax[d] = std::max(vmax[d], static_cast<double>(nodal_val[d]));
+                }
+                rho_sum += static_cast<double>(nodal_val[DENSITY_IDX]);
+                ++count;
+            } while (idx.increment());
 
-        double indicator = 0.0;
-        for (std::size_t d = 0; d < Dim; ++d)
-            indicator = std::max(indicator, (vmax[d] - vmin[d]) * inv_rho);
+            const double mean_rho =
+                (count > 0) ? rho_sum / static_cast<double>(count) : 1.0;
+            const double inv_rho = 1.0 / (std::abs(mean_rho) + eps);
 
-        return indicator;
+            double indicator = 0.0;
+            for (std::size_t d = 0; d < Dim; ++d)
+                indicator = std::max(indicator, (vmax[d] - vmin[d]) * inv_rho);
+
+            return indicator;
+        }
     }
 
     // -----------------------------------------------------------------

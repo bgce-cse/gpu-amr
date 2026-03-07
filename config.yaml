@@ -6,19 +6,19 @@ simulation:
   end_time: 1.0                    # Total simulation time
   grid_elements: 4      # Number of elements per dimension
   grid_size: 1.0
-  MaxDepth: 6                  # Maximum refinement depth (levels 0 to 5)
+  MaxDepth: 4                  # Maximum refinement depth (levels 0 to 5)
   offset: [0.0, 0.0]               # Domain offset
 
 # Solver configuration
 solver:
   order: 2               # Polynomial order for basis functions (Order)
   courant: 0.5                      # CFL number for time steppingf
-  timeintegrator: SSPRK2            # Time integration scheme
+  timeintegrator: SSPRK3            # Time integration scheme
 
 # Equation and scenario selection
 equation:
-  equation: euler               # Options: "advection", "euler"
-  scenario: gaussian_wave           # Scenario selection
+  equation: advection               # Options: "advection", "euler"
+  scenario: gaussian_wave           # TODO
 
 # Output configuration
 output:
