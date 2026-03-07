@@ -2,102 +2,19 @@
 
 #include "containers/static_tensor.hpp"
 #include "generated_config.hpp"
-#include <functional>
-#include <memory>
-#include <stdexcept>
 #include <string_view>
 
 namespace amr::time_integration
 {
 
 /**
- * @brief Abstract base class for time integrators (ODE solvers) on patch containers.
- *
- * Provides both the legacy single-call step() and a stage-wise interface
- * (num_stages / begin_step / compute_stage / finish_step) that allows the
- * solver to perform a global halo exchange between stages.
- */
-template <typename PatchContainerT>
-class Integrator
-{
-public:
-    virtual ~Integrator() = default;
-
-    /**
-     * @brief Performs one complete time step (all stages at once).
-     *
-     * @warning This method evaluates intermediate stages using LOCAL buffers
-     * whose halo regions are stale (they don't reflect the intermediate state
-     * of neighboring patches).  For multi-stage methods this is INCORRECT
-     * when inter-patch coupling exists (e.g. the DG surface flux).
-     * Prefer the stage-wise interface in the solver loop instead.
-     *
-     * @param residual Function computing du/dt from current patch
-     * @param patch_dofs Current patch DOFs (modified in-place)
-     * @param time Current simulation time
-     * @param dt Time step size
-     */
-    virtual void step(
-        std::function<void(PatchContainerT&, const PatchContainerT&, double)> residual,
-        PatchContainerT&                                                      patch_dofs,
-        double                                                                time,
-        double                                                                dt
-    ) = 0;
-
-    // -----------------------------------------------------------------
-    //  Stage-wise interface
-    //
-    //  Usage from the solver:
-    //    integrator.begin_step(patch_dofs);
-    //    for (int s = 0; s < integrator.num_stages(); ++s) {
-    //        // halo exchange (so RHS sees consistent data)
-    //        for each patch:
-    //            integrator.compute_stage(s, residual, patch_dofs, time, dt);
-    //        // write the intermediate state back into the tree for halo exch.
-    //        for each patch:
-    //            patch_dofs = integrator.stage_result(s, patch_dofs);
-    //    }
-    //    for each patch:
-    //        integrator.finish_step(patch_dofs);
-    // -----------------------------------------------------------------
-
-    /** Number of RHS evaluations (stages) per time step. */
-    virtual int num_stages() const = 0;
-
-    /** Store u^n before the first stage. */
-    virtual void begin_step(const PatchContainerT& patch_dofs) = 0;
-
-    /**
-     * Evaluate the RHS for the given stage and accumulate into internal storage.
-     * @param stage  Stage index, 0-based.
-     * @param patch_dofs  The CURRENT state of this patch (should include valid halos).
-     */
-    virtual void compute_stage(
-        int                                                                   stage,
-        std::function<void(PatchContainerT&, const PatchContainerT&, double)> residual,
-        const PatchContainerT&                                                patch_dofs,
-        double                                                                time,
-        double                                                                dt
-    ) = 0;
-
-    /**
-     * Return the intermediate state that should be written back to the tree
-     * after stage `stage` so halo exchange can see it.
-     */
-    virtual PatchContainerT
-        stage_result(int stage, const PatchContainerT& patch_dofs) = 0;
-
-    /**
-     * Combine all stage data and write the final u^{n+1} into patch_dofs.
-     */
-    virtual void finish_step(PatchContainerT& patch_dofs) = 0;
-};
-
-/**
  * @brief Explicit Euler integrator for entire patches.
+ *
+ * All callable parameters are accepted as template arguments
+ * so the compiler can inline the residual lambda directly.
  */
 template <typename PatchContainerT>
-class ExplicitEuler : public Integrator<PatchContainerT>
+class ExplicitEuler
 {
 private:
     std::remove_reference_t<PatchContainerT> patch_update;
@@ -110,14 +27,9 @@ public:
     {
     }
 
-    void step(
-        std::function<void(PatchContainerT&, const PatchContainerT&, double)> residual,
-        PatchContainerT&                                                      patch_dofs,
-        double                                                                time,
-        double                                                                dt
-    ) override
+    template <typename Residual>
+    void step(Residual&& residual, PatchContainerT& patch_dofs, double time, double dt)
     {
-        // zero the update
         for (auto& elem : patch_update)
             elem = {};
 
@@ -125,23 +37,24 @@ public:
         patch_dofs = patch_dofs + (patch_update * dt);
     }
 
-    int num_stages() const override
+    int num_stages() const
     {
         return 1;
     }
 
-    void begin_step(const PatchContainerT& patch_dofs) override
+    void begin_step(const PatchContainerT& patch_dofs)
     {
         u_n = patch_dofs;
     }
 
+    template <typename Residual>
     void compute_stage(
         int /*stage*/,
-        std::function<void(PatchContainerT&, const PatchContainerT&, double)> residual,
-        const PatchContainerT&                                                patch_dofs,
-        double                                                                time,
-        double                                                                dt
-    ) override
+        Residual&&             residual,
+        const PatchContainerT& patch_dofs,
+        double                 time,
+        double                 dt
+    )
     {
         for (auto& elem : patch_update)
             elem = {};
@@ -150,13 +63,13 @@ public:
         u_n = patch_dofs + patch_update * dt;
     }
 
-    PatchContainerT
-        stage_result(int /*stage*/, const PatchContainerT& /*patch_dofs*/) override
+    const PatchContainerT&
+        stage_result(int /*stage*/, const PatchContainerT& /*patch_dofs*/)
     {
         return u_n;
     }
 
-    void finish_step(PatchContainerT& patch_dofs) override
+    void finish_step(PatchContainerT& patch_dofs)
     {
         patch_dofs = u_n;
     }
@@ -169,7 +82,7 @@ public:
  *  Stage 1:  u^{n+1} = 0.5 * (u^n + u* + dt * F(u*))
  */
 template <typename PatchContainerT>
-class SSPRK2 : public Integrator<PatchContainerT>
+class SSPRK2
 {
 private:
     std::remove_reference_t<PatchContainerT> stage_rhs; // scratch for RHS eval
@@ -184,14 +97,9 @@ public:
     {
     }
 
-    void step(
-        std::function<void(PatchContainerT&, const PatchContainerT&, double)> residual,
-        PatchContainerT&                                                      patch_dofs,
-        double                                                                time,
-        double                                                                dt
-    ) override
+    template <typename Residual>
+    void step(Residual&& residual, PatchContainerT& patch_dofs, double time, double dt)
     {
-        // Legacy all-in-one (stale-halo issue with inter-patch coupling)
         for (auto& elem : stage_rhs)
             elem = {};
 
@@ -204,23 +112,24 @@ public:
         patch_dofs = (patch_dofs + u_star + stage_rhs * dt) * 0.5;
     }
 
-    int num_stages() const override
+    int num_stages() const
     {
         return 2;
     }
 
-    void begin_step(const PatchContainerT& patch_dofs) override
+    void begin_step(const PatchContainerT& patch_dofs)
     {
         u_n = patch_dofs;
     }
 
+    template <typename Residual>
     void compute_stage(
-        int                                                                   stage,
-        std::function<void(PatchContainerT&, const PatchContainerT&, double)> residual,
-        const PatchContainerT&                                                patch_dofs,
-        double                                                                time,
-        double                                                                dt
-    ) override
+        int                    stage,
+        Residual&&             residual,
+        const PatchContainerT& patch_dofs,
+        double                 time,
+        double                 dt
+    )
     {
         for (auto& elem : stage_rhs)
             elem = {};
@@ -240,13 +149,13 @@ public:
         }
     }
 
-    PatchContainerT
-        stage_result(int /*stage*/, const PatchContainerT& /*patch_dofs*/) override
+    const PatchContainerT&
+        stage_result(int /*stage*/, const PatchContainerT& /*patch_dofs*/)
     {
         return u_star;
     }
 
-    void finish_step(PatchContainerT& patch_dofs) override
+    void finish_step(PatchContainerT& patch_dofs)
     {
         patch_dofs = u_star;
     }
@@ -260,7 +169,7 @@ public:
  *  Stage 2:  u^{n+1} = 1/3 u^n + 2/3 (u^(2) + dt * F(u^(2)))
  */
 template <typename PatchContainerT>
-class SSPRK3 : public Integrator<PatchContainerT>
+class SSPRK3
 {
 private:
     std::remove_reference_t<PatchContainerT> stage_rhs;
@@ -275,14 +184,9 @@ public:
     {
     }
 
-    void step(
-        std::function<void(PatchContainerT&, const PatchContainerT&, double)> residual,
-        PatchContainerT&                                                      patch_dofs,
-        double                                                                time,
-        double                                                                dt
-    ) override
+    template <typename Residual>
+    void step(Residual&& residual, PatchContainerT& patch_dofs, double time, double dt)
     {
-        // Legacy all-in-one (stale-halo issue with inter-patch coupling)
         for (auto& elem : stage_rhs)
             elem = {};
         residual(stage_rhs, patch_dofs, time);
@@ -299,23 +203,24 @@ public:
         patch_dofs = patch_dofs * (1.0 / 3.0) + (u_stage + stage_rhs * dt) * (2.0 / 3.0);
     }
 
-    int num_stages() const override
+    int num_stages() const
     {
         return 3;
     }
 
-    void begin_step(const PatchContainerT& patch_dofs) override
+    void begin_step(const PatchContainerT& patch_dofs)
     {
         u_n = patch_dofs;
     }
 
+    template <typename Residual>
     void compute_stage(
-        int                                                                   stage,
-        std::function<void(PatchContainerT&, const PatchContainerT&, double)> residual,
-        const PatchContainerT&                                                patch_dofs,
-        double                                                                time,
-        double                                                                dt
-    ) override
+        int                    stage,
+        Residual&&             residual,
+        const PatchContainerT& patch_dofs,
+        double                 time,
+        double                 dt
+    )
     {
         for (auto& elem : stage_rhs)
             elem = {};
@@ -342,13 +247,13 @@ public:
         }
     }
 
-    PatchContainerT
-        stage_result(int /*stage*/, const PatchContainerT& /*patch_dofs*/) override
+    const PatchContainerT&
+        stage_result(int /*stage*/, const PatchContainerT& /*patch_dofs*/)
     {
         return u_stage;
     }
 
-    void finish_step(PatchContainerT& patch_dofs) override
+    void finish_step(PatchContainerT& patch_dofs)
     {
         patch_dofs = u_stage;
     }

@@ -34,11 +34,11 @@ struct VolumeEvaluator
         auto&                  inverse_jacobian
     )
     {
+        const auto scale = inverse_jacobian * cell_volume;
         for (std::size_t i = 0; i < Policy::Dim; ++i)
         {
-            cell_du =
-                cell_du + inverse_jacobian * cell_volume *
-                              amr::containers::algorithms::tensor::derivative_contraction(
+            cell_du = cell_du +
+                      scale * amr::containers::algorithms::tensor::derivative_contraction(
                                   global_t::derivative_tensor,
                                   amr::containers::algorithms::tensor::tensor_dot(
                                       cell_flux[i], global_t::volume_mass

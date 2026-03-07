@@ -20,7 +20,7 @@ struct Advection :
 {
     static constexpr double velocity = Velocity;
 
-    static constexpr auto evaluate_flux(typename Advection::dof_t celldofs)
+    static constexpr auto evaluate_flux(const typename Advection::dof_t& celldofs)
     {
         typename Advection::flux_t flux{};
         for (std::size_t d = 0; d < Dim; ++d)

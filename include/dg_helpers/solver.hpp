@@ -74,9 +74,10 @@ struct DGSolver
     // -----------------------------------------------------------------
     //  State
     // -----------------------------------------------------------------
-    SimulationParams params;
-    tree_builder_t   tree_builder;
-    integrator_t     integrator{};
+    SimulationParams          params;
+    tree_builder_t            tree_builder;
+    integrator_t              integrator{};
+    std::vector<integrator_t> patch_integrators;
 
     // -----------------------------------------------------------------
     //  Convenience accessors
@@ -97,6 +98,7 @@ struct DGSolver
     explicit DGSolver(SimulationParams p = {})
         : params{ p }
         , tree_builder{ p.initial_level }
+        , patch_integrators(tree_builder.tree.size())
     {
     }
 
@@ -151,11 +153,8 @@ private:
         auto&     t        = tree();
         const int n_stages = integrator.num_stages();
 
-        // --- Per-patch integrator instances (one per leaf) ---
-        // Each integrator stores u^n and intermediate stage data.
-        // We keep a vector so that all patches can share the same
-        // global stage loop.
-        std::vector<integrator_t> patch_integrators(t.size());
+        // Resize only when tree size changes (after AMR)
+        if (patch_integrators.size() != t.size()) patch_integrators.resize(t.size());
 
         // --- Begin step: save u^n for every patch ---
         t.halo_exchange_update();

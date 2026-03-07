@@ -66,7 +66,10 @@ struct Euler :
     /**
      * @brief Compute pressure from conservative variables.
      */
-    constexpr Scalar compute_pressure(const typename Euler::dof_value_t& U) const
+    static constexpr Scalar compute_pressure(
+        const typename Euler::dof_value_t& U,
+        Scalar                             gamma = DEFAULT_GAMMA
+    )
     {
         const Scalar rho = U[DENSITY_IDX];
         const Scalar E   = U[ENERGY_IDX];
@@ -78,7 +81,7 @@ struct Euler :
             kinetic += 0.5 * mom * mom / rho;
         }
 
-        return (gamma_ - 1.0) * (E - kinetic);
+        return (gamma - 1.0) * (E - kinetic);
     }
 
     /**
@@ -100,8 +103,8 @@ struct Euler :
     /**
      * @brief Compute velocity vector from conservative variables.
      */
-    constexpr amr::containers::static_vector<Scalar, Dim>
-        compute_velocity(const typename Euler::dof_value_t& U) const
+    static constexpr amr::containers::static_vector<Scalar, Dim>
+        compute_velocity(const typename Euler::dof_value_t& U)
     {
         const Scalar                                rho = U[DENSITY_IDX];
         amr::containers::static_vector<Scalar, Dim> velocity;
@@ -128,12 +131,8 @@ struct Euler :
             const Scalar rho = U[DENSITY_IDX];
             const Scalar E   = U[ENERGY_IDX];
 
-            // Need instance for thermodynamic calculations
-            // Note: This is a limitation of making methods static
-            // Consider making gamma a template parameter if performance is critical
-            Euler        eq; // Uses default gamma
-            const Scalar p        = eq.compute_pressure(U);
-            const auto   velocity = eq.compute_velocity(U);
+            const Scalar p        = compute_pressure(U);
+            const auto   velocity = compute_velocity(U);
 
             // Compute flux in each spatial direction
             for (std::size_t dir = 0; dir < Dim; ++dir)
@@ -171,10 +170,9 @@ struct Euler :
         auto        idx = typename Euler::dof_t::multi_index_t{};
         const auto& U   = celldofs[idx];
 
-        Euler        eq; // Uses default gamma
         const Scalar rho = U[DENSITY_IDX];
-        const Scalar p   = eq.compute_pressure(U);
-        const Scalar c   = std::sqrt(eq.gamma_ * p / rho);      // Sound speed
+        const Scalar p   = compute_pressure(U);
+        const Scalar c   = std::sqrt(DEFAULT_GAMMA * p / rho);  // Sound speed
         const Scalar u_n = U[MOMENTUM_START + normalidx] / rho; // Normal velocity
 
         return std::abs(u_n) + c; // Maximum eigenvalue

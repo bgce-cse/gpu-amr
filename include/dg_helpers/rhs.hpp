@@ -181,12 +181,12 @@ private:
         {
             if (patch_util::is_halo_cell<patch_layout_t>(idx)) continue;
 
+            auto current_coords = padded_layout_t::multi_index(
+                static_cast<typename padded_layout_t::index_t>(idx)
+            );
+
             for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
             {
-                auto current_coords = padded_layout_t::multi_index(
-                    static_cast<typename padded_layout_t::index_t>(idx)
-                );
-
                 auto dim_idx  = static_cast<int>(d.dimension());
                 bool is_neg   = direction_t::is_negative(d);
                 int  sign     = is_neg ? -1 : 1;
