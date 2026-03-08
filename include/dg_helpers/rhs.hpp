@@ -163,15 +163,17 @@ private:
         {
             flux_patch[linear_idx] = eq::evaluate_flux(dof_patch[linear_idx]);
 
-            if (Policy::Order > 1 &&
-                !patch_util::is_halo_cell<patch_layout_t>(linear_idx))
+            if constexpr (Policy::Order > 1)
             {
-                volume_t::evaluate_volume_integral(
-                    patch_update[linear_idx],
-                    flux_patch[linear_idx],
-                    volume,
-                    inverse_jacobian
-                );
+                if (!patch_util::is_halo_cell<patch_layout_t>(linear_idx))
+                {
+                    volume_t::evaluate_volume_integral(
+                        patch_update[linear_idx],
+                        flux_patch[linear_idx],
+                        volume,
+                        inverse_jacobian
+                    );
+                }
             }
         }
     }

@@ -400,6 +400,7 @@ add_custom_target(generated_config_header DEPENDS ${GENERATED_CONFIG_HPP})
 # Find Dependencies
 # ============================================================================
 find_package(TBB REQUIRED)
+find_package(OpenMP REQUIRED)
 find_package(VTK REQUIRED COMPONENTS
     CommonCore
     CommonDataModel
@@ -409,6 +410,7 @@ find_package(VTK REQUIRED COMPONENTS
 )
 
 message(STATUS "TBB found: ${TBB_VERSION}")
+message(STATUS "OpenMP found: ${OpenMP_CXX_VERSION}")
 message(STATUS "VTK found: ${VTK_VERSION}")
 
 # ============================================================================
@@ -447,6 +449,7 @@ foreach(EXAMPLE_FILE ${EXAMPLE_FILES})
     target_link_libraries(${TARGET_NAME} 
         PRIVATE 
             TBB::tbb 
+            OpenMP::OpenMP_CXX
             ${VTK_LIBRARIES}
     )
     

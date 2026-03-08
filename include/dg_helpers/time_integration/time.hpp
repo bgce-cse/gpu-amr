@@ -37,7 +37,7 @@ public:
         patch_dofs += patch_update * dt;
     }
 
-    int num_stages() const
+    static constexpr int num_stages()
     {
         return 1;
     }
@@ -112,7 +112,7 @@ public:
         patch_dofs = (patch_dofs + u_star + stage_rhs * dt) * 0.5;
     }
 
-    int num_stages() const
+    static constexpr int num_stages()
     {
         return 2;
     }
@@ -202,7 +202,7 @@ public:
         patch_dofs = patch_dofs * (1.0 / 3.0) + (u_stage + stage_rhs * dt) * (2.0 / 3.0);
     }
 
-    int num_stages() const
+    static constexpr int num_stages()
     {
         return 3;
     }

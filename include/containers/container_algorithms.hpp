@@ -314,7 +314,8 @@ constexpr auto tensor_power(TensorType const& tensor)
 }
 
 template <typename TensorA, typename TensorB>
-auto tensor_dot(TensorA const& Ta, TensorB const& Tb)
+[[nodiscard]]
+constexpr auto tensor_dot(TensorA const& Ta, TensorB const& Tb)
 {
     // Element-wise product of two tensors with the same shape
     static_assert(
@@ -331,7 +332,8 @@ auto tensor_dot(TensorA const& Ta, TensorB const& Tb)
 }
 
 template <typename Derivative, typename Flux>
-auto derivative_contraction(
+[[nodiscard]]
+constexpr auto derivative_contraction(
     Derivative const&  derivative,
     Flux const&        flux,
     std::integral auto dim

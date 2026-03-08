@@ -150,15 +150,26 @@ private:
     // -----------------------------------------------------------------
     void advance_patches(double dt, double& dt_min)
     {
-        auto&     t        = tree();
-        const int n_stages = integrator.num_stages();
+        auto&         t         = tree();
+        constexpr int n_stages  = integrator_t::num_stages();
+        const auto    n_patches = t.size();
+
+        // Precompute CFL scale factor at compile time
+        static constexpr double cfl_scale = []()
+        {
+            double r = 1.0;
+            for (std::size_t i = 0; i < Policy::Dim; ++i)
+                r *= Policy::Order;
+            return 1.0 / (r + 1.0);
+        }();
 
         // Resize only when tree size changes (after AMR)
-        if (patch_integrators.size() != t.size()) patch_integrators.resize(t.size());
+        if (patch_integrators.size() != n_patches) patch_integrators.resize(n_patches);
 
         // --- Begin step: save u^n for every patch ---
         t.halo_exchange_update();
-        for (std::size_t idx = 0; idx < t.size(); ++idx)
+#pragma omp parallel for schedule(static)
+        for (std::size_t idx = 0; idx < n_patches; ++idx)
         {
             auto& dof_patch = t.template get_patch<S1>(idx);
             patch_integrators[idx].begin_step(dof_patch.data());
@@ -171,7 +182,10 @@ private:
             // (u^n for stage 0, the intermediate u* for later stages).
             t.halo_exchange_update();
 
-            for (std::size_t idx = 0; idx < t.size(); ++idx)
+            double stage_dt_min = dt_min;
+
+#pragma omp parallel for schedule(static) reduction(min : stage_dt_min)
+            for (std::size_t idx = 0; idx < n_patches; ++idx)
             {
                 auto& dof_patch  = t.template get_patch<S1>(idx);
                 auto& flux_patch = t.template get_patch<S2>(idx);
@@ -212,17 +226,18 @@ private:
                 // CFL bookkeeping (only on the last stage to avoid redundant work)
                 if (s == n_stages - 1 && max_eigenval > 0.0)
                 {
-                    const double scale =
-                        1.0 / (std::pow(Policy::Order, Policy::Dim) + 1.0);
                     const double new_dt =
-                        scale * amr::config::CourantNumber * edge / max_eigenval;
-                    dt_min = std::min(dt_min, new_dt);
+                        cfl_scale * amr::config::CourantNumber * edge / max_eigenval;
+                    stage_dt_min = std::min(stage_dt_min, new_dt);
                 }
             }
+
+            dt_min = stage_dt_min;
         }
 
-        // --- Finish step: write final u^{n+1} into tree ---
-        for (std::size_t idx = 0; idx < t.size(); ++idx)
+// --- Finish step: write final u^{n+1} into tree ---
+#pragma omp parallel for schedule(static)
+        for (std::size_t idx = 0; idx < n_patches; ++idx)
         {
             auto& dof_patch = t.template get_patch<S1>(idx);
             patch_integrators[idx].finish_step(dof_patch.data());

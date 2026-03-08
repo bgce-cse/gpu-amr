@@ -214,6 +214,7 @@ struct GradientAMRIndicator
         const std::size_t            num_patches = tree.size();
         std::vector<refine_status_t> decisions(num_patches, refine_status_t::Stable);
 
+#pragma omp parallel for schedule(static)
         for (std::size_t p = 0; p < num_patches; ++p)
         {
             const auto& dof_patch   = tree.template get_patch<S1Tag>(p);
