@@ -24,19 +24,22 @@ namespace amr::solver
 /**
  * @brief Runtime parameters for the DG simulation loop.
  *
- * Separates knobs that might change between runs from the compile-time
- * policy so they can be loaded from a file or command-line later.
+ * Defaults are sourced from config.yaml via GlobalConfigPolicy.
+ * Can be overridden at construction time if needed.
  */
+template <typename Policy = amr::config::GlobalConfigPolicy>
 struct SimulationParams
 {
-    double initial_dt    = 0.01;
-    double plot_interval = 0.01;
-    int    initial_level = 4;
-    int    amr_interval  = 200;
+    double initial_dt    = Policy::InitialDt;
+    double plot_interval = Policy::OutputStep;
+    int    initial_level = Policy::InitialLevel;
+    int    amr_interval  = Policy::AMRInterval;
 
     /// Gradient-based AMR thresholds
-    amr::global::AMRThresholds amr_thresholds = { .refine_threshold  = 0.05,
-                                                  .coarsen_threshold = 0.01 };
+    amr::global::AMRThresholds amr_thresholds = { .refine_threshold =
+                                                      Policy::RefineThreshold,
+                                                  .coarsen_threshold =
+                                                      Policy::CoarsenThreshold };
 };
 
 /**
@@ -74,7 +77,7 @@ struct DGSolver
     // -----------------------------------------------------------------
     //  State
     // -----------------------------------------------------------------
-    SimulationParams          params;
+    SimulationParams<Policy>  params;
     tree_builder_t            tree_builder;
     integrator_t              integrator{};
     std::vector<integrator_t> patch_integrators;
@@ -95,7 +98,7 @@ struct DGSolver
     // -----------------------------------------------------------------
     //  Construction
     // -----------------------------------------------------------------
-    explicit DGSolver(SimulationParams p = {})
+    explicit DGSolver(SimulationParams<Policy> p = {})
         : params{ p }
         , tree_builder{ p.initial_level }
         , patch_integrators(tree_builder.tree.size())
@@ -114,7 +117,7 @@ struct DGSolver
         double time           = 0.0;
         double dt             = params.initial_dt;
         int    timestep       = 0;
-        double next_plot_time = 0.01;
+        double next_plot_time = Policy::OutputStart;
         int    next_amr_step  = 0;
 
         // tree_builder.initialize(4);
@@ -227,7 +230,7 @@ private:
                 if (s == n_stages - 1 && max_eigenval > 0.0)
                 {
                     const double new_dt =
-                        cfl_scale * amr::config::CourantNumber * edge / max_eigenval;
+                        cfl_scale * Policy::CourantNumber * edge / max_eigenval;
                     stage_dt_min = std::min(stage_dt_min, new_dt);
                 }
             }

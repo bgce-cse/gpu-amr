@@ -63,20 +63,20 @@ constexpr auto edge(const PatchIndexType& patch_id)
     return patch_size / PatchSize;
 }
 
-template <typename SizeType>
+template <std::size_t Dim, typename SizeType>
 constexpr auto volume(const SizeType& cell_size)
 {
     double res = 1.0;
-    for (std::size_t i = 0; i < amr::config::GlobalConfigPolicy::Dim; ++i)
+    for (std::size_t i = 0; i < Dim; ++i)
         res *= cell_size;
     return res;
 }
 
-template <typename SizeType>
+template <std::size_t Dim, typename SizeType>
 constexpr auto area(const SizeType& cell_size)
 {
     double res = 1.0;
-    for (std::size_t i = 1; i < amr::config::GlobalConfigPolicy::Dim; ++i)
+    for (std::size_t i = 1; i < Dim; ++i)
         res *= cell_size;
     return res;
 }

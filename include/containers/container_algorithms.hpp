@@ -65,6 +65,7 @@ constexpr auto tensor_product(T1 const& t1, T2 const& t2) noexcept
     using index_t              = typename ret_t::index_t;
     constexpr auto outter_size = static_cast<index_t>(T1::shape_t::elements());
     constexpr auto inner_size  = static_cast<index_t>(T2::shape_t::elements());
+#pragma GCC ivdep
     for (auto i = index_t{}; i != outter_size; ++i)
     {
         for (auto j = index_t{}; j != inner_size; ++j)
@@ -324,6 +325,7 @@ constexpr auto tensor_dot(TensorA const& Ta, TensorB const& Tb)
     );
 
     TensorA result{};
+#pragma GCC ivdep
     for (typename TensorA::size_type i = 0; i < TensorA::shape_t::elements(); ++i)
     {
         result[i] = Ta[i] * Tb[i];
@@ -352,7 +354,7 @@ constexpr auto derivative_contraction(
             for (std::size_t j = 0; j < Order; ++j)
             {
                 value_type sum{};
-
+#pragma GCC ivdep
                 for (std::size_t a = 0; a < Order; ++a)
                 {
                     sum += derivative[i, a] * flux[a, j];
@@ -369,7 +371,7 @@ constexpr auto derivative_contraction(
             for (std::size_t j = 0; j < Order; ++j)
             {
                 value_type sum{};
-
+#pragma GCC ivdep
                 for (std::size_t a = 0; a < Order; ++a)
                 {
                     sum += derivative[j, a] * flux[i, a];

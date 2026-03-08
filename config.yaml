@@ -3,31 +3,35 @@
 
 # Simulation parameters
 simulation:
-  end_time: 1.0                    # Total simulation time
-  grid_elements: 4      # Number of elements per dimension
-  grid_size: 1.0
-  MaxDepth: 6                  # Maximum refinement depth (levels 0 to 5)
+  end_time: 1.0                     # Total simulation time
+  Dim: 2                            # Spatial dimension (2D or 3D)
+  grid_size: 1.0                    # Physical domain size
   offset: [0.0, 0.0]               # Domain offset
 
 # Solver configuration
 solver:
-  order: 2               # Polynomial order for basis functions (Order)
-  courant: 0.5                      # CFL number for time steppingf
-  timeintegrator: SSPRK2            # Time integration scheme
+  order: 2                          # Polynomial order for basis functions
+  courant: 0.5                      # CFL number for time stepping
+  timeintegrator: SSPRK2            # Time integration scheme (Euler, SSPRK2, SSPRK3)
+  initial_dt: 0.01                  # Initial time step size
 
 # Equation and scenario selection
 equation:
-  equation: euler               # Options: "advection", "euler"
-  scenario: gaussian_wave           # TODO
+  equation: euler                   # Options: "advection", "euler"
+  scenario: gaussian_wave           # Scenario name
+  DOFs: 4                           # Degrees of freedom per cell (4 for Euler 2D, 5 for 3D)
+
+# AMR configuration
+amr:
+  grid_elements: 4                  # Number of elements per dimension (PatchSize)
+  halo_width: 1                     # Halo width for ghost cells
+  max_depth: 6                      # Maximum refinement depth (levels 0 to max_depth)
+  initial_level: 5                  # Initial uniform refinement level
+  amr_interval: 20                  # Time steps between AMR checks
+  refine_threshold: 0.05            # Gradient threshold to trigger refinement
+  coarsen_threshold: 0.01           # Gradient threshold to trigger coarsening
 
 # Output configuration
 output:
   start: 0.0                        # Start time for output (seconds)
-  step: 0.001                         # Output interval (seconds)
-
-# Derived from solver configuration
-# DOFs depends on equation type:
-# - advection: variable (1, 2, 3, etc.)
-# - euler: 4 (2D) or 5 (3D)
-Dim: 2                            # Spatial dimension (2D or 3D)
-DOFs: 4           #####TODO link this to equation in some way               # Degrees of freedom per cell (4 for Euler 2D: rho, rho*u, rho*v, E)
+  step: 0.01                       # Output interval (seconds)

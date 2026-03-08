@@ -196,6 +196,7 @@ constexpr auto operator_impl(L const& lhs, R const& rhs, BinaryOp&& binary_op) n
     };
 
     common_type ret{};
+#pragma GCC ivdep
     for (auto i = typename common_type::size_type{}; i != ret.elements(); ++i)
     {
         ret[i] = std::invoke(

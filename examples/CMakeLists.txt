@@ -266,22 +266,32 @@ file(READ "${CONFIG_YAML}" CONFIG_TEXT)
 
 # Simulation parameters
 string(REGEX MATCH "end_time:[ ]*[0-9.]+" END_TIME_LINE "${CONFIG_TEXT}")
-string(REGEX MATCH "grid_elements:[ ]*[0-9]+" GRID_ELEMENTS_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "Dim:[ ]*[0-9]+" DIM_LINE "${CONFIG_TEXT}")
 string(REGEX MATCH "grid_size:[ ]*[0-9.]+" GRID_SIZE_LINE "${CONFIG_TEXT}")
 
 # Solver parameters
 string(REGEX MATCH "order:[ ]*[0-9]+" ORDER_LINE "${CONFIG_TEXT}")
 string(REGEX MATCH "courant:[ ]*[0-9.]+" COURANT_LINE "${CONFIG_TEXT}")
 string(REGEX MATCH "timeintegrator:[ ]*[A-Z0-9]+" TIMEINT_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "initial_dt:[ ]*[0-9.]+" INITIAL_DT_LINE "${CONFIG_TEXT}")
 
 # Equation and scenario
 string(REGEX MATCH "equation:[ ]*[a-z_]+" EQUATION_LINE "${CONFIG_TEXT}")
 string(REGEX MATCH "scenario:[ ]*[a-z_]+" SCENARIO_LINE "${CONFIG_TEXT}")
-
-# Domain and discretization
-string(REGEX MATCH "Dim:[ ]*[0-9]+" DIM_LINE "${CONFIG_TEXT}")
 string(REGEX MATCH "DOFs:[ ]*[0-9]+" DOFS_LINE "${CONFIG_TEXT}")
-string(REGEX MATCH "MaxDepth:[ ]*[0-9]+" MAXDEPTH_LINE "${CONFIG_TEXT}")
+
+# AMR parameters
+string(REGEX MATCH "grid_elements:[ ]*[0-9]+" GRID_ELEMENTS_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "halo_width:[ ]*[0-9]+" HALO_WIDTH_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "max_depth:[ ]*[0-9]+" MAXDEPTH_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "initial_level:[ ]*[0-9]+" INITIAL_LEVEL_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "amr_interval:[ ]*[0-9]+" AMR_INTERVAL_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "refine_threshold:[ ]*[0-9.]+" REFINE_THRESH_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "coarsen_threshold:[ ]*[0-9.]+" COARSEN_THRESH_LINE "${CONFIG_TEXT}")
+
+# Output parameters
+string(REGEX MATCH "start:[ ]*[0-9.]+" OUTPUT_START_LINE "${CONFIG_TEXT}")
+string(REGEX MATCH "step:[ ]*[0-9.]+" OUTPUT_STEP_LINE "${CONFIG_TEXT}")
 
 # ============================================================================
 # Configuration Parsing Macro
@@ -301,17 +311,35 @@ endmacro()
 # Parse Configuration Values from YAML
 # ============================================================================
 message(STATUS "Configuration values:")
-parse_config_value(END_TIME_VALUE END_TIME_LINE "4.0")
-parse_config_value(GRID_ELEMENTS_VALUE GRID_ELEMENTS_LINE "16")
+
+# Simulation
+parse_config_value(END_TIME_VALUE END_TIME_LINE "1.0")
+parse_config_value(DIM_VALUE DIM_LINE "2")
 parse_config_value(GRID_SIZE_VALUE GRID_SIZE_LINE "1.0")
-parse_config_value(ORDER_VALUE ORDER_LINE "2")
+
+# Solver
+parse_config_value(ORDER_VALUE ORDER_LINE "3")
 parse_config_value(COURANT_VALUE COURANT_LINE "0.5")
 parse_config_value(TIMEINT_VALUE TIMEINT_LINE "SSPRK2")
+parse_config_value(INITIAL_DT_VALUE INITIAL_DT_LINE "0.01")
+
+# Equation
 parse_config_value(EQUATION_VALUE EQUATION_LINE "advection")
 parse_config_value(SCENARIO_VALUE SCENARIO_LINE "gaussian_wave")
-parse_config_value(DIM_VALUE DIM_LINE "2")
 parse_config_value(DOFS_VALUE DOFS_LINE "4")
-parse_config_value(MAXDEPTH_VALUE MAXDEPTH_LINE "1")
+
+# AMR
+parse_config_value(GRID_ELEMENTS_VALUE GRID_ELEMENTS_LINE "4")
+parse_config_value(HALO_WIDTH_VALUE HALO_WIDTH_LINE "1")
+parse_config_value(MAXDEPTH_VALUE MAXDEPTH_LINE "6")
+parse_config_value(INITIAL_LEVEL_VALUE INITIAL_LEVEL_LINE "5")
+parse_config_value(AMR_INTERVAL_VALUE AMR_INTERVAL_LINE "20")
+parse_config_value(REFINE_THRESH_VALUE REFINE_THRESH_LINE "0.05")
+parse_config_value(COARSEN_THRESH_VALUE COARSEN_THRESH_LINE "0.01")
+
+# Output
+parse_config_value(OUTPUT_START_VALUE OUTPUT_START_LINE "0.0")
+parse_config_value(OUTPUT_STEP_VALUE OUTPUT_STEP_LINE "0.001")
 
 # ============================================================================
 # Map Configuration Values to C++ Enums
@@ -353,20 +381,31 @@ file(WRITE "${GENERATED_CONFIG_HPP}"
 "enum class EquationType { Advection, Euler };\n\n"
 "/// Time integration scheme enumeration\n"
 "enum class TimeIntegratorType { Euler, SSPRK2, SSPRK3 };\n\n"
-"/// Courant-Friedrichs-Lewy condition number\n"
-"constexpr double CourantNumber = ${COURANT_VALUE};\n\n"
 "/// Global compile-time configuration policy\n"
 "struct GlobalConfigPolicy\n"
 "{\n"
+"    // --- Simulation ---\n"
 "    static constexpr double EndTime = ${END_TIME_VALUE};\n"
+"    static constexpr std::size_t Dim = ${DIM_VALUE};\n\n"
+"    // --- Solver ---\n"
 "    static constexpr std::size_t Order = ${ORDER_VALUE};\n"
-"    static constexpr std::size_t Dim = ${DIM_VALUE};\n"
-"    static constexpr std::size_t DOFs = ${DOFS_VALUE};\n"
-"    static constexpr std::size_t PatchSize = ${GRID_ELEMENTS_VALUE};\n"
-"    static constexpr std::size_t HaloWidth = 1;\n"
-"    static constexpr unsigned int MaxDepth = ${MAXDEPTH_VALUE};\n"
+"    static constexpr double CourantNumber = ${COURANT_VALUE};\n"
+"    static constexpr double InitialDt = ${INITIAL_DT_VALUE};\n"
 "    static constexpr EquationType equation = ${EQUATION_ENUM};\n"
-"    static constexpr TimeIntegratorType integrator = ${TIMEINT_ENUM};\n"
+"    static constexpr TimeIntegratorType integrator = ${TIMEINT_ENUM};\n\n"
+"    // --- Equation ---\n"
+"    static constexpr std::size_t DOFs = ${DOFS_VALUE};\n\n"
+"    // --- AMR ---\n"
+"    static constexpr std::size_t PatchSize = ${GRID_ELEMENTS_VALUE};\n"
+"    static constexpr std::size_t HaloWidth = ${HALO_WIDTH_VALUE};\n"
+"    static constexpr unsigned int MaxDepth = ${MAXDEPTH_VALUE};\n"
+"    static constexpr int InitialLevel = ${INITIAL_LEVEL_VALUE};\n"
+"    static constexpr int AMRInterval = ${AMR_INTERVAL_VALUE};\n"
+"    static constexpr double RefineThreshold = ${REFINE_THRESH_VALUE};\n"
+"    static constexpr double CoarsenThreshold = ${COARSEN_THRESH_VALUE};\n\n"
+"    // --- Output ---\n"
+"    static constexpr double OutputStart = ${OUTPUT_START_VALUE};\n"
+"    static constexpr double OutputStep = ${OUTPUT_STEP_VALUE};\n"
 "};\n\n"
 "} // namespace amr::config\n"
 )
@@ -391,6 +430,18 @@ message(STATUS "")
 message(STATUS "Solver Parameters:")
 message(STATUS "  Courant Number    = ${COURANT_VALUE}")
 message(STATUS "  Time Integrator   = ${TIMEINT_VALUE} (${TIMEINT_ENUM})")
+message(STATUS "  Initial dt        = ${INITIAL_DT_VALUE}")
+message(STATUS "")
+message(STATUS "AMR Parameters:")
+message(STATUS "  Halo Width        = ${HALO_WIDTH_VALUE}")
+message(STATUS "  Initial Level     = ${INITIAL_LEVEL_VALUE}")
+message(STATUS "  AMR Interval      = ${AMR_INTERVAL_VALUE}")
+message(STATUS "  Refine Threshold  = ${REFINE_THRESH_VALUE}")
+message(STATUS "  Coarsen Threshold = ${COARSEN_THRESH_VALUE}")
+message(STATUS "")
+message(STATUS "Output Parameters:")
+message(STATUS "  Output Start      = ${OUTPUT_START_VALUE}")
+message(STATUS "  Output Step       = ${OUTPUT_STEP_VALUE}")
 message(STATUS "=======================================")
 
 # Custom target for header generation

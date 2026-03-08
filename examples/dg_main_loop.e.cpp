@@ -13,14 +13,7 @@ int main()
     {
         using policy_t = amr::config::GlobalConfigPolicy;
 
-        amr::solver::SimulationParams params{
-            .initial_dt    = 0.01,
-            .plot_interval = 0.01,
-            .initial_level = 5,
-            .amr_interval  = 20,
-        };
-
-        amr::solver::DGSolver<policy_t> solver(params);
+        amr::solver::DGSolver<policy_t> solver;
         solver.run();
     }
     catch (const std::exception& e)

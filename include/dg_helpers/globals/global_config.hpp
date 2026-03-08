@@ -126,13 +126,13 @@ struct CoordinateMixin
     template <typename SizeType>
     static constexpr auto cell_volume(const SizeType& size)
     {
-        return volume(size);
+        return volume<Policy::Dim>(size);
     }
 
     template <typename SizeType>
     static constexpr auto cell_area(const SizeType& size)
     {
-        return area(size);
+        return area<Policy::Dim>(size);
     }
 
     static constexpr auto lin_to_local(const auto& idx)

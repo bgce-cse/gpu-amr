@@ -28,14 +28,7 @@ int main()
         using S1         = typename solver_t::S1;
         using tree_t     = typename solver_t::tree_t;
 
-        amr::solver::SimulationParams params{
-            .initial_dt    = 0.01,
-            .plot_interval = 0.01,
-            .initial_level = 5,
-            .amr_interval  = 20,
-        };
-
-        solver_t solver(params);
+        amr::solver::DGSolver<policy_t> solver;
         solver.run();
 
         // Error evaluation at t = EndTime (variable 0 only)

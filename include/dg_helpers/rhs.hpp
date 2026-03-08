@@ -158,12 +158,18 @@ private:
         const double&        inverse_jacobian
     )
     {
-        for (size_t linear_idx = 0; linear_idx < patch_layout_t::flat_size();
-             ++linear_idx)
+        // Pass 1: compute physical fluxes for ALL cells (including halo).
+        // Tight loop with no branching — SIMD/autovectorization friendly.
+        constexpr auto n = patch_layout_t::flat_size();
+        for (size_t linear_idx = 0; linear_idx < n; ++linear_idx)
         {
             flux_patch[linear_idx] = eq::evaluate_flux(dof_patch[linear_idx]);
+        }
 
-            if constexpr (Policy::Order > 1)
+        // Pass 2: volume integrals for interior cells only (Order > 1).
+        if constexpr (Policy::Order > 1)
+        {
+            for (size_t linear_idx = 0; linear_idx < n; ++linear_idx)
             {
                 if (!patch_util::is_halo_cell<patch_layout_t>(linear_idx))
                 {
