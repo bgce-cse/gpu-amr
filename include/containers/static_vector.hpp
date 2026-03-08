@@ -171,7 +171,7 @@ public:
     [[nodiscard]]
     constexpr auto back(this auto&& self) noexcept -> decltype(auto)
     {
-        return std::forward<decltype(self)>(self).data_.front();
+        return std::forward<decltype(self)>(self).data_.back();
     }
 #else
     [[nodiscard]]

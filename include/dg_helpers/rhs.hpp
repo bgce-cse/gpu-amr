@@ -53,48 +53,60 @@ struct RHSEvaluator
     //
     //  project_to_faces needs a compile-time Direction template arg;
     //  these helpers map a runtime dimension index to the correct
-    //  instantiation via a fold-expression if-else chain.
+    //  Compile-time direction processing: processes one surface
+    //  direction (dimension + sign) with all parameters resolved
+    //  at compile time, eliminating runtime dispatch overhead.
     // -----------------------------------------------------------------
     template <
-        std::size_t Dim,
-        typename DOFType,
-        typename FluxType,
-        typename SignType,
-        std::size_t... Is>
-    static auto dispatch_project_impl(
-        std::index_sequence<Is...>,
-        const DOFType&  dof,
-        const FluxType& flux,
-        SignType        sign,
-        std::size_t     runtime_dim
+        std::size_t DimIdx,
+        bool        IsNeg,
+        typename DOFTensorType,
+        typename FluxVectorType>
+    static void process_surface_direction(
+        const DOFTensorType&  dof_patch,
+        const FluxVectorType& flux_patch,
+        DOFTensorType&        patch_update,
+        const double&         surface,
+        double&               max_eigenval,
+        size_t                idx,
+        auto const&           current_coords
     )
     {
-        std::decay_t<
-            decltype(surface_t::template project_to_faces<0, DOFType>(dof, flux, sign))>
-            result;
+        static constexpr int sign       = IsNeg ? -1 : 1;
+        static constexpr int sign_idx   = IsNeg ? 0 : 1;
+        static constexpr int actual_dim = static_cast<int>(Policy::Dim - DimIdx - 1);
 
-        bool found = false;
-        ((Is == runtime_dim
-              ? (result =
-                     surface_t::template project_to_faces<Is, DOFType>(dof, flux, sign),
-                 found = true)
-              : false) ||
-         ...);
+        auto neighbor_coords = current_coords;
+        neighbor_coords[DimIdx] += sign;
+        auto neighbor_linear_idx = padded_layout_t::linear_index(neighbor_coords);
 
-        return result;
-    }
-
-    template <std::size_t Dim, typename DOFType, typename FluxType, typename SignType>
-    static auto dispatch_project_to_faces(
-        const DOFType&  dof,
-        const FluxType& flux,
-        SignType        sign,
-        std::size_t     runtime_dim
-    )
-    {
-        return dispatch_project_impl<Dim>(
-            std::make_index_sequence<Dim>{}, dof, flux, sign, runtime_dim
+        auto [dofs_face, flux_face] = surface_t::template project_to_faces<actual_dim>(
+            dof_patch[idx], flux_patch[idx][actual_dim], sign_idx
         );
+        auto [dofs_face_neigh, flux_face_neigh] =
+            surface_t::template project_to_faces<actual_dim>(
+                dof_patch[neighbor_linear_idx],
+                flux_patch[neighbor_linear_idx][actual_dim],
+                1 - sign_idx
+            );
+
+        size_t dim   = actual_dim;
+        max_eigenval = maxeigenvalue(
+            max_eigenval, dof_patch[idx], dof_patch[neighbor_linear_idx], dim
+        );
+
+        auto face_du = surface_t::template evaluate_face_integral<actual_dim>(
+            dofs_face,
+            dofs_face_neigh,
+            flux_face,
+            flux_face_neigh,
+            sign,
+            sign_idx,
+            surface,
+            max_eigenval
+        );
+
+        patch_update[idx] -= face_du;
     }
 
     // -----------------------------------------------------------------
@@ -185,52 +197,29 @@ private:
                 static_cast<typename padded_layout_t::index_t>(idx)
             );
 
-            for (auto d = direction_t::first(); d != direction_t::sentinel(); d.advance())
+            // Compile-time unroll over all 2*Dim face directions
+            [&]<std::size_t... Ds>(std::index_sequence<Ds...>)
             {
-                auto dim_idx  = static_cast<int>(d.dimension());
-                bool is_neg   = direction_t::is_negative(d);
-                int  sign     = is_neg ? -1 : 1;
-                int  sign_idx = is_neg ? 0 : 1;
-
-                auto neighbor_coords = current_coords;
-                neighbor_coords[dim_idx] += sign;
-                auto neighbor_linear_idx = padded_layout_t::linear_index(neighbor_coords);
-
-                size_t actual_dim = Policy::Dim - dim_idx - 1;
-
-                // Project current cell and neighbour onto the shared face
-                auto [dofs_face, flux_face] = dispatch_project_to_faces<Policy::Dim>(
-                    dof_patch[idx], flux_patch[idx][actual_dim], sign_idx, actual_dim
-                );
-                auto [dofs_face_neigh, flux_face_neigh] =
-                    dispatch_project_to_faces<Policy::Dim>(
-                        dof_patch[neighbor_linear_idx],
-                        flux_patch[neighbor_linear_idx][actual_dim],
-                        1 - sign_idx,
-                        actual_dim
-                    );
-
-                max_eigenval = maxeigenvalue(
-                    max_eigenval,
-                    dof_patch[idx],
-                    dof_patch[neighbor_linear_idx],
-                    actual_dim
-                );
-
-                auto face_du = surface_t::evaluate_face_integral(
-                    dofs_face,
-                    dofs_face_neigh,
-                    flux_face,
-                    flux_face_neigh,
-                    actual_dim,
-                    sign,
-                    sign_idx,
-                    surface,
-                    max_eigenval
-                );
-
-                patch_update[idx] = patch_update[idx] - face_du;
-            }
+                ((process_surface_direction<Ds, true>(
+                      dof_patch,
+                      flux_patch,
+                      patch_update,
+                      surface,
+                      max_eigenval,
+                      idx,
+                      current_coords
+                  ),
+                  process_surface_direction<Ds, false>(
+                      dof_patch,
+                      flux_patch,
+                      patch_update,
+                      surface,
+                      max_eigenval,
+                      idx,
+                      current_coords
+                  )),
+                 ...);
+            }(std::make_index_sequence<Policy::Dim>{});
         }
     }
 
@@ -245,9 +234,7 @@ private:
         {
             if (patch_util::is_halo_cell<patch_layout_t>(idx)) continue;
 
-            patch_update[idx] = tensor_ops::tensor_dot(
-                patch_update[idx], global_t::inv_volume_mass / volume
-            );
+            patch_update[idx] *= global_t::inv_volume_mass / volume;
         }
     }
 };

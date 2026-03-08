@@ -170,7 +170,7 @@ auto operator<<(
     static_multi_index<Index_Type, Shape> const& idx
 ) noexcept -> std::ostream&
 {
-    using idx_t = std::remove_cvref_t<decltype(idx)>;
+    using idx_t = static_multi_index<Index_Type, Shape>;
     os << "{ ";
     for (typename idx_t::rank_t d{}; d != idx_t::rank();)
     {

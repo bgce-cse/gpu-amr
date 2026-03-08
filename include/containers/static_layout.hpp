@@ -31,7 +31,7 @@ private:
     inline static constexpr auto&  s_sizes   = shape_t::sizes();
     inline static constexpr auto   s_strides = []
     {
-        std::remove_cvref_t<decltype(s_sizes)> strides{};
+        std::array<size_type, s_rank> strides{};
         strides[s_rank - 1] = size_type{ 1 };
         for (rank_t d = s_rank - 1; d-- > 0;)
         {

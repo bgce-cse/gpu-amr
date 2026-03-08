@@ -50,9 +50,28 @@ struct Surface
         Tensor&                      numericalflux
     )
     {
-        numericalflux = (sign * (flux_face + flux_face_neigh) * 0.5 +
-                         (dofs_face - dofs_face_neigh) * (0.5 * max_eigenval)) *
-                        surface;
+        using value_t                    = typename Tensor::value_type;
+        const double sign_half_surface   = sign * 0.5 * surface;
+        const double half_lambda_surface = 0.5 * max_eigenval * surface;
+
+        for (typename Tensor::size_type i = 0; i < Tensor::shape_t::elements(); ++i)
+        {
+            if constexpr (std::is_arithmetic_v<value_t>)
+            {
+                numericalflux[i] =
+                    sign_half_surface * (flux_face[i] + flux_face_neigh[i]) +
+                    half_lambda_surface * (dofs_face[i] - dofs_face_neigh[i]);
+            }
+            else
+            {
+                for (typename value_t::size_type k = 0; k < value_t::elements(); ++k)
+                {
+                    numericalflux[i][k] =
+                        sign_half_surface * (flux_face[i][k] + flux_face_neigh[i][k]) +
+                        half_lambda_surface * (dofs_face[i][k] - dofs_face_neigh[i][k]);
+                }
+            }
+        }
     }
 
     // -----------------------------------------------------------------
@@ -79,13 +98,12 @@ struct Surface
     //  3. Lift back to the volume via a tensor product with the
     //     face kernel along the appropriate dimension.
     // -----------------------------------------------------------------
-    template <typename Tensor>
+    template <std::size_t Direction, typename Tensor>
     static auto evaluate_face_integral(
         const Tensor& dofs_face,
         const Tensor& dofs_face_neigh,
         const Tensor& flux_face,
         const Tensor& flux_face_neigh,
-        std::size_t   direction,
         int           sign,
         int           sign_idx,
         double        surface,
@@ -99,7 +117,7 @@ struct Surface
             flux_face,
             flux_face_neigh,
             surface,
-            direction,
+            Direction,
             sign,
             max_eigenval,
             numericalflux
@@ -109,8 +127,10 @@ struct Surface
         auto weighted_flux = tensor_ops::tensor_dot(numericalflux, surface_mass);
 
         // Lift into the correct volume dimension via tensor product
-        if (direction == 1) return tensor_ops::tensor_product(weighted_flux, kernel_vec);
-        return tensor_ops::tensor_product(kernel_vec, weighted_flux);
+        if constexpr (Direction == 1)
+            return tensor_ops::tensor_product(weighted_flux, kernel_vec);
+        else
+            return tensor_ops::tensor_product(kernel_vec, weighted_flux);
     }
 };
 

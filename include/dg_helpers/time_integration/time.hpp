@@ -34,7 +34,7 @@ public:
             elem = {};
 
         residual(patch_update, patch_dofs, time);
-        patch_dofs = patch_dofs + (patch_update * dt);
+        patch_dofs += patch_update * dt;
     }
 
     int num_stages() const
@@ -142,9 +142,8 @@ public:
         }
         else // stage == 1
         {
-            // patch_dofs is now the halo-exchanged u*
-            residual(stage_rhs, patch_dofs, time + dt);
             // u^{n+1} = 0.5 * (u^n + u* + dt * F(u*))
+            residual(stage_rhs, patch_dofs, time + dt);
             u_star = (u_n + patch_dofs + stage_rhs * dt) * 0.5;
         }
     }
@@ -233,14 +232,12 @@ public:
         }
         else if (stage == 1)
         {
-            // patch_dofs is now halo-exchanged u^(1)
             // u^(2) = 3/4 u^n + 1/4 (u^(1) + dt * F(u^(1)))
             residual(stage_rhs, patch_dofs, time + dt);
             u_stage = u_n * 0.75 + (patch_dofs + stage_rhs * dt) * 0.25;
         }
         else // stage == 2
         {
-            // patch_dofs is now halo-exchanged u^(2)
             // u^{n+1} = 1/3 u^n + 2/3 (u^(2) + dt * F(u^(2)))
             residual(stage_rhs, patch_dofs, time + 0.5 * dt);
             u_stage = u_n * (1.0 / 3.0) + (patch_dofs + stage_rhs * dt) * (2.0 / 3.0);

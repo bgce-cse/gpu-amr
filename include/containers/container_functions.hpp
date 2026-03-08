@@ -2,11 +2,11 @@
 #define AMR_INCLUDED_CONTAINER_FUNCTIONS
 
 #include "container_concepts.hpp"
+#include <cassert>
 #include <concepts>
 #include <functional>
 #include <ranges>
 #include <type_traits>
-#include <cassert>
 
 namespace amr::containers
 {
@@ -20,7 +20,7 @@ template <std::floating_point R, concepts::Container C, typename Distance>
 {
     assert(std::ranges::size(c1) == std::ranges::size(c2));
     for (auto it1 = std::begin(c1), it2 = std::begin(c2);
-         it1 != std::end(c1) && it2 != std::end(c1);
+         it1 != std::end(c1) && it2 != std::end(c2);
          ++it1, ++it2)
     {
         init = std::invoke_r<R>(std::forward<Distance>(dist_op), init, *it1, *it2);
@@ -63,7 +63,7 @@ constexpr auto approx_equals(
 {
     assert(std::ranges::size(c1) == std::ranges::size(c2));
     for (auto it1 = std::begin(c1), it2 = std::begin(c2);
-         it1 != std::end(c1) && it2 != std::end(c1);
+         it1 != std::end(c1) && it2 != std::end(c2);
          ++it1, ++it2)
     {
         if (std::abs(*it1 - *it2) > epsilon) return false;
@@ -77,7 +77,7 @@ constexpr auto exactly_equals(C const& c1, C const& c2) noexcept -> bool
 {
     assert(std::ranges::size(c1) == std::ranges::size(c2));
     for (auto it1 = std::begin(c1), it2 = std::begin(c2);
-         it1 != std::end(c1) && it2 != std::end(c1);
+         it1 != std::end(c1) && it2 != std::end(c2);
          ++it1, ++it2)
     {
         if (*it1 != *it2) return false;

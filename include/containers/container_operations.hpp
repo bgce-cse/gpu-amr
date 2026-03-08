@@ -103,37 +103,37 @@ using common_type_t = typename common_type<T1, T2>::type;
 
 } // namespace detail
 
-constexpr auto operator+(auto const& lhs, auto const& rhs) noexcept -> auto
-    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
+template <typename L, typename R>
+    requires concepts::Vector<L> || concepts::Vector<R>
+constexpr auto operator+(L const& lhs, R const& rhs) noexcept -> auto
 {
     return operator_impl(lhs, rhs, std::plus{});
 }
 
-constexpr auto operator-(auto const& lhs, auto const& rhs) noexcept -> auto
-    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
+template <typename L, typename R>
+    requires concepts::Vector<L> || concepts::Vector<R>
+constexpr auto operator-(L const& lhs, R const& rhs) noexcept -> auto
 {
     return operator_impl(lhs, rhs, std::minus{});
 }
 
-constexpr auto operator*(auto const& lhs, auto const& rhs) noexcept -> auto
-    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
+template <typename L, typename R>
+    requires concepts::Vector<L> || concepts::Vector<R>
+constexpr auto operator*(L const& lhs, R const& rhs) noexcept -> auto
 {
     return operator_impl(lhs, rhs, std::multiplies{});
 }
 
-constexpr auto operator/(auto const& lhs, auto const& rhs) noexcept -> auto
-    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
+template <typename L, typename R>
+    requires concepts::Vector<L> || concepts::Vector<R>
+constexpr auto operator/(L const& lhs, R const& rhs) noexcept -> auto
 {
     return operator_impl(lhs, rhs, std::divides{});
 }
 
-constexpr auto max(auto const& lhs, auto const& rhs) noexcept -> auto
-    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
+template <typename L, typename R>
+    requires concepts::Vector<L> || concepts::Vector<R>
+constexpr auto max(L const& lhs, R const& rhs) noexcept -> auto
 {
     return operator_impl(
         lhs,
@@ -143,9 +143,9 @@ constexpr auto max(auto const& lhs, auto const& rhs) noexcept -> auto
     );
 }
 
-constexpr auto min(auto const& lhs, auto const& rhs) noexcept -> auto
-    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
+template <typename L, typename R>
+    requires concepts::Vector<L> || concepts::Vector<R>
+constexpr auto min(L const& lhs, R const& rhs) noexcept -> auto
 {
     return operator_impl(
         lhs,
@@ -155,16 +155,14 @@ constexpr auto min(auto const& lhs, auto const& rhs) noexcept -> auto
     );
 }
 
+template <typename L, typename R, typename BinaryOp>
+    requires concepts::Vector<L> || concepts::Vector<R>
 [[nodiscard]]
-constexpr auto operator_impl(auto const& lhs, auto const& rhs, auto&& binary_op) noexcept
-    -> detail::common_type_t<
-        std::remove_cvref_t<decltype(lhs)>,
-        std::remove_cvref_t<decltype(rhs)>>
-    requires concepts::Vector<std::remove_cvref_t<decltype(lhs)>> ||
-             concepts::Vector<std::remove_cvref_t<decltype(rhs)>>
+constexpr auto operator_impl(L const& lhs, R const& rhs, BinaryOp&& binary_op) noexcept
+    -> detail::common_type_t<L, R>
 {
-    using a_type      = std::remove_cvref_t<decltype(lhs)>;
-    using b_type      = std::remove_cvref_t<decltype(rhs)>;
+    using a_type      = L;
+    using b_type      = R;
     using common_type = detail::common_type_t<a_type, b_type>;
 
     static_assert(std::is_trivially_constructible_v<common_type>);
@@ -201,10 +199,64 @@ constexpr auto operator_impl(auto const& lhs, auto const& rhs, auto&& binary_op)
     for (auto i = typename common_type::size_type{}; i != ret.elements(); ++i)
     {
         ret[i] = std::invoke(
-            std::forward<decltype(binary_op)>(binary_op), at_idx(lhs, i), at_idx(rhs, i)
+            std::forward<BinaryOp>(binary_op), at_idx(lhs, i), at_idx(rhs, i)
         );
     }
     return ret;
+}
+
+namespace detail
+{
+
+template <concepts::Vector L, typename R, typename BinaryOp>
+constexpr auto compound_assign_impl(L& lhs, R const& rhs, BinaryOp&& op) noexcept -> L&
+{
+    constexpr auto at_idx =
+        [](auto const& v, std::integral auto idx) constexpr noexcept -> decltype(auto)
+        requires(
+            concepts::Vector<std::remove_cvref_t<decltype(v)>> ||
+            std::ranges::range<std::remove_cvref_t<decltype(v)>> ||
+            std::is_arithmetic_v<std::remove_cvref_t<decltype(v)>>
+        )
+    {
+        using v_type = std::remove_cvref_t<decltype(v)>;
+        if constexpr (std::is_arithmetic_v<v_type>)
+            return v;
+        else
+            return v[idx];
+    };
+
+    for (auto i = typename L::size_type{}; i != lhs.elements(); ++i)
+    {
+        lhs[i] = std::invoke(std::forward<BinaryOp>(op), lhs[i], at_idx(rhs, i));
+    }
+    return lhs;
+}
+
+} // namespace detail
+
+template <concepts::Vector L, typename R>
+constexpr auto operator+=(L& lhs, R const& rhs) noexcept -> L&
+{
+    return detail::compound_assign_impl(lhs, rhs, std::plus{});
+}
+
+template <concepts::Vector L, typename R>
+constexpr auto operator-=(L& lhs, R const& rhs) noexcept -> L&
+{
+    return detail::compound_assign_impl(lhs, rhs, std::minus{});
+}
+
+template <concepts::Vector L, typename R>
+constexpr auto operator*=(L& lhs, R const& rhs) noexcept -> L&
+{
+    return detail::compound_assign_impl(lhs, rhs, std::multiplies{});
+}
+
+template <concepts::Vector L, typename R>
+constexpr auto operator/=(L& lhs, R const& rhs) noexcept -> L&
+{
+    return detail::compound_assign_impl(lhs, rhs, std::divides{});
 }
 
 } // namespace amr::containers

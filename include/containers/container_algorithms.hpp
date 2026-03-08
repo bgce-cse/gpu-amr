@@ -18,7 +18,7 @@ template <std::integral auto Rank, typename T, std::integral auto Size>
 constexpr auto cartesian_expansion(static_vector<T, Size> const& v) noexcept
     -> utils::types::tensor::hypercube_t<static_vector<T, Rank>, Size, Rank>
 {
-    using index_t     = typename std::remove_cvref_t<decltype(v)>::index_t;
+    using index_t     = typename static_vector<T, Size>::index_t;
     using hypercube_t = utils::types::tensor::
         hypercube_t<static_vector<T, index_t{ Rank }>, Size, index_t{ Rank }>;
     using multi_index_t = typename hypercube_t::multi_index_t;
@@ -38,11 +38,10 @@ constexpr auto cartesian_expansion(static_vector<T, Size> const& v) noexcept
 
 template <concepts::StaticContainer T1, concepts::StaticContainer T2>
 [[nodiscard]]
-constexpr auto tensor_product(T1 const& t1, T2 const& t2) noexcept -> utils::types::
-    tensor::tensor_product_result_t<std::remove_cvref_t<T1>, std::remove_cvref_t<T2>>
+constexpr auto tensor_product(T1 const& t1, T2 const& t2) noexcept
+    -> utils::types::tensor::tensor_product_result_t<T1, T2>
 {
-    using ret_t = utils::types::tensor::
-        tensor_product_result_t<std::remove_cvref_t<T1>, std::remove_cvref_t<T2>>;
+    using ret_t = utils::types::tensor::tensor_product_result_t<T1, T2>;
     static_assert(
         std::tuple_size_v<std::remove_cvref_t<decltype(ret_t::sizes())>> ==
         T1::rank() + T2::rank()
@@ -114,13 +113,12 @@ template <
     std::integral auto        DimVec,
     concepts::StaticContainer Tensor,
     concepts::Vector          Vec>
-    requires(DimVec < std::remove_cvref_t<Tensor>::rank())
+    requires(DimVec < Tensor::rank())
 [[nodiscard]]
-constexpr auto einsum_apply(Tensor const& tensor, Vec const& vec) noexcept
-    -> std::remove_cvref_t<Tensor>
+constexpr auto einsum_apply(Tensor const& tensor, Vec const& vec) noexcept -> Tensor
 {
-    using tensor_t = std::remove_cvref_t<Tensor>;
-    using vec_t    = std::remove_cvref_t<Vec>;
+    using tensor_t = Tensor;
+    using vec_t    = Vec;
     using value_t  = typename tensor_t::value_type;
     using index_t  = typename tensor_t::index_t;
     // Verify vector size matches tensor dimension
@@ -150,15 +148,16 @@ constexpr auto einsum_apply(Tensor const& tensor, Vec const& vec) noexcept
         );
     }
     auto result = tensor_t{};
-    // Iterate over all elements and multiply by corresponding vector element
-    auto multi_idx = typename tensor_t::multi_index_t{};
-    do
+    // Flat indexing: for each linear index, extract the DimVec coordinate via
+    // stride arithmetic and use it to index into vec
+    constexpr auto total      = tensor_t::shape_t::elements();
+    constexpr auto dim_stride = tensor_t::layout_t::stride(index_t{ DimVec });
+    constexpr auto dim_size   = tensor_t::size(index_t{ DimVec });
+    for (auto i = index_t{}; i != static_cast<index_t>(total); ++i)
     {
-        // This works for both cases:
-        // - If value_t is scalar: scalar * scalar
-        // - If value_t is vector: vector * scalar (element-wise multiplication)
-        result[multi_idx] = tensor[multi_idx] * vec[multi_idx[index_t{ DimVec }]];
-    } while (multi_idx.increment());
+        auto const dim_idx = static_cast<index_t>((i / dim_stride) % dim_size);
+        result[i]          = tensor[i] * vec[dim_idx];
+    }
     return result;
 }
 
@@ -178,13 +177,13 @@ template <
     std::integral auto        DimVec,
     concepts::StaticContainer Tensor,
     concepts::Vector          Vec>
-    requires(DimVec < std::remove_cvref_t<Tensor>::rank())
+    requires(DimVec < Tensor::rank())
 [[nodiscard]]
 constexpr auto einsum_apply_vector(Tensor const& tensor, Vec const& vec) noexcept
-    -> std::remove_cvref_t<Tensor>
+    -> Tensor
 {
-    using tensor_t = std::remove_cvref_t<Tensor>;
-    using vec_t    = std::remove_cvref_t<Vec>;
+    using tensor_t = Tensor;
+    using vec_t    = Vec;
     using value_t  = typename tensor_t::value_type;
     using index_t  = typename tensor_t::index_t;
     static_assert(
@@ -197,13 +196,14 @@ constexpr auto einsum_apply_vector(Tensor const& tensor, Vec const& vec) noexcep
         "Vector size must match tensor dimension size"
     );
     auto result = tensor_t{};
-    // Iterate over all elements and multiply by corresponding vector element
+    // Flat indexing with stride arithmetic
+    constexpr auto total      = tensor_t::shape_t::elements();
+    constexpr auto dim_stride = tensor_t::layout_t::stride(index_t{ DimVec });
+    constexpr auto dim_size   = tensor_t::size(index_t{ DimVec });
+    for (auto i = index_t{}; i != static_cast<index_t>(total); ++i)
     {
-        auto multi_idx = typename tensor_t::multi_index_t{};
-        do
-        {
-            result[multi_idx] = tensor[multi_idx] * vec[multi_idx[index_t{ DimVec }]];
-        } while (multi_idx.increment());
+        auto const dim_idx = static_cast<index_t>((i / dim_stride) % dim_size);
+        result[i]          = tensor[i] * vec[dim_idx];
     }
     return result;
 }
@@ -212,14 +212,14 @@ template <
     std::integral auto        DimVec,
     concepts::StaticContainer Tensor,
     concepts::Vector          Vec>
-    requires(DimVec < std::remove_cvref_t<Tensor>::rank())
+    requires(DimVec < Tensor::rank())
 [[nodiscard]]
 constexpr auto contract(Tensor const& tensor, Vec const& vec) noexcept
 {
-    using tensor_t = std::remove_cvref_t<Tensor>;
+    using tensor_t = Tensor;
     using value_t  = typename tensor_t::value_type;
     using index_t  = typename tensor_t::index_t;
-    using vec_t    = std::remove_cvref_t<Vec>;
+    using vec_t    = Vec;
     static_assert(Vec::elements() == tensor_t::size(index_t{ DimVec }));
     // Verify vector and tensor types are compatible
     // They can either have the same value type, or tensor has vector values
@@ -248,52 +248,57 @@ constexpr auto contract(Tensor const& tensor, Vec const& vec) noexcept
             "contract requires a hypercube tensor (all dimensions must be equal)"
         );
     }(std::make_index_sequence<tensor_t::rank()>{});
-    // Step 1: Element-wise multiply
-    auto multiplied = einsum_apply<DimVec>(tensor, vec);
-    // Step 2: Create result tensor with reduced rank using hypercube
-    // For a hypercube of rank N with size S, the result is a hypercube of rank N-1 with
-    // size S
+
     constexpr auto rank = tensor_t::rank();
     constexpr auto size = tensor_t::size(index_t{ 0 }); // All dims same for hypercube
     using result_hypercube_t = utils::types::tensor::hypercube_t<value_t, size, rank - 1>;
     auto result              = result_hypercube_t::zero();
-    // Iterate through result indices and sum over the contracted dimension
 
+    // Fused multiply-accumulate with flat indexing.
+    // For each result element, sum tensor[full_idx] * vec[sum_val] over sum_val,
+    // where full_idx inserts sum_val at dimension DimVec.
+    //
+    // Stride arithmetic: the result tensor has rank-1 dimensions each of 'size'.
+    // We map result linear index -> full tensor linear index by computing where
+    // the contracted dimension fits in the stride layout.
+    constexpr auto dim_stride = tensor_t::layout_t::stride(index_t{ DimVec });
+    constexpr auto result_elements =
+        static_cast<index_t>(result_hypercube_t::shape_t::elements());
+    // The "block" above the contracted dimension: product of dims 0..DimVec-1
+    constexpr auto outer_block = dim_stride * static_cast<index_t>(size);
+    // The "block" within the contracted dimension: stride of DimVec = product of dims
+    // (DimVec+1)..end dim_stride is already that value
+
+    for (auto ri = index_t{}; ri != result_elements; ++ri)
     {
-        auto result_idx = typename result_hypercube_t::multi_index_t{};
-        do
+        // Map result linear index to tensor linear index (skipping DimVec dimension)
+        // Result dims map to tensor dims: [0..DimVec-1, DimVec+1..rank-1]
+        // outer_part: which "block" above DimVec
+        // inner_part: position within the block below DimVec
+        auto const outer_part = ri / dim_stride; // result index / inner_stride
+        auto const inner_part =
+            ri - outer_part * dim_stride; // result index % inner_stride
+        auto const base_idx = outer_part * outer_block + inner_part;
+
+        if constexpr (concepts::Vector<value_t>)
         {
-            // For each result index, we need to map it to the full tensor space
-            // and sum along the contracted dimension
-            bool first = true;
-            for (auto sum_val = index_t{}; sum_val < tensor_t::size(index_t{ DimVec });
-                 ++sum_val)
+            // Fused multiply-accumulate: eliminates temporary vectors
+            for (auto s = index_t{}; s != static_cast<index_t>(size); ++s)
             {
-                // Construct full index by inserting sum_val at position DimVec
-                auto full_idx = typename tensor_t::multi_index_t{};
-                // Copy indices before DimVec
-                for (auto d = index_t{}; d < index_t{ DimVec }; ++d)
+                auto const v = vec[s];
+                for (typename value_t::size_type k = 0; k < value_t::elements(); ++k)
                 {
-                    full_idx[d] = result_idx[d];
-                }
-                // Set the contracted dimension
-                full_idx[index_t{ DimVec }] = sum_val;
-                // Copy indices after DimVec (shifted by 1 in result)
-                for (auto d = index_t{ DimVec }; d < index_t{ rank - 1 }; ++d)
-                {
-                    full_idx[d + 1] = result_idx[d];
-                }
-                if (first)
-                {
-                    result[result_idx] = multiplied[full_idx];
-                    first              = false;
-                }
-                else
-                {
-                    result[result_idx] = result[result_idx] + multiplied[full_idx];
+                    result[ri][k] += tensor[base_idx + s * dim_stride][k] * v;
                 }
             }
-        } while (result_idx.increment());
+        }
+        else
+        {
+            for (auto s = index_t{}; s != static_cast<index_t>(size); ++s)
+            {
+                result[ri] += tensor[base_idx + s * dim_stride] * vec[s];
+            }
+        }
     }
     return result;
 }
@@ -332,33 +337,46 @@ auto derivative_contraction(
     std::integral auto dim
 )
 {
-    using multi_index_t = typename Flux::multi_index_t;
-    using value_type    = typename Flux::value_type; // This is static_vector<double, 4>
-    using index_t       = typename Flux::index_t;
+    using value_type = typename Flux::value_type;
 
-    static constexpr auto Order = std::remove_cvref_t<Derivative>::size(0);
+    constexpr std::size_t Order = Derivative::size(0);
 
-    auto const& flux_component = flux;
-    Flux        result         = Flux::zero();
+    Flux result;
 
-    // Iterate over all result indices
-    auto idx = multi_index_t{};
-    do
+    if (dim == 0)
     {
-        value_type sum{};
-
-        auto const i_dim = idx[dim];
-
-        for (index_t a = 0; a < Order; ++a)
+        for (std::size_t i = 0; i < Order; ++i)
         {
-            auto flux_idx = idx;
-            flux_idx[dim] = a;
+            for (std::size_t j = 0; j < Order; ++j)
+            {
+                value_type sum{};
 
-            sum = sum + derivative[i_dim, a] * flux_component[flux_idx];
+                for (std::size_t a = 0; a < Order; ++a)
+                {
+                    sum += derivative[i, a] * flux[a, j];
+                }
+
+                result[i, j] = sum;
+            }
         }
+    }
+    else
+    {
+        for (std::size_t i = 0; i < Order; ++i)
+        {
+            for (std::size_t j = 0; j < Order; ++j)
+            {
+                value_type sum{};
 
-        result[idx] = sum;
-    } while (idx.increment());
+                for (std::size_t a = 0; a < Order; ++a)
+                {
+                    sum += derivative[j, a] * flux[i, a];
+                }
+
+                result[i, j] = sum;
+            }
+        }
+    }
 
     return result;
 }

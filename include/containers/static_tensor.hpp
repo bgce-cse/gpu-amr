@@ -197,7 +197,7 @@ template <typename T, concepts::StaticLayout Layout>
 auto operator<<(std::ostream& os, static_tensor<T, Layout> const& t) noexcept
     -> std::ostream&
 {
-    using tensor_t                 = std::remove_cvref_t<decltype(t)>;
+    using tensor_t                 = static_tensor<T, Layout>;
     static constexpr auto rank     = tensor_t::rank();
     static constexpr auto newlines = []
     {
