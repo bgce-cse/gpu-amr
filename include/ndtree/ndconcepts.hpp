@@ -112,13 +112,16 @@ concept TreeType =
     } && PatchLayout<typename T::patch_layout_t> &&
     MapTypeTuple<typename T::deconstructed_raw_map_types_t>;
 
-template<typename HEO>
-concept HaloExchangeOperator = requires{
+template <typename HEO>
+concept HaloExchangeOperator = requires {
     HEO::boundary;
     HEO::same;
     HEO::finer;
     HEO::coarser;
 };
+
+template <typename IO>
+concept IntergridOperator = requires { typename IO::value_type; };
 
 } // namespace amr::ndt::concepts
 

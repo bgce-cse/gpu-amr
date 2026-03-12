@@ -4,6 +4,7 @@
 #include "containers/container_manipulations.hpp"
 #include "containers/container_utils.hpp"
 #include "containers/static_tensor.hpp"
+#include "intergrid_operator.hpp"
 #include "ndconcepts.hpp"
 #include "ndutils.hpp"
 #include "utility/compile_time_utility.hpp"
@@ -275,6 +276,42 @@ constexpr auto halo_apply_unroll_impl(
     }
 }
 
+template <concepts::PatchLayout Patch_Layout, std::integral auto N>
+static constexpr auto hypercube_offset(typename Patch_Layout::index_t idx) noexcept
+    -> std::array<
+        typename Patch_Layout::index_t,
+        utility::cx_functions::pow(N, Patch_Layout::rank())>
+{
+    using patch_t  = Patch_Layout;
+    using index_t  = typename patch_t::index_t;
+    using layout_t = typename patch_t::padded_layout_t;
+    using loop_control_t =
+        containers::control::loop_control<typename layout_t::shape_t, 0, N, 1>;
+    static constexpr auto  dim     = Patch_Layout::rank();
+    static constexpr auto  k       = utility::cx_functions::pow(N, dim);
+    static constexpr auto& strides = layout_t::strides();
+    using ret_t                    = std::array<index_t, k>;
+    ret_t   ret{};
+    index_t out_i = 0;
+    amr::containers::manipulators::shaped_for<loop_control_t>(
+        [](auto& out, index_t out_idx, auto& oi, auto const& idxs)
+        {
+            // std::cout << "lidx: " << oi << ", out_idx: " << out_idx << '\n';
+            for (index_t i = 0; i != dim; ++i)
+            {
+                // std::cout << i << " -> idxs[i]: " << idxs[i]
+                //           << ", stride[-i]: " << strides[dim - 1 - i] << '\n';
+                out_idx += idxs[i] * strides[i];
+            }
+            out[oi++] = out_idx;
+        },
+        ret,
+        idx,
+        out_i
+    );
+    return ret;
+}
+
 } // namespace detail
 
 template <
@@ -348,8 +385,6 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            using value_t = std::remove_cvref_t<decltype(current_patch[idxs])>;
-
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
@@ -400,20 +435,38 @@ struct halo_exchange_impl_t
                 base_fine_idxs[d] = local_coarse * s_1d_fanout + s_halo_width;
             }
 
-            value_t sum{};
-            for (index_t fine_offset = 0; fine_offset < s_nd_fanout; ++fine_offset)
-            {
-                auto    fine_cell_idxs = base_fine_idxs;
-                index_t remaining      = fine_offset;
-                for (index_t d = 0; d < s_dimension; ++d)
-                {
-                    fine_cell_idxs[d] += remaining % s_1d_fanout;
-                    remaining /= s_1d_fanout;
-                }
-                sum += fine_patch[fine_cell_idxs];
-            }
+            // using value_t = std::remove_cvref_t<decltype(current_patch[idxs])>;
+            // value_t old_value{};
+            // for (index_t fine_offset = 0; fine_offset < s_nd_fanout; ++fine_offset)
+            // {
+            //     auto    fine_cell_idxs = base_fine_idxs;
+            //     index_t remaining      = fine_offset;
+            //     for (index_t d = 0; d < s_dimension; ++d)
+            //     {
+            //         fine_cell_idxs[d] += remaining % s_1d_fanout;
+            //         remaining /= s_1d_fanout;
+            //     }
+            //     // std::cout << patch_layout_t::padded_layout_t::linear_index(fine_cell_idxs)
+            //     //           << "; " << fine_patch[fine_cell_idxs] << ' ';
+            //     old_value += fine_patch[fine_cell_idxs];
+            // }
+            // old_value /= static_cast<value_t>(s_nd_fanout);
+            // // std::cout << " => " << old_value << '\n';
 
-            current_patch[idxs] = sum / static_cast<value_t>(s_nd_fanout);
+            const auto base_linear_idx =
+                patch_layout_t::padded_layout_t::linear_index(base_fine_idxs);
+            const auto fine_linear_idxs =
+                detail::hypercube_offset<patch_layout_t, 2>(base_linear_idx);
+            auto const new_value = amr::ndt::intergrid_operator::linear_interpolator<
+                patch_layout_t>::restriction(fine_patch, fine_linear_idxs);
+
+            // if (old_value - new_value > value_t(0.0001))
+            // {
+            //     std::cout << old_value << " != " << new_value << std::endl;
+            //     std::exit(1);
+            // }
+
+            current_patch[idxs] = new_value;
         }
     };
 

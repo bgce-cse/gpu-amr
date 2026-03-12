@@ -371,26 +371,20 @@ public:
 
     auto fragment() -> void
     {
-        CONTRACTS_CHECK(is_sorted());
         for (auto i = m_to_refine.size(); i > 0; --i)
         {
             fragment(m_to_refine[i - 1]);
         }
-        // sort_buffers();
-        compact();
-        CONTRACTS_CHECK(is_sorted());
+        sort_buffers();
     }
 
     auto recombine() -> void
     {
-        CONTRACTS_CHECK(is_sorted());
         for (const auto& node_id : m_to_coarsen)
         {
             recombine(node_id);
         }
-        // sort_buffers();
-        compact();
-        CONTRACTS_CHECK(is_sorted());
+        sort_buffers();
     }
 
     template <typename Fn>
@@ -783,8 +777,7 @@ private:
         return it == m_index_map.end() ? std::nullopt : std::optional{ it };
     }
 
-    // TODO: make private
-public:
+private:
     auto sort_buffers() noexcept -> void
     {
         compact();
@@ -1075,29 +1068,6 @@ private:
         std::apply(
             [i, j](auto&... b) { ((void)std::swap(b[i], b[j]), ...); }, m_data_buffers
         );
-    }
-
-    [[nodiscard]]
-    auto is_sorted() const noexcept -> bool
-    {
-        if (std::ranges::is_sorted(
-                m_linear_index_map, &m_linear_index_map[m_size], std::less{}
-            ))
-        {
-            for (linear_index_t i = 0; i != m_size; ++i)
-            {
-                CONTRACTS_CHECK(m_index_map.contains(m_linear_index_map[i]));
-                if (m_index_map.at(m_linear_index_map[i]) != i)
-                {
-                    DEFAULT_SOURCE_LOG_ERROR("index map is not correct");
-                    return false;
-                }
-            }
-            return true;
-        }
-        DEFAULT_SOURCE_LOG_ERROR("linear index is not sorted");
-
-        return false;
     }
 
 #ifdef AMR_NDTREE_ENABLE_CHECKS
