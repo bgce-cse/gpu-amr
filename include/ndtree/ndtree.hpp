@@ -375,7 +375,7 @@ public:
         {
             fragment(m_to_refine[i - 1]);
         }
-        compact();
+        sort_buffers();
     }
 
     auto recombine() -> void
@@ -384,7 +384,7 @@ public:
         {
             recombine(node_id);
         }
-        compact();
+        sort_buffers();
     }
 
     template <typename Fn>
@@ -775,6 +775,83 @@ private:
     {
         const auto it = m_index_map.find(node_id);
         return it == m_index_map.end() ? std::nullopt : std::optional{ it };
+    }
+
+private:
+    auto sort_buffers() noexcept -> void
+    {
+        compact();
+        std::sort(
+            m_reorder_buffer,
+            &m_reorder_buffer[m_size],
+            [this](auto const i, auto const j)
+            { return m_linear_index_map[i] < m_linear_index_map[j]; }
+        );
+
+        linear_index_t        backup_start_pos;
+        patch_index_t         backup_node_index;
+        refine_status_t       backup_refine_status;
+        deconstructed_types_t backup_patch;
+        patch_neighbors_t     backup_neighbors;
+
+        for (linear_index_t i = 0; i != back_idx();)
+        {
+            auto src = m_reorder_buffer[i];
+            if (i == src)
+            {
+                ++i;
+                continue;
+            }
+
+            backup_start_pos     = i;
+            backup_node_index    = m_linear_index_map[i];
+            backup_refine_status = m_refine_status_buffer[i];
+            backup_neighbors     = m_neighbors[i];
+
+            // Backup entire patch
+            [this, i, &backup_patch]<std::size_t... I>(std::index_sequence<I...>)
+            {
+                ((void)(std::get<I>(backup_patch) = std::get<I>(m_data_buffers)[i]), ...);
+            }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
+
+            auto dst = i;
+            do
+            {
+                m_linear_index_map[dst]     = m_linear_index_map[src];
+                m_refine_status_buffer[dst] = m_refine_status_buffer[src];
+                m_neighbors[dst]            = m_neighbors[src];
+
+                // Copy entire patches
+                std::apply(
+                    [dst, src](auto&... b) { ((void)(b[dst] = b[src]), ...); },
+                    m_data_buffers
+                );
+
+                m_index_map[m_linear_index_map[dst]] = dst;
+                m_reorder_buffer[dst]                = dst;
+                dst                                  = src;
+                src                                  = m_reorder_buffer[src];
+                CONTRACTS_CHECK(src != dst);
+            } while (src != backup_start_pos);
+
+            m_linear_index_map[dst]     = backup_node_index;
+            m_refine_status_buffer[dst] = backup_refine_status;
+            m_neighbors[dst]            = backup_neighbors;
+
+            // Restore backed up patch
+            [this, dst, &backup_patch]<std::size_t... I>(std::index_sequence<I...>)
+            {
+                ((void)(std::get<I>(m_data_buffers)[dst] = std::get<I>(backup_patch)),
+                 ...);
+            }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
+
+            m_index_map[backup_node_index] = dst;
+            m_reorder_buffer[dst]          = dst;
+        }
+        CONTRACTS_CHECK(is_sorted());
+        CONTRACTS_CHECK(
+            std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size])
+        );
     }
 
 public:
