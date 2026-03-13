@@ -416,57 +416,17 @@ struct halo_exchange_impl_t
                                       : (from_idxs[dim] + index_t{ s_sizes[dim] });
 
             auto base_fine_idxs = from_idxs;
-            for (index_t d = 0; d < s_dimension; ++d)
-            {
-                if (d == dim)
-                {
-                    base_fine_idxs[d] =
-                        ((from_idxs[d] - s_halo_width) * s_1d_fanout) % s_sizes[d] +
-                        s_halo_width;
-                    continue;
-                }
 
-                const auto section_size = s_sizes[d] / s_1d_fanout;
-                const auto section_idx  = (idxs[d] - s_halo_width) / section_size;
-
-                const auto local_coarse =
-                    (from_idxs[d] - s_halo_width) - section_idx * section_size;
-
-                base_fine_idxs[d] = local_coarse * s_1d_fanout + s_halo_width;
-            }
-
-            // using value_t = std::remove_cvref_t<decltype(current_patch[idxs])>;
-            // value_t old_value{};
-            // for (index_t fine_offset = 0; fine_offset < s_nd_fanout; ++fine_offset)
-            // {
-            //     auto    fine_cell_idxs = base_fine_idxs;
-            //     index_t remaining      = fine_offset;
-            //     for (index_t d = 0; d < s_dimension; ++d)
-            //     {
-            //         fine_cell_idxs[d] += remaining % s_1d_fanout;
-            //         remaining /= s_1d_fanout;
-            //     }
-            //     // std::cout << patch_layout_t::padded_layout_t::linear_index(fine_cell_idxs)
-            //     //           << "; " << fine_patch[fine_cell_idxs] << ' ';
-            //     old_value += fine_patch[fine_cell_idxs];
-            // }
-            // old_value /= static_cast<value_t>(s_nd_fanout);
-            // // std::cout << " => " << old_value << '\n';
+            base_fine_idxs[dim] =
+                ((from_idxs[dim] - s_halo_width) * s_1d_fanout) % s_sizes[dim] +
+                s_halo_width;
 
             const auto base_linear_idx =
                 patch_layout_t::padded_layout_t::linear_index(base_fine_idxs);
             const auto fine_linear_idxs =
                 detail::hypercube_offset<patch_layout_t, 2>(base_linear_idx);
-            auto const new_value = amr::ndt::intergrid_operator::linear_interpolator<
+            current_patch[idxs] = amr::ndt::intergrid_operator::linear_interpolator<
                 patch_layout_t>::restriction(fine_patch, fine_linear_idxs);
-
-            // if (old_value - new_value > value_t(0.0001))
-            // {
-            //     std::cout << old_value << " != " << new_value << std::endl;
-            //     std::exit(1);
-            // }
-
-            current_patch[idxs] = new_value;
         }
     };
 
