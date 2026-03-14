@@ -30,6 +30,7 @@ set(AMR_WARNINGS
     -Wswitch-enum
     -Wuninitialized
     -Wvla
+    -Wno-error=array-bounds
 )
 
 set(AMR_DIAGNOSTICS
