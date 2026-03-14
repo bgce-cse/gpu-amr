@@ -35,8 +35,13 @@ int main()
 
     using patch_index_t  = amr::ndt::morton::morton_id<5u, 3u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
-    using tree_t =
-        amr::ndt::tree::ndtree<amr::cell::EulerCell3D, patch_index_t, patch_layout_t>;
+    using intergrid_operator_t =
+        amr::ndt::intergrid_operator::linear_interpolator<patch_layout_t>;
+    using tree_t = amr::ndt::tree::ndtree<
+        amr::cell::EulerCell3D,
+        patch_index_t,
+        patch_layout_t,
+        intergrid_operator_t>;
 
     using physics_t =
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
@@ -50,7 +55,9 @@ int main()
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
-    amr_solver<tree_t, physics_t, EulerPhysics3D, 3> solver(1000000); // Provide initial capacity for tree
+    amr_solver<tree_t, physics_t, EulerPhysics3D, 3> solver(
+        1000000
+    ); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
@@ -108,8 +115,9 @@ int main()
     constexpr double CENTER_Y = 0.5 * physics_y;
     constexpr double CENTER_Z = 0.5 * physics_z;
 
-    // Initial condition function for 3D   
-    auto acousticPulseIC_3D = [&](auto const& coords) -> amr::containers::static_vector<double, 5>
+    // Initial condition function for 3D
+    auto acousticPulseIC_3D =
+        [&](auto const& coords) -> amr::containers::static_vector<double, 5>
     {
         double x = coords[0];
         double y = coords[1];

@@ -121,7 +121,10 @@ concept HaloExchangeOperator = requires {
 };
 
 template <typename IO>
-concept IntergridOperator = requires { typename IO::value_type; };
+concept IntergridOperator = requires {
+    typename IO::patch_layout_t;
+    typename IO::index_t;
+};
 
 } // namespace amr::ndt::concepts
 

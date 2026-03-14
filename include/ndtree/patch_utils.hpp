@@ -329,12 +329,16 @@ constexpr auto halo_apply(
     );
 }
 
-template <concepts::PatchIndex Patch_Index, concepts::PatchLayout Patch_Layout>
+template <
+    concepts::PatchIndex        Patch_Index,
+    concepts::PatchLayout       Patch_Layout,
+    concepts::IntergridOperator Intergrid_Operator>
 struct halo_exchange_impl_t
 {
-    using patch_layout_t = Patch_Layout;
-    using patch_index_t  = Patch_Index;
-    using index_t        = typename patch_layout_t::index_t;
+    using patch_layout_t       = Patch_Layout;
+    using patch_index_t        = Patch_Index;
+    using index_t              = typename patch_layout_t::index_t;
+    using intergrid_operator_t = Intergrid_Operator;
 
     // TODO: Revisit this after propperly typing patch_index_t
     static constexpr auto s_halo_width =
@@ -426,8 +430,9 @@ struct halo_exchange_impl_t
             const auto fine_linear_idxs =
                 detail::hypercube_offset<patch_layout_t, 2>(base_linear_idx);
             const auto to_idx = patch_layout_t::padded_layout_t::linear_index(idxs);
-            amr::ndt::intergrid_operator::linear_interpolator<patch_layout_t>::
-                restriction(current_patch, to_idx, fine_patch, fine_linear_idxs);
+            intergrid_operator_t::restriction(
+                current_patch, to_idx, fine_patch, fine_linear_idxs
+            );
         }
     };
 
@@ -474,8 +479,9 @@ struct halo_exchange_impl_t
             const auto to_idx = patch_layout_t::padded_layout_t::linear_index(idxs);
             const auto from_idx =
                 patch_layout_t::padded_layout_t::linear_index(from_idxs);
-            amr::ndt::intergrid_operator::linear_interpolator<
-                patch_layout_t>::interpolation(self_patch, to_idx, other_patch, from_idx);
+            intergrid_operator_t::interpolation(
+                self_patch, to_idx, other_patch, from_idx
+            );
 
             // self_patch[idxs] = other_patch[from_idxs];
         }

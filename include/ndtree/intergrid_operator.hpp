@@ -14,7 +14,6 @@ struct linear_interpolator
 {
     using patch_layout_t = Patch_Layout;
     using index_t        = typename patch_layout_t::index_t;
-    using rank_t         = typename patch_layout_t::rank_t;
 
     [[gnu::always_inline]]
     static constexpr auto interpolation(

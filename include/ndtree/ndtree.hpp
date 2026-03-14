@@ -36,27 +36,27 @@ namespace amr::ndt::tree
 template <
     concepts::DeconstructibleType T,
     concepts::PatchIndex          Patch_Index,
-    concepts::PatchLayout         Patch_Layout>
+    concepts::PatchLayout         Patch_Layout,
+    concepts::IntergridOperator   Intergrid_Operator>
 class ndtree
 {
 public:
-    using map_type      = T;
-    using size_type     = std::size_t;
-    using patch_index_t = Patch_Index;
-    // TODO: This should be provided by the patch_index
-    // using patch_index_directon_t = typename patch_index_t::direction_t;
-    using linear_index_t    = size_type;
-    using patch_layout_t    = Patch_Layout;
-    using neighbor_utils_t  = neighbors::neighbor_utils<patch_index_t, patch_layout_t>;
-    using patch_direction_t = typename neighbor_utils_t::direction_t;
+    using map_type             = T;
+    using size_type            = std::size_t;
+    using patch_index_t        = Patch_Index;
+    using intergrid_operator_t = Intergrid_Operator;
+    using linear_index_t       = size_type;
+    using patch_layout_t       = Patch_Layout;
+    using neighbor_utils_t     = neighbors::neighbor_utils<patch_index_t, patch_layout_t>;
+    using patch_direction_t    = typename neighbor_utils_t::direction_t;
     template <typename Identifier_Type>
     using neighbor_variant_base_t =
         typename neighbor_utils_t::template neighbor_variant_base_t<Identifier_Type>;
     using neighbor_patch_index_variant_t  = neighbor_variant_base_t<patch_index_t>;
     using neighbor_linear_index_variant_t = neighbor_variant_base_t<linear_index_t>;
     using patch_neighbors_t               = typename neighbor_utils_t::patch_neighbors_t;
-    using halo_exchange_operator_impl_t =
-        utils::patches::halo_exchange_impl_t<patch_index_t, patch_layout_t>;
+    using halo_exchange_operator_impl_t   = utils::patches::
+        halo_exchange_impl_t<patch_index_t, patch_layout_t, intergrid_operator_t>;
     static_assert(std::is_same_v<
                   typename neighbor_utils_t::neighbor_variant_t,
                   neighbor_patch_index_variant_t>);
@@ -198,23 +198,6 @@ public:
     {
         return m_size;
     }
-
-    // template <concepts::TypeMap Map_Type>
-    // [[nodiscard, gnu::always_inline, gnu::flatten]]
-    // auto get(linear_index_t const idx) noexcept -> reference_t<typename Map_Type::type>
-    // {
-    //     CONTRACTS_CHECK(idx < m_size);
-    //     return std::get<Map_Type::index()>(m_data_buffers)[idx];
-    // }
-
-    // template <concepts::TypeMap Map_Type>
-    // [[nodiscard, gnu::always_inline, gnu::flatten]]
-    // auto get(linear_index_t const idx) const noexcept
-    //     -> const_reference_t<typename Map_Type::type>
-    // {
-    //     CONTRACTS_CHECK(idx < m_size);
-    //     return std::get<Map_Type::index()>(m_data_buffers)[idx];
-    // }
 
     template <concepts::MapType Map_Type>
     [[nodiscard, gnu::always_inline, gnu::flatten]]
@@ -919,10 +902,9 @@ private:
                      from   = start_from + fine_patch_idx,
                      fine_linear_idxs](auto&... b)
                     {
-                        ((amr::ndt::intergrid_operator::
-                              linear_interpolator<patch_layout_t>::restriction(
-                                  b[to], to_idx, b[from], fine_linear_idxs
-                              )),
+                        ((intergrid_operator_t::restriction(
+                             b[to], to_idx, b[from], fine_linear_idxs
+                         )),
                          ...);
                     },
                     m_data_buffers
@@ -949,10 +931,9 @@ private:
                      from_idx,
                      from](auto&... b)
                     {
-                        ((amr::ndt::intergrid_operator::
-                              linear_interpolator<patch_layout_t>::interpolation(
-                                  b[to], to_idxs, b[from], from_idx
-                              )),
+                        ((intergrid_operator_t::interpolation(
+                             b[to], to_idxs, b[from], from_idx
+                         )),
                          ...);
                     },
                     m_data_buffers
