@@ -440,6 +440,7 @@ public:
         fragment();
         recombine();
         compact();
+        sort_active_slots();
     }
 
     template <typename Fn>
@@ -1004,6 +1005,16 @@ private:
             assert(!m_slot_active[i]);
         }
         check_index_map();
+    }
+
+    auto sort_active_slots() noexcept -> void
+    {
+        std::sort(
+            m_active_slots,
+            m_active_slots + m_size,
+            [this](linear_index_t const lhs, linear_index_t const rhs)
+            { return m_linear_index_map[lhs] < m_linear_index_map[rhs]; }
+        );
     }
 
     [[gnu::always_inline, gnu::flatten]]
