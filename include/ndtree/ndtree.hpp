@@ -97,6 +97,11 @@ private:
     template <typename Type>
     using const_reference_t = Type const&;
 
+    using projection_hypercube_t = amr::containers::utils::types::tensor::hypercube_t<
+        typename patch_layout_t::padded_layout_t::index_t,
+        s_1d_fanout,
+        s_rank>;
+
 public:
     template <typename Map_Type>
     using patch_t = patches::patch<typename Map_Type::type, patch_layout_t>;
@@ -128,22 +133,6 @@ public:
 
     using index_map_iterator_t       = typename index_map_t::iterator;
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
-
-private:
-    static constexpr auto fragmentation_patch_maps(
-        const size_type      patch_idx,
-        const linear_index_t linear_idx
-    ) noexcept -> typename patch_layout_t::index_t
-    {
-#if defined(__clang__) || defined(__NVCOMPILER)
-        static const auto s_fragmentation_patch_maps = amr::ndt::utils::patches::
-            fragmentation_patch_maps<patch_layout_t, s_1d_fanout>();
-#else
-        static constexpr auto s_fragmentation_patch_maps = amr::ndt::utils::patches::
-            fragmentation_patch_maps<patch_layout_t, s_1d_fanout>();
-#endif
-        return s_fragmentation_patch_maps[patch_idx][linear_idx];
-    }
 
 public:
     [[nodiscard]]
@@ -875,53 +864,65 @@ public:
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{});
     }
 
-    auto restrict_patches(
+private:
+    constexpr auto patch_mapping_impl(auto&& f) noexcept -> void
+    {
+        amr::containers::manipulators::shaped_for<
+            typename patch_layout_t::interior_iteration_control_t>(
+            [this, fn = std::forward<decltype(f)>(f)](auto const& idxs)
+            {
+                using idxs_t = std::remove_cvref_t<decltype(idxs)>;
+
+                idxs_t fine_patch_idxs{}; // fine patch index
+                idxs_t base_fine_idxs{};  // start to the fine hypercube projection
+                for (size_type d = 0; d != s_rank; ++d)
+                {
+                    const auto section_size =
+                        patch_layout_t::data_layout_t::size(d) / s_1d_fanout;
+                    fine_patch_idxs[d] = (idxs[d] - s_halo_width) / section_size;
+                    base_fine_idxs[d] =
+                        ((idxs[d] - s_halo_width) % section_size) * s_1d_fanout +
+                        s_halo_width;
+                }
+                const auto fine_patch_idx =
+                    projection_hypercube_t::layout_t::linear_index(fine_patch_idxs);
+                const auto base_fine_idx =
+                    patch_layout_t::padded_layout_t::linear_index(base_fine_idxs);
+                // flattened hypercube of the idxs in the projected fine patch
+                const auto fine_linear_idxs =
+                    utils::patches::detail::hypercube_offset<patch_layout_t, 2>(
+                        base_fine_idx
+                    );
+                const auto coarse_idx =
+                    patch_layout_t::padded_layout_t::linear_index(idxs);
+
+                fn(fine_patch_idx, fine_linear_idxs, coarse_idx);
+            }
+        );
+    }
+
+    constexpr auto restrict_patches(
         linear_index_t const start_from,
         linear_index_t const to
     ) noexcept -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Patch restriction");
-        // static constexpr auto patch_size = patch_layout_t::flat_size();
 
-        using hypercube_t = amr::containers::utils::types::tensor::hypercube_t<
-            typename patch_layout_t::padded_layout_t::index_t,
-            s_1d_fanout,
-            s_rank>;
-
-        amr::containers::manipulators::shaped_for<
-            typename patch_layout_t::interior_iteration_control_t>(
-            [this, to, start_from](auto const& idxs)
+        patch_mapping_impl(
+            [this,
+             start_from,
+             to](auto fine_patch_idx, auto const& fine_linear_idxs, auto to_idx)
             {
-                auto fine_patch_idxs = idxs;
-                auto base_fine_idxs  = idxs;
-                for (size_type d = 0; d != s_rank; ++d)
-                {
-                    const auto section_size =
-                        patch_layout_t::data_layout_t::size(d) / s_1d_fanout;
-                    fine_patch_idxs[d] =
-                        (fine_patch_idxs[d] - s_halo_width) / section_size;
-                    base_fine_idxs[d] =
-                        ((base_fine_idxs[d] - s_halo_width) % section_size) *
-                            s_1d_fanout +
-                        s_halo_width;
-                }
-                const auto fine_patch_idx =
-                    hypercube_t::layout_t::linear_index(fine_patch_idxs);
-
-                const auto base_fine_idx =
-                    patch_layout_t::padded_layout_t::linear_index(base_fine_idxs);
-                const auto fine_linear_idxs =
-                    utils::patches::detail::hypercube_offset<patch_layout_t, 2>(
-                        base_fine_idx
-                    );
-
                 std::apply(
-                    [to, &idxs, from = start_from + fine_patch_idx, fine_linear_idxs](
-                        auto&... b
-                    )
+                    [to,
+                     to_idx = to_idx,
+                     from   = start_from + fine_patch_idx,
+                     fine_linear_idxs](auto&... b)
                     {
-                        ((b[to][idxs] = amr::ndt::intergrid_operator::linear_interpolator<
-                              patch_layout_t>::restriction(b[from], fine_linear_idxs)),
+                        ((amr::ndt::intergrid_operator::
+                              linear_interpolator<patch_layout_t>::restriction(
+                                  b[to], to_idx, b[from], fine_linear_idxs
+                              )),
                          ...);
                     },
                     m_data_buffers
@@ -930,38 +931,39 @@ public:
         );
     }
 
-    auto interpolate_patch(
+    constexpr auto interpolate_patch(
         linear_index_t const from,
         linear_index_t const start_to
     ) noexcept -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Patch interpolation");
-        for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
-        {
-            const auto child_patch_index = start_to + patch_idx;
-            for (linear_index_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
-                 ++linear_idx)
+
+        patch_mapping_impl(
+            [this,
+             from,
+             start_to](auto fine_patch_idx, auto const& fine_linear_idxs, auto from_idx)
             {
-                if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx))
-                {
-                    continue;
-                }
-                const auto from_linear_idx =
-                    fragmentation_patch_maps(patch_idx, linear_idx);
                 std::apply(
-                    [child_patch_index, from, from_linear_idx, linear_idx](auto&... b)
+                    [to      = start_to + fine_patch_idx,
+                     to_idxs = fine_linear_idxs,
+                     from_idx,
+                     from](auto&... b)
                     {
-                        ((void)(b[child_patch_index][linear_idx] =
-                                    b[from][from_linear_idx]),
+                        ((amr::ndt::intergrid_operator::
+                              linear_interpolator<patch_layout_t>::interpolation(
+                                  b[to], to_idxs, b[from], from_idx
+                              )),
                          ...);
                     },
                     m_data_buffers
                 );
             }
-        }
+        );
     }
 
+public:
     constexpr auto halo_exchange_update() noexcept -> void
+
     {
         DEFAULT_SOURCE_LOG_TRACE("Performing halo exchange");
         auto const r = std::views::iota(size_type{}, m_size);

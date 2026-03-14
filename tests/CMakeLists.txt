@@ -12,7 +12,6 @@ include(GoogleTest)
 
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS *.t.cpp)
 
-file(GLOB TEST_SOURCES CONFIGURE_DEPENDS *.t.cpp)
 foreach(src ${TEST_SOURCES})
     get_filename_component(target ${src} NAME_WE)
     add_executable(${target} ${src})

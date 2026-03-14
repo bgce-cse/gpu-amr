@@ -16,20 +16,46 @@ struct linear_interpolator
     using index_t        = typename patch_layout_t::index_t;
     using rank_t         = typename patch_layout_t::rank_t;
 
-    template <std::integral auto N>
-    static constexpr auto
-        restriction(auto const& in, std::array<index_t, N> const& idxs) noexcept ->
-        typename std::remove_cvref_t<decltype(in)>::value_type
+    [[gnu::always_inline]]
+    static constexpr auto interpolation(
+        auto&          to,
+        index_t const& to_idx,
+        auto const&    from,
+        index_t const  from_idx
+    ) noexcept -> void
     {
-        using value_type = typename std::remove_cvref_t<decltype(in)>::value_type;
-        value_type sum{};
-        for (auto const idx : idxs)
+        to[to_idx] = from[from_idx];
+    }
+
+    template <std::integral auto N>
+    static constexpr auto interpolation(
+        auto&                         to,
+        std::array<index_t, N> const& to_idxs,
+        auto const&                   from,
+        index_t const                 from_idx
+    ) noexcept -> void
+    {
+        for (auto const to_idx : to_idxs)
         {
-            // std::cout << idx << ": " << in[idx] << ' ';
-            sum += in[idx];
+            interpolation(to, to_idx, from, from_idx);
         }
-        // std::cout << " -> " << sum / static_cast<value_type>(N) << '\n';
-        return sum / static_cast<value_type>(N);
+    }
+
+    template <std::integral auto N>
+    static constexpr auto restriction(
+        auto&                         to,
+        index_t const                 to_idx,
+        auto const&                   from,
+        std::array<index_t, N> const& from_idxs
+    ) noexcept -> void
+    {
+        using value_type = typename std::remove_cvref_t<decltype(from)>::value_type;
+        value_type sum{};
+        for (auto const idx : from_idxs)
+        {
+            sum += from[idx];
+        }
+        to[to_idx] = sum / static_cast<value_type>(N);
     }
 };
 

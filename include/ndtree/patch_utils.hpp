@@ -58,7 +58,7 @@ constexpr auto is_halo_cell(typename Layout::index_t linear_index) noexcept -> b
 }
 
 template <concepts::PatchLayout Patch_Layout, std::integral auto Fanout>
-[[nodiscard]]
+[[nodiscard, deprecated]]
 constexpr auto fragmentation_patch_maps() noexcept
     -> containers::utils::types::tensor::hypercube_t<
         containers::static_tensor<
@@ -425,8 +425,9 @@ struct halo_exchange_impl_t
                 patch_layout_t::padded_layout_t::linear_index(base_fine_idxs);
             const auto fine_linear_idxs =
                 detail::hypercube_offset<patch_layout_t, 2>(base_linear_idx);
-            current_patch[idxs] = amr::ndt::intergrid_operator::linear_interpolator<
-                patch_layout_t>::restriction(fine_patch, fine_linear_idxs);
+            const auto to_idx = patch_layout_t::padded_layout_t::linear_index(idxs);
+            amr::ndt::intergrid_operator::linear_interpolator<patch_layout_t>::
+                restriction(current_patch, to_idx, fine_patch, fine_linear_idxs);
         }
     };
 
@@ -470,7 +471,13 @@ struct halo_exchange_impl_t
                 utility::contracts::check_index(from_idxs[i] - s_halo_width, s_sizes[i]);
             }
 
-            self_patch[idxs] = other_patch[from_idxs];
+            const auto to_idx = patch_layout_t::padded_layout_t::linear_index(idxs);
+            const auto from_idx =
+                patch_layout_t::padded_layout_t::linear_index(from_idxs);
+            amr::ndt::intergrid_operator::linear_interpolator<
+                patch_layout_t>::interpolation(self_patch, to_idx, other_patch, from_idx);
+
+            // self_patch[idxs] = other_patch[from_idxs];
         }
     };
 
