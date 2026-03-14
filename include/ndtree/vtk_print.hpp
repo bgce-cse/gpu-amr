@@ -34,7 +34,7 @@ struct vtk_print
             return "int";
         }
         utility::error_handling::assert_unreachable();
-    };
+    }
 
 public:
     using physics_system_t = Physics_System;

@@ -164,7 +164,16 @@ public:
     }
 
     [[nodiscard]]
-    constexpr auto operator<=>(static_multi_index const&) const noexcept = default;
+    constexpr auto operator==(static_multi_index const& other) const noexcept -> bool
+    {
+        return value_ == other.value_;
+    }
+
+    [[nodiscard]]
+    constexpr auto operator<(static_multi_index const& other) const noexcept -> bool
+    {
+        return value_ < other.value_; 
+    }
 
 private:
     std::array<index_t, s_rank> value_;
