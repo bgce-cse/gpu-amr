@@ -1,9 +1,6 @@
 #ifndef AMR_INCLUDED_NDTREE
 #define AMR_INCLUDED_NDTREE
 
-#define DEBUG
-#undef NDEBUG
-
 #include "config/definitions.hpp"
 #include "intergrid_operator.hpp"
 #include "ndconcepts.hpp"
@@ -1037,8 +1034,6 @@ private:
         std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
         std::swap(m_neighbors[i], m_neighbors[j]);
         std::swap(m_slot_active[i], m_slot_active[j]);
-        // m_slot_active.swap(m_slot_active[i], m_slot_active[j]);
-
         std::apply(
             [i, j](auto&... b) { ((void)std::swap(b[i], b[j]), ...); }, m_data_buffers
         );

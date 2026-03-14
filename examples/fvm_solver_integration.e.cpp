@@ -43,8 +43,6 @@ int main()
 
     double            tmax            = 400; // Example tmax, adjust as needed
     double            print_frequency = 5.0; // Print every 10 seconds
-    const std::string output_prefix   = "solver_integration_test_refine";
-
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
@@ -176,7 +174,6 @@ int main()
         {
             std::string file_extension =
                 "_iteration_" + std::to_string(output_counter) + ".vtk";
-            printer.print(solver.get_tree(), file_extension);
             printer.print(solver.get_tree(), file_extension);
             next_print_time += print_frequency;
             output_counter++;
