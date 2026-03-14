@@ -5,6 +5,7 @@
 #undef NDEBUG
 
 #include "config/definitions.hpp"
+#include "intergrid_operator.hpp"
 #include "ndconcepts.hpp"
 #include "ndtype_traits.hpp"
 #include "ndutils.hpp"
@@ -831,53 +832,54 @@ public:
     ) noexcept -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Patch restriction");
-        static constexpr auto patch_size = patch_layout_t::flat_size();
+        using hypercube_t = amr::containers::utils::types::tensor::hypercube_t<
+            typename patch_layout_t::padded_layout_t::index_t,
+            s_1d_fanout,
+            s_rank>;
 
-        std::apply(
-            [parent_slot](auto&... b)
+        amr::containers::manipulators::shaped_for<
+            typename patch_layout_t::interior_iteration_control_t>(
+            [this, parent_slot, &child_slots](auto const& idxs)
             {
-                for (linear_index_t k = 0; k != patch_size; ++k)
+                auto fine_patch_idxs = idxs;
+                auto base_fine_idxs  = idxs;
+
+                for (size_type d = 0; d != s_rank; ++d)
                 {
-                    if (utils::patches::is_halo_cell<patch_layout_t>(k)) continue;
-                    ((b[parent_slot][k] = static_cast<unwrap_value_t<decltype(b)>>(0)),
-                     ...);
+                    const auto section_size =
+                        patch_layout_t::data_layout_t::size(d) / s_1d_fanout;
+                    fine_patch_idxs[d] =
+                        (fine_patch_idxs[d] - s_halo_width) / section_size;
+                    base_fine_idxs[d] =
+                        ((base_fine_idxs[d] - s_halo_width) % section_size) *
+                            s_1d_fanout +
+                        s_halo_width;
                 }
-            },
-            m_data_buffers
-        );
 
-        for (size_type patch_idx = 0; patch_idx != s_nd_fanout; ++patch_idx)
-        {
-            const auto child_slot = child_slots[patch_idx];
-            for (linear_index_t linear_idx = 0; linear_idx != patch_size; ++linear_idx)
-            {
-                if (utils::patches::is_halo_cell<patch_layout_t>(linear_idx)) continue;
-                const auto to_linear_idx =
-                    fragmentation_patch_maps(patch_idx, linear_idx);
+                const auto fine_patch_idx =
+                    hypercube_t::layout_t::linear_index(fine_patch_idxs);
+                const auto child_slot = child_slots[fine_patch_idx];
+
+                const auto base_fine_idx =
+                    patch_layout_t::padded_layout_t::linear_index(base_fine_idxs);
+                const auto fine_linear_idxs =
+                    utils::patches::detail::hypercube_offset<patch_layout_t, 2>(
+                        base_fine_idx
+                    );
+
                 std::apply(
-                    [parent_slot, to_linear_idx, child_slot, linear_idx](auto&... b)
+                    [parent_slot, &idxs, child_slot, fine_linear_idxs](auto&... b)
                     {
-                        ((void)(b[parent_slot][to_linear_idx] +=
-                                b[child_slot][linear_idx]),
+                        ((b[parent_slot][idxs] =
+                              amr::ndt::intergrid_operator::linear_interpolator<
+                                  patch_layout_t>::restriction(
+                                  b[child_slot], fine_linear_idxs
+                              )),
                          ...);
                     },
                     m_data_buffers
                 );
             }
-        }
-
-        std::apply(
-            [parent_slot](auto&... b)
-            {
-                for (linear_index_t k = 0; k != patch_size; ++k)
-                {
-                    if (utils::patches::is_halo_cell<patch_layout_t>(k)) continue;
-                    ((b[parent_slot][k] /=
-                      static_cast<unwrap_value_t<decltype(b)>>(s_nd_fanout)),
-                     ...);
-                }
-            },
-            m_data_buffers
         );
     }
 

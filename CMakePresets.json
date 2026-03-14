@@ -1,0 +1,99 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "gcc-base",
+            "generator": "Unix Makefiles",
+            "toolchainFile": "cmake/toolchain/gcc.cmake"
+        },
+        {
+            "name": "clang-base",
+            "generator": "Unix Makefiles",
+            "toolchainFile": "cmake/toolchain/clang.cmake"
+        },
+        {
+            "name": "gcc-debug",
+            "inherits": "gcc-base",
+            "binaryDir": "build/gcc-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "LOG_LEVEL": "DEBUG",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "OFF"
+            }
+        },
+        {
+            "name": "clang-debug",
+            "inherits": "clang-base",
+            "binaryDir": "build/clang-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "LOG_LEVEL": "DEBUG",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "OFF"
+            }
+        },
+        {
+            "name": "gcc-asan",
+            "inherits": "gcc-base",
+            "binaryDir": "build/gcc-asan",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "LOG_LEVEL": "TRACE",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "ON"
+            }
+        },
+        {
+            "name": "gcc-release",
+            "inherits": "gcc-base",
+            "binaryDir": "build/gcc-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "LOG_LEVEL": "INFO",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "OFF"
+            }
+        },
+        {
+            "name": "clang-release",
+            "inherits": "clang-base",
+            "binaryDir": "build/clang-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "LOG_LEVEL": "INFO",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "OFF"
+            }
+        }
+    ],
+
+    "buildPresets": [
+        {
+            "name": "build-base",
+            "hidden": true,
+            "jobs": 16,
+            "verbose": true
+        },
+        {
+            "name": "gcc-debug",
+            "inherits": "build-base",
+            "configurePreset": "gcc-debug"
+        },
+        {
+            "name": "gcc-release",
+            "inherits": "build-base",
+            "configurePreset": "gcc-release"
+        },
+        {
+            "name": "clang-debug",
+            "inherits": "build-base",
+            "configurePreset": "clang-debug"
+        },
+        {
+            "name": "clang-release",
+            "inherits": "build-base",
+            "configurePreset": "clang-release"
+        }
+    ]
+}
