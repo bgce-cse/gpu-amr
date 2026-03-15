@@ -343,10 +343,41 @@ struct halo_exchange_impl_t
     // TODO: Revisit this after propperly typing patch_index_t
     static constexpr auto s_halo_width =
         static_cast<index_t>(patch_layout_t::halo_width());
-    static constexpr auto s_dimension = static_cast<index_t>(patch_layout_t::rank());
+    static constexpr auto s_rank      = static_cast<index_t>(patch_layout_t::rank());
     static constexpr auto s_1d_fanout = static_cast<index_t>(patch_index_t::fanout());
     static constexpr auto s_nd_fanout = static_cast<index_t>(patch_index_t::nd_fanout());
     static constexpr auto s_sizes     = patch_layout_t::data_layout_t::sizes();
+
+    using projection_hypercube_t = amr::containers::utils::types::tensor::hypercube_t<
+        typename patch_layout_t::padded_layout_t::index_t,
+        s_1d_fanout,
+        s_rank>;
+
+    /// Compute child_offset using the same convention as ndtree's
+    /// interpolate_patch / restrict_patches.  Takes a padded multi-index.
+    static constexpr std::size_t
+        ndtree_child_offset(auto const& padded_multi_idx) noexcept
+    {
+        static constexpr auto& padded_strides =
+            patch_layout_t::padded_layout_t::strides();
+
+        // Build padded linear index from multi-index
+        index_t padded_linear = 0;
+        for (index_t d = 0; d < s_rank; ++d)
+            padded_linear += padded_multi_idx[d] * padded_strides[d];
+
+        // Same loop as ndtree: padded strides + data sizes
+        std::size_t offset = 0;
+        for (index_t d = 0; d < s_rank; ++d)
+        {
+            auto coord = static_cast<std::size_t>(
+                (padded_linear / padded_strides[d]) % s_sizes[d]
+            );
+            auto fine_in_coarse = coord % s_1d_fanout;
+            offset              = offset * s_1d_fanout + fine_in_coarse;
+        }
+        return (s_nd_fanout - 1) - offset;
+    }
 
     struct boundary_t
     {
@@ -397,7 +428,7 @@ struct halo_exchange_impl_t
                 index_t patch_linear_idx = 0;
                 index_t stride           = 1;
 
-                for (index_t d = 0; d < s_dimension; ++d)
+                for (index_t d = 0; d < s_rank; ++d)
                 {
                     if (d == dim)
                     {
@@ -450,8 +481,8 @@ struct halo_exchange_impl_t
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
-            std::array<index_t, s_dimension> from_idxs{};
-            for (auto i = index_t{}; i != s_dimension; ++i)
+            std::array<index_t, s_rank> from_idxs{};
+            for (auto i = index_t{}; i != s_rank; ++i)
             {
                 CONTRACTS_CHECK(
                     i == dim
@@ -476,14 +507,14 @@ struct halo_exchange_impl_t
                 utility::contracts::check_index(from_idxs[i] - s_halo_width, s_sizes[i]);
             }
 
+            const auto child_offset =
+                projection_hypercube_t::linear_index(contact_quadrant);
             const auto to_idx = patch_layout_t::padded_layout_t::linear_index(idxs);
             const auto from_idx =
                 patch_layout_t::padded_layout_t::linear_index(from_idxs);
             intergrid_operator_t::interpolation(
-                self_patch, to_idx, other_patch, from_idx
+                self_patch, to_idx, child_offset, other_patch, from_idx
             );
-
-            // self_patch[idxs] = other_patch[from_idxs];
         }
     };
 

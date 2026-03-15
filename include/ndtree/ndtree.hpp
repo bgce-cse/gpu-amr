@@ -11,6 +11,9 @@
 #include "utility/compile_time_utility.hpp"
 #include "utility/error_handling.hpp"
 #include "utility/logging.hpp"
+#ifdef AMR_DG_COARSEN_DEBUG
+#    include <iostream>
+#endif
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -99,10 +102,8 @@ private:
     template <typename Type>
     using const_reference_t = Type const&;
 
-    using projection_hypercube_t = amr::containers::utils::types::tensor::hypercube_t<
-        typename patch_layout_t::padded_layout_t::index_t,
-        s_1d_fanout,
-        s_rank>;
+    using projection_hypercube_t =
+        typename halo_exchange_operator_impl_t::projection_hypercube_t;
 
 public:
     template <typename Map_Type>
@@ -328,7 +329,7 @@ public:
             const auto child_i    = patch_index_t::child_of(parent_node_id, i);
             const auto child_i_it = find_index(child_i);
             CONTRACTS_CHECK(child_i_it.has_value());
-            // CONTRACTS_CHECK(child_i_it.value()->second == start + i);
+            CONTRACTS_CHECK(child_i_it.value()->second == start + i);
             child_neighbor_arrays[i] = m_neighbors[m_index_map.at(child_i)];
             m_index_map.erase(child_i_it.value());
         }
@@ -532,8 +533,22 @@ public:
                         new_neighbor.data = typename neighbor_patch_index_variant_t::same{
                             parent_node_id
                         };
-                        m_neighbors[m_index_map.at(neighbor_data.id)]
-                                   [opposite_d.index()] = new_neighbor;
+                        if (const auto it = m_index_map.find(neighbor_data.id);
+                            it != m_index_map.end())
+                        {
+                            m_neighbors[it->second][opposite_d.index()] = new_neighbor;
+                        }
+#ifdef AMR_NDTREE_ENABLE_CHECKS
+                        else
+                        {
+                            // Neighbor may have been recombined earlier in the same AMR
+                            // pass.
+                            DEFAULT_SOURCE_LOG_WARNING(
+                                "Missing same-level neighbor during recombining: " +
+                                neighbor_data.id.repr()
+                            );
+                        }
+#endif
                     }
                     else if constexpr (std::is_same_v<
                                            neighbor_category_t,
@@ -685,6 +700,7 @@ public:
     template <typename Fn>
     auto reconstruct_tree(Fn&& fn) noexcept(noexcept(fn(std::declval<linear_index_t&>())))
         -> void
+
     {
         update_refine_flags(fn);
         apply_refine_coarsen();
@@ -782,7 +798,6 @@ private:
             backup_refine_status = m_refine_status_buffer[i];
             backup_neighbors     = m_neighbors[i];
 
-            // Backup entire patch
             [this, i, &backup_patch]<std::size_t... I>(std::index_sequence<I...>)
             {
                 ((void)(std::get<I>(backup_patch) = std::get<I>(m_data_buffers)[i]), ...);
@@ -795,7 +810,6 @@ private:
                 m_refine_status_buffer[dst] = m_refine_status_buffer[src];
                 m_neighbors[dst]            = m_neighbors[src];
 
-                // Copy entire patches
                 std::apply(
                     [dst, src](auto&... b) { ((void)(b[dst] = b[src]), ...); },
                     m_data_buffers
@@ -812,7 +826,6 @@ private:
             m_refine_status_buffer[dst] = backup_refine_status;
             m_neighbors[dst]            = backup_neighbors;
 
-            // Restore backed up patch
             [this, dst, &backup_patch]<std::size_t... I>(std::index_sequence<I...>)
             {
                 ((void)(std::get<I>(m_data_buffers)[dst] = std::get<I>(backup_patch)),
@@ -832,8 +845,7 @@ private:
     auto is_sorted() const noexcept -> bool
     {
         DEFAULT_SOURCE_LOG_TRACE("Checking sort");
-        if (std::ranges::is_sorted(std::span{ m_linear_index_map, m_size },
-        std::less{}))
+        if (std::ranges::is_sorted(std::span{ m_linear_index_map, m_size }, std::less{}))
         {
             for (linear_index_t i = 0; i != m_size; ++i)
             {

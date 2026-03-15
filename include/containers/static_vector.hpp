@@ -65,6 +65,12 @@ public:
     }
 
     [[nodiscard]]
+    static constexpr auto sizes() noexcept -> auto const&
+    {
+        return layout_t::sizes();
+    }
+
+    [[nodiscard]]
     static constexpr auto strides() noexcept -> auto const&
     {
         return layout_t::strides;
@@ -77,7 +83,34 @@ public:
         return layout_t::stride(i);
     }
 
+    [[nodiscard]]
+    static constexpr auto
+        linear_index(std::ranges::contiguous_range auto const& idxs) noexcept -> index_t
+
+    {
+        // TODO
+        // assert(std::ranges::size(idxs) == rank());
+        return layout_t::linear_index(idxs);
+    }
+
 public:
+    [[nodiscard]]
+    constexpr auto
+        operator[](std::ranges::contiguous_range auto const& idxs) const noexcept
+        -> const_reference
+    // requires(std::ranges::size(idxs) == rank() &&
+    // std::is_same_v<std::ranges::range_value_t<decltype(idxs)>, index_t>) #TODO: @Miguel
+    {
+        return data_[linear_index(idxs)];
+    }
+
+    [[nodiscard]]
+    constexpr auto operator[](std::ranges::contiguous_range auto const& idxs) noexcept
+        -> reference
+    {
+        return const_cast<reference>(std::as_const(*this).operator[](idxs));
+    }
+
     [[nodiscard]]
     constexpr auto operator[](size_type const idx) const noexcept -> const_reference
     {

@@ -7,8 +7,6 @@
  * @warning Do not edit manually! Regenerated at build time.
  */
 
-#include "containers/static_shape.hpp"
-#include <string_view>
 #include <cstddef>
 
 namespace amr::config {

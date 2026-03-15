@@ -6,9 +6,9 @@
 
 int main()
 {
-    constexpr auto N = 10;
-    using F          = double;
-    using vec_t      = amr::containers::static_vector<F, N>;
+    constexpr std::size_t N = 10;
+    using F                 = double;
+    using vec_t             = amr::containers::static_vector<F, N>;
 
     std::vector<float> vf{ 3.0f, .04f, 5.0f, 6.0f, 5.0f, 3.0f, 7.0f, 8.0f, .02f, -4.f };
     std::array<int, N> ai{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
@@ -22,6 +22,6 @@ int main()
     std::cout << "2 * b + 4:\t" << 2 * b + 4 << '\n';
     std::cout << "vf + a:\t" << vf + a << '\n';
     std::cout << "a + ca:\t" << a + ca << '\n';
-
+    std::cout << typeid(N).name() << '\n';
     return (int)(a + b)[5];
 }

@@ -67,7 +67,13 @@ public:
     }
 
     [[nodiscard]]
-    static constexpr auto strides() noexcept -> auto const&
+    static constexpr auto sizes() noexcept -> auto const&
+    {
+        return layout_t::sizes();
+    }
+
+    [[nodiscard]]
+    constexpr static auto strides() noexcept -> auto const&
     {
         return layout_t::strides;
     }

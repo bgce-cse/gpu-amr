@@ -94,8 +94,16 @@ using hypercube_t = typename hypercube<T, Size, Rank>::type;
 template <concepts::StaticContainer T1, concepts::StaticContainer T2>
 struct tensor_product_result
 {
-    using value_type =
-        std::common_type_t<typename T1::value_type, typename T2::value_type>;
+    // For outer product of incompatible types, use T2's value type (the "richer" one)
+    // If both are scalars, they should be compatible via common_type
+    using value_type = typename std::conditional_t<
+        std::is_scalar_v<typename T1::value_type> &&
+            std::is_scalar_v<typename T2::value_type>,
+        std::common_type<typename T1::value_type, typename T2::value_type>,
+        std::conditional_t<
+            std::is_scalar_v<typename T1::value_type>,
+            std::type_identity<typename T2::value_type>,
+            std::type_identity<typename T1::value_type>>>::type;
     using sizes_pack_t =
         sequences::concatenate_t<typename T1::size_pack_t, typename T2::size_pack_t>;
     using type = static_tensor<

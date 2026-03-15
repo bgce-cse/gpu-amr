@@ -119,6 +119,16 @@ endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ----------------------------
+# Generated Config
+# ----------------------------
+
+include(cmake/functions/GenerateConfig.cmake)
+generate_config_header(
+    "${PROJECT_SOURCE_DIR}/config/config.yaml"
+    "${PROJECT_SOURCE_DIR}/include/config/generated_config.hpp"
+)
+
+# ----------------------------
 # Policy targets
 # ----------------------------
 add_library(amr_examples INTERFACE)

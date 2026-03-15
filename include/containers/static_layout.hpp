@@ -105,7 +105,7 @@ public:
             return ((index_pack * s_strides[Indices]) + ...);
         }(std::make_index_sequence<sizeof...(I)>{}, std::forward<I>(idxs)...);
 
-        utility::contracts::check_index(linear_index, elements());
+        CONTRACTS_CHECK_INDEX(linear_idx, static_layout::elements());
         return linear_idx;
     }
 
@@ -119,7 +119,7 @@ public:
         auto linear_idx = std::transform_reduce(
             std::cbegin(idxs), std::cend(idxs), std::cbegin(s_strides), index_t{}
         );
-        utility::contracts::check_index(linear_idx, elements());
+        utility::contracts::check_index(linear_idx, static_layout::elements());
         return linear_idx;
     }
 

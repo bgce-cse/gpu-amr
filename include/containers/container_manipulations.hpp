@@ -2,11 +2,15 @@
 #define AMR_INCLUDED_CONTAINER_MANIPULATIONS
 
 #include "container_concepts.hpp"
+#include "container_utils.hpp"
 #include "loop_control.hpp"
+#include "static_tensor.hpp"
+#include "static_vector.hpp"
 #include <algorithm>
 #include <array>
 #include <concepts>
 #include <functional>
+#include <numeric>
 #include <type_traits>
 
 namespace amr::containers::manipulators
