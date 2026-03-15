@@ -25,7 +25,7 @@ add_library(amr_compiler_options INTERFACE)
 target_compile_options(amr_compiler_options INTERFACE
     ${AMR_WARNINGS}
     ${AMR_DIAGNOSTICS}
-    ${CONSTEXPR_LIMIT_FLAGS}
+    ${AMR_CONSTEXPR_LIMIT_FLAGS}
 
     $<$<CONFIG:Debug>:${AMR_DEBUG_FLAGS} ${AMR_DEBUG_INFO}>
     $<$<CONFIG:Release>:${AMR_RELEASE_FLAGS}>

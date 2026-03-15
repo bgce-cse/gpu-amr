@@ -12,28 +12,6 @@
             "toolchainFile": "cmake/toolchain/clang.cmake"
         },
         {
-            "name": "gcc-debug",
-            "inherits": "gcc-base",
-            "binaryDir": "build/gcc-debug",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "LOG_LEVEL": "DEBUG",
-                "EXECUTION": "SEQ",
-                "ENABLE_SANITIZERS": "OFF"
-            }
-        },
-        {
-            "name": "clang-debug",
-            "inherits": "clang-base",
-            "binaryDir": "build/clang-debug",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "LOG_LEVEL": "DEBUG",
-                "EXECUTION": "SEQ",
-                "ENABLE_SANITIZERS": "OFF"
-            }
-        },
-        {
             "name": "gcc-asan",
             "inherits": "gcc-base",
             "binaryDir": "build/gcc-asan",
@@ -45,12 +23,45 @@
             }
         },
         {
+            "name": "gcc-debug",
+            "inherits": "gcc-base",
+            "binaryDir": "build/gcc-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "LOG_LEVEL": "DEBUG",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "OFF"
+            }
+        },
+        {
+            "name": "gcc-relwdebinfo",
+            "inherits": "gcc-base",
+            "binaryDir": "build/gcc-relwdebinfo",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "LOG_LEVEL": "INFO",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "OFF"
+            }
+        },
+        {
             "name": "gcc-release",
             "inherits": "gcc-base",
             "binaryDir": "build/gcc-release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "LOG_LEVEL": "INFO",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "OFF"
+            }
+        },
+        {
+            "name": "clang-debug",
+            "inherits": "clang-base",
+            "binaryDir": "build/clang-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "LOG_LEVEL": "DEBUG",
                 "EXECUTION": "SEQ",
                 "ENABLE_SANITIZERS": "OFF"
             }
@@ -84,6 +95,11 @@
             "name": "gcc-debug",
             "inherits": "build-base",
             "configurePreset": "gcc-debug"
+        },
+        {
+            "name": "gcc-relwdebinfo",
+            "inherits": "build-base",
+            "configurePreset": "gcc-relwdebinfo"
         },
         {
             "name": "gcc-release",
