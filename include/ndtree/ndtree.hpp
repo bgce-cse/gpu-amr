@@ -12,11 +12,13 @@
 #include "utility/error_handling.hpp"
 #include "utility/logging.hpp"
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <cstdlib>
 #include <execution>
 #include <numeric>
 #include <ranges>
+#include <span>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -823,6 +825,32 @@ private:
         CONTRACTS_CHECK(
             std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size])
         );
+        CONTRACTS_CHECK(is_sorted());
+    }
+
+    [[nodiscard]]
+    auto is_sorted() const noexcept -> bool
+    {
+        DEFAULT_SOURCE_LOG_TRACE("Checking sort");
+        if (std::ranges::is_sorted(std::span{ m_linear_index_map, m_size },
+        std::less{}))
+        {
+            for (linear_index_t i = 0; i != m_size; ++i)
+            {
+                assert(m_index_map.contains(m_linear_index_map[i]));
+                if (m_index_map.at(m_linear_index_map[i]) != i)
+                {
+                    DEFAULT_SOURCE_LOG_ERROR("index map is not correct");
+                    return false;
+                }
+            }
+        }
+        else
+        {
+            DEFAULT_SOURCE_LOG_ERROR("linear index is not sorted");
+            return false;
+        }
+        return true;
     }
 
 public:

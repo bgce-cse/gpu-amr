@@ -76,6 +76,11 @@
             "verbose": true
         },
         {
+            "name": "gcc-asan",
+            "inherits": "build-base",
+            "configurePreset": "gcc-asan"
+        },
+        {
             "name": "gcc-debug",
             "inherits": "build-base",
             "configurePreset": "gcc-debug"
