@@ -425,15 +425,19 @@ public:
                 {
                     using neighbor_category_t = std::decay_t<decltype(neighbor_data)>;
 
-                    if constexpr (std::is_same_v<
-                                      neighbor_category_t,
-                                      typename neighbor_patch_index_variant_t::none>)
+                    if constexpr (
+                        std::is_same_v<
+                            neighbor_category_t,
+                            typename neighbor_patch_index_variant_t::none>
+                    )
                     {
                         return;
                     }
-                    else if constexpr (std::is_same_v<
-                                           neighbor_category_t,
-                                           typename neighbor_patch_index_variant_t::same>)
+                    else if constexpr (
+                        std::is_same_v<
+                            neighbor_category_t,
+                            typename neighbor_patch_index_variant_t::same>
+                    )
                     {
                         const auto neighbor_id = neighbor_data.id;
                         const auto opposite_d  = patch_direction_t::opposite(d);
@@ -460,10 +464,11 @@ public:
                         m_neighbors[m_index_map.at(neighbor_id)][opposite_d.index()] =
                             new_neighbor;
                     }
-                    else if constexpr (std::is_same_v<
-                                           neighbor_category_t,
-                                           typename neighbor_patch_index_variant_t::
-                                               finer>)
+                    else if constexpr (
+                        std::is_same_v<
+                            neighbor_category_t,
+                            typename neighbor_patch_index_variant_t::finer>
+                    )
                     {
                         auto       neighbor_ids = neighbor_data.ids;
                         const auto opposite_d   = patch_direction_t::opposite(d);
@@ -487,10 +492,11 @@ public:
                                        [opposite_d.index()] = new_neighbor;
                         }
                     }
-                    else if constexpr (std::is_same_v<
-                                           neighbor_category_t,
-                                           typename neighbor_patch_index_variant_t::
-                                               coarser>)
+                    else if constexpr (
+                        std::is_same_v<
+                            neighbor_category_t,
+                            typename neighbor_patch_index_variant_t::coarser>
+                    )
                     {
                         CONTRACTS_CHECK(
                             false && "Coarser neighbor during refinement shouldn't happen"
@@ -518,15 +524,19 @@ public:
                 {
                     using neighbor_category_t = std::decay_t<decltype(neighbor_data)>;
 
-                    if constexpr (std::is_same_v<
-                                      neighbor_category_t,
-                                      typename neighbor_patch_index_variant_t::none>)
+                    if constexpr (
+                        std::is_same_v<
+                            neighbor_category_t,
+                            typename neighbor_patch_index_variant_t::none>
+                    )
                     {
                         return; // No neighbor to update
                     }
-                    else if constexpr (std::is_same_v<
-                                           neighbor_category_t,
-                                           typename neighbor_patch_index_variant_t::same>)
+                    else if constexpr (
+                        std::is_same_v<
+                            neighbor_category_t,
+                            typename neighbor_patch_index_variant_t::same>
+                    )
                     {
                         // Same-level neighbor now sees the parent instead of children
                         neighbor_patch_index_variant_t new_neighbor;
@@ -550,28 +560,30 @@ public:
                         }
 #endif
                     }
-                    else if constexpr (std::is_same_v<
-                                           neighbor_category_t,
-                                           typename neighbor_patch_index_variant_t::
-                                               finer>)
+                    else if constexpr (
+                        std::is_same_v<
+                            neighbor_category_t,
+                            typename neighbor_patch_index_variant_t::finer>
+                    )
                     {
                         // Finer neighbors now see the parent as a coarser neighbor
                         for (size_type i = 0; i != neighbor_data.num_neighbors(); i++)
                         {
                             neighbor_patch_index_variant_t new_neighbor;
-                            new_neighbor.data =
-                                typename neighbor_patch_index_variant_t::coarser(
-                                    parent_node_id,
-                                    neighbor_utils_t::compute_contact_quadrant(i, d)
-                                );
+                            new_neighbor
+                                .data = typename neighbor_patch_index_variant_t::coarser(
+                                parent_node_id,
+                                neighbor_utils_t::compute_contact_quadrant(i, opposite_d)
+                            );
                             m_neighbors[m_index_map.at(neighbor_data.ids[i])]
                                        [opposite_d.index()] = new_neighbor;
                         }
                     }
-                    else if constexpr (std::is_same_v<
-                                           neighbor_category_t,
-                                           typename neighbor_patch_index_variant_t::
-                                               coarser>)
+                    else if constexpr (
+                        std::is_same_v<
+                            neighbor_category_t,
+                            typename neighbor_patch_index_variant_t::coarser>
+                    )
                     {
                         CONTRACTS_CHECK(
                             false && "Having a coarser neighbor after recombining does "
@@ -600,10 +612,11 @@ public:
                     [&](auto const& neighbor_data)
                     {
                         using neighbor_category_t = std::decay_t<decltype(neighbor_data)>;
-                        if constexpr (std::is_same_v<
-                                          neighbor_category_t,
-                                          typename neighbor_patch_index_variant_t::
-                                              coarser>)
+                        if constexpr (
+                            std::is_same_v<
+                                neighbor_category_t,
+                                typename neighbor_patch_index_variant_t::coarser>
+                        )
                         {
                             auto coarser_neighbor_id = neighbor_data.id;
 
@@ -657,17 +670,19 @@ public:
                         {
                             using neighbor_category_t =
                                 std::decay_t<decltype(neighbor_data)>;
-                            if constexpr (std::is_same_v<
-                                              neighbor_category_t,
-                                              typename neighbor_patch_index_variant_t::
-                                                  finer>)
+                            if constexpr (
+                                std::is_same_v<
+                                    neighbor_category_t,
+                                    typename neighbor_patch_index_variant_t::finer>
+                            )
                             {
                                 should_remove = true;
                             }
-                            else if constexpr (std::is_same_v<
-                                                   neighbor_category_t,
-                                                   typename neighbor_patch_index_variant_t::
-                                                       same>)
+                            else if constexpr (
+                                std::is_same_v<
+                                    neighbor_category_t,
+                                    typename neighbor_patch_index_variant_t::same>
+                            )
                             {
                                 if (std::ranges::contains(m_to_refine, neighbor_data.id))
                                 {
