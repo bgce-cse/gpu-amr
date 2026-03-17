@@ -53,7 +53,7 @@
             "binaryDir": "build/gcc-release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "LOG_LEVEL": "INFO",
+                "LOG_LEVEL": "PROGRESS",
                 "CONTRACTS": "ON",
                 "EXECUTION": "SEQ",
                 "ENABLE_SANITIZERS": "OFF"

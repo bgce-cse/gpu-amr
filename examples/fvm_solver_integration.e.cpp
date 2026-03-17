@@ -173,7 +173,7 @@ int main()
     {
         const double dt = solver.compute_time_step();
 
-        DEFAULT_SOURCE_LOG_INFO("Step: {},\tt: {:.5f},\tdt: {:.5f} ", step, t, dt);
+        DEFAULT_SOURCE_LOG_PROGRESS("Step: {},\tt: {:.5f},\tdt: {:.5f} ", step, t, dt);
 
         solver.time_step(dt);
         solver.get_tree().halo_exchange_update();
@@ -194,10 +194,10 @@ int main()
         {
             std::string file_extension =
                 "_iteration_" + std::to_string(output_counter) + ".vtk";
-            // printer.print(solver.get_tree(), file_extension);
             printer.print(solver.get_tree(), file_extension);
             next_print_time += print_frequency;
             output_counter++;
+            DEFAULT_SOURCE_LOG_INFO("Written vtk output: {}", file_extension);
         }
 #endif
 
