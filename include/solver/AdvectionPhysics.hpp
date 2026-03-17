@@ -70,29 +70,11 @@ public:
      * @brief SoA-compatible wrapper for max wave speed calculation.
      */
     template <typename PatchTuple>
-    static double getMaxSpeedSoA(const PatchTuple& patches, 
-                                 std::size_t idx, 
+    static double getMaxSpeedSoA([[maybe_unused]] const PatchTuple& patches, 
+                                 [[maybe_unused]] std::size_t idx, 
                                  int direction, 
-                                 double gamma) {
+                                 [[maybe_unused]] double gamma) {
         
-        // Read directly from global memory into fast thread-local registers
-        amr::containers::static_vector<double, NVAR> cons;
-        auto fetch_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-            ((cons[Is] = std::get<Is>(patches)[idx]), ...);
-        };
-        fetch_state(std::make_index_sequence<NVAR>{});
-
-        // Reuse the math
-        return getMaxSpeed(cons, direction, gamma);
-    }
-
-    /**
-     * @brief Returns the maximum characteristic speed in a given direction.
-     * Used by amr_solver::compute_time_step to satisfy the CFL condition.
-     */
-    static double getMaxSpeed([[maybe_unused]] const amr::containers::static_vector<double, NVAR>& U, 
-                              int direction, 
-                              [[maybe_unused]] double gamma) {
         // The speed is independent of the state U in linear advection
         return std::abs(Velocity[direction]);
     }
