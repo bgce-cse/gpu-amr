@@ -8,10 +8,6 @@
 #include <numeric>
 #include <utility>
 
-#ifndef NDEBUG
-#    define AMR_CONTAINERS_CHECKBOUNDS
-#endif
-
 namespace amr::containers
 {
 
@@ -83,9 +79,7 @@ public:
     [[nodiscard]]
     static constexpr auto stride(index_t const i) noexcept -> size_type
     {
-#ifdef AMR_CONTAINERS_CHECKBOUNDS
-        assert_in_bounds(i);
-#endif
+        CONTRACTS_CHECK_INDEX(i, elements());
         return s_strides[i];
     }
 
@@ -94,10 +88,17 @@ public:
     [[nodiscard]]
     static constexpr auto linear_index(I&&... idxs) noexcept -> index_t
     {
-#ifdef AMR_CONTAINERS_CHECKBOUNDS
-        const index_t vidxs[rank()]{ static_cast<index_t>(idxs)... };
-        assert_in_bounds(vidxs);
-#endif
+        CONTRACTS_CHECK(
+            [&]
+            {
+                const index_t vidxs[rank()]{ static_cast<index_t>(idxs)... };
+                for (rank_t i{}; i != rank(); ++i)
+                {
+                    if (vidxs[i] != s_sizes[i]) return false;
+                }
+                return true;
+            }()
+        );
         const auto linear_idx = []<std::size_t... Indices>(
                                     std::index_sequence<Indices...>, auto&&... index_pack
                                 )
@@ -126,9 +127,7 @@ public:
     [[nodiscard]]
     static constexpr auto multi_index(index_t linear_idx) noexcept -> multi_index_t
     {
-#ifdef AMR_CONTAINERS_CHECKBOUNDS
-        assert_in_bounds(linear_idx);
-#endif
+        CONTRACTS_CHECK_INDEX(linear_idx, elements());
         multi_index_t ret{};
         for (rank_t d = 0; d != s_rank; ++d)
         {
@@ -137,23 +136,6 @@ public:
         }
         return ret;
     }
-
-private:
-#ifdef AMR_CONTAINERS_CHECKBOUNDS
-    static constexpr auto assert_in_bounds(index_t const (&idxs)[s_rank]) noexcept -> void
-        requires(s_rank != 1)
-    {
-        for (auto d = rank_t{}; d != s_rank; ++d)
-        {
-            CONTRACTS_CHECK_INDEX(idxs[d], s_sizes[d]);
-        }
-    }
-
-    static constexpr auto assert_in_bounds(index_t idx) noexcept -> void
-    {
-        CONTRACTS_CHECK_INDEX(idx, elements());
-    }
-#endif
 };
 
 } // namespace amr::containers
