@@ -37,36 +37,6 @@ public:
         return m_tree;
     }
 
-    /**
-     * @brief Helper to gather the full conservative state from a specific cell
-     */
-    auto get_full_state(std::size_t patch_idx, std::size_t linear_idx) const {
-        auto patch_id = m_tree.get_node_index_at(patch_idx);
-        amr::containers::static_vector<double, NVAR> state;
-
-        // Static loop over the FieldTags defined in the Equation policy
-        auto fill_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-            ((state[Is] = m_tree.template get_patch<
-                typename std::tuple_element<Is, typename EquationT::FieldTags>::type
-              >(patch_id)[linear_idx]), ...);
-        };
-        fill_state(std::make_index_sequence<NVAR>{});
-        
-        return state;
-    }
-
-    void set_full_state(std::size_t patch_idx, std::size_t linear_idx, 
-                        const amr::containers::static_vector<double, NVAR>& state) {
-        auto patch_id = m_tree.get_node_index_at(patch_idx);
-        
-        auto write_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-            ((m_tree.template get_patch<
-                typename std::tuple_element<Is, typename EquationT::FieldTags>::type
-              >(patch_id)[linear_idx] = state[Is]), ...);
-        };
-        write_state(std::make_index_sequence<NVAR>{});
-    }
-
     double get_gamma() const {
         return gamma;
     }
@@ -81,6 +51,16 @@ public:
             auto patch_id = m_tree.get_node_index_at(p_idx);
             auto c_size   = GeometryT::cell_sizes(patch_id);
 
+            // Fetch the tuple of SoA patch references (same as time_step)
+            auto fetch_patches = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                return std::forward_as_tuple(
+                    m_tree.template get_patch<
+                        typename std::tuple_element<Is, typename EquationT::FieldTags>::type
+                    >(patch_id)...
+                );
+            };
+            auto patches = fetch_patches(std::make_index_sequence<NVAR>{});
+
             for (std::size_t l_idx = 0; l_idx < PatchLayoutT::flat_size(); ++l_idx) {
                 if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(l_idx)) continue;
 
@@ -94,7 +74,11 @@ public:
                 amr::containers::static_vector<double, NVAR> cons;
                 EquationT::primitiveToConservative(prim, cons, gamma);
                 
-                set_full_state(p_idx, l_idx, cons);
+                // Write directly to the SoA arrays
+                auto write_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                    ((std::get<Is>(patches)[l_idx] = cons[Is]), ...);
+                };
+                write_state(std::make_index_sequence<NVAR>{});
             }
         }
     }
@@ -111,40 +95,53 @@ public:
             auto patch_id = m_tree.get_node_index_at(p_idx);
             auto c_size   = GeometryT::cell_sizes(patch_id);
 
-            std::vector<amr::containers::static_vector<double, NVAR>> update_buffer(patch_flat_size);
+            // TODO: update_buffer will be replaced by ndtree double buffering of m_data_buffers
+            std::array<std::vector<double>, NVAR> update_buffer;
+            for (int k = 0; k < NVAR; ++k) update_buffer[k].resize(patch_flat_size, 0.0);
+
+            // Extract a tuple of references to all the SoA patches for this node AT ONCE
+            auto fetch_patches = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                return std::forward_as_tuple(
+                    m_tree.template get_patch<
+                        typename std::tuple_element<Is, typename EquationT::FieldTags>::type
+                    >(patch_id)...
+                );
+            };
+            auto patches = fetch_patches(std::make_index_sequence<NVAR>{});
 
             for (std::size_t l_idx = 0; l_idx < patch_flat_size; ++l_idx) {
                 if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(l_idx)) continue;
 
-                auto U_cell = get_full_state(p_idx, l_idx);
                 amr::containers::static_vector<double, NVAR> total_update = amr::containers::static_vector<double, NVAR>{};
 
                 // Generic loop over dimensions (X, Y, Z)
                 for (int d = 0; d < DIM; ++d) {
                     size_t stride = (d == 0) ? 1 : (d == 1 ? stride_y : stride_z);
-                    
-                    auto U_L = get_full_state(p_idx, l_idx - stride);
-                    auto U_R = get_full_state(p_idx, l_idx + stride);
 
                     amr::containers::static_vector<double, NVAR> fL, fR;
-                    EquationT::rusanovFlux(U_L, U_cell, fL, d, gamma);
-                    EquationT::rusanovFlux(U_cell, U_R, fR, d, gamma);
+                    EquationT::rusanovFlux(patches, l_idx-stride, l_idx, fL, d, gamma);
+                    EquationT::rusanovFlux(patches, l_idx, l_idx+stride, fR, d, gamma);
 
                     for (int k = 0; k < NVAR; ++k) {
                         total_update[k] -= (dt / c_size[d]) * (fR[k] - fL[k]);
                     }
                 }
 
-                for (int k = 0; k < NVAR; ++k) {
-                    update_buffer[l_idx][k] = U_cell[k] + total_update[k];
-                }
+                auto apply_update = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                    ((update_buffer[Is][l_idx] = std::get<Is>(patches)[l_idx] + total_update[Is]), ...);
+                };
+                apply_update(std::make_index_sequence<NVAR>{});
             }
 
-            for (std::size_t l_idx = 0; l_idx < patch_flat_size; ++l_idx) {
-                if (!amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(l_idx)) {
-                    set_full_state(p_idx, l_idx, update_buffer[l_idx]);
+            auto write_back = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                for (std::size_t l_idx = 0; l_idx < patch_flat_size; ++l_idx) {
+                    if (!amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(l_idx)) {
+                        // std::get<Is>(patches) gets the patch, [l_idx] accesses the element
+                        ((std::get<Is>(patches)[l_idx] = update_buffer[Is][l_idx]), ...);
+                    }
                 }
-            }
+            };
+            write_back(std::make_index_sequence<NVAR>{});
         }
     }
 
@@ -155,14 +152,22 @@ public:
             auto patch_id = m_tree.get_node_index_at(p_idx);
             auto c_size = GeometryT::cell_sizes(patch_id);
 
+            // Fetch the SoA patch tuple outside the cell loop
+            auto fetch_patches = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                return std::forward_as_tuple(
+                    m_tree.template get_patch<
+                        typename std::tuple_element<Is, typename EquationT::FieldTags>::type
+                    >(patch_id)...
+                );
+            };
+            auto patches = fetch_patches(std::make_index_sequence<NVAR>{});
+
             for (std::size_t l_idx = 0; l_idx < PatchLayoutT::flat_size(); ++l_idx) {
                 if (amr::ndt::utils::patches::is_halo_cell<PatchLayoutT>(l_idx)) continue;
 
-                auto U = get_full_state(p_idx, l_idx);
-                
-                // Ask Equation for max wave speed in each direction
+                // Ask Equation for max wave speed directly from the SoA tuple
                 for (int d = 0; d < DIM; ++d) {
-                    double speed = EquationT::getMaxSpeed(U, d, gamma);
+                    double speed = EquationT::getMaxSpeedSoA(patches, l_idx, d, gamma);
                     if (speed > 1e-12) {
                         dt_min = std::min(dt_min, c_size[d] / speed);
                     }

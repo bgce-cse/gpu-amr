@@ -42,8 +42,8 @@ int main()
 
     amr::ndt::print::vtk_print<physics_t> printer("euler_print");
 
-    double            tmax            = 40;  // Example tmax, adjust as needed
-    double            print_frequency = 5.0; // Print every 10 seconds
+    double            tmax            = 400;  // Example tmax, adjust as needed
+    double            print_frequency = 10.0; // Print every 10 seconds
     const std::string output_prefix   = "solver_integration_test_refine";
 
     int inital_refinement = 3;

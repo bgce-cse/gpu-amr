@@ -42,22 +42,48 @@ public:
      * @brief Rusanov (Local Lax-Friedrichs) Numerical Flux
      * Used to resolve the state at the interface between two cells.
      */
-    static void rusanovFlux(const amr::containers::static_vector<double, NVAR>& UL, 
-                           const amr::containers::static_vector<double, NVAR>& UR, 
-                           amr::containers::static_vector<double, NVAR>& flux, 
-                           int direction,
-                           [[maybe_unused]] double gamma) {
+    template <typename PatchTuple>
+    static void rusanovFlux(const PatchTuple& patches, 
+        std::size_t idx_L, 
+        std::size_t idx_R, 
+        amr::containers::static_vector<double, NVAR>& flux, 
+        int direction,
+        [[maybe_unused]] double gamma) 
+    {
+        // Thread-local registers
+        double UL_scalar = std::get<0>(patches)[idx_L];
+        double UR_scalar = std::get<0>(patches)[idx_R];
         
         // Calculate physical fluxes
-        double fluxL = UL[0] * Velocity[direction];
-        double fluxR = UR[0] * Velocity[direction];
+        double fluxL = UL_scalar * Velocity[direction];
+        double fluxR = UR_scalar * Velocity[direction];
         
         // For linear advection, the wave speed is simply the constant velocity component
         double smax = std::abs(Velocity[direction]);
         
         // Numerical Flux: F* = 0.5 * (fL + fR) - 0.5 * smax * (uR - uL)
         // This provides upwind-like stability.
-        flux[0] = 0.5 * (fluxL + fluxR) - 0.5 * smax * (UR[0] - UL[0]);
+        flux[0] = 0.5 * (fluxL + fluxR) - 0.5 * smax * (UR_scalar - UL_scalar);
+    }
+
+    /**
+     * @brief SoA-compatible wrapper for max wave speed calculation.
+     */
+    template <typename PatchTuple>
+    static double getMaxSpeedSoA(const PatchTuple& patches, 
+                                 std::size_t idx, 
+                                 int direction, 
+                                 double gamma) {
+        
+        // Read directly from global memory into fast thread-local registers
+        amr::containers::static_vector<double, NVAR> cons;
+        auto fetch_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            ((cons[Is] = std::get<Is>(patches)[idx]), ...);
+        };
+        fetch_state(std::make_index_sequence<NVAR>{});
+
+        // Reuse the math
+        return getMaxSpeed(cons, direction, gamma);
     }
 
     /**

@@ -121,7 +121,25 @@ public:
      * @param direction Direction index (0=x, 1=y, 2=z)
      * @param gamma Specific heat ratio
      */
-    static void rusanovFlux(const amr::containers::static_vector<double, NVAR>& UL, const amr::containers::static_vector<double, NVAR>& UR, amr::containers::static_vector<double, NVAR>& flux, int direction, double gamma) {
+    template <typename PatchTuple>
+    static void rusanovFlux(const PatchTuple& patches, 
+        std::size_t idx_L, 
+        std::size_t idx_R, 
+        amr::containers::static_vector<double, NVAR>& flux, 
+        int direction, 
+        double gamma) 
+    {
+        // Thread-local storage (maps directly to fast GPU registers)
+        amr::containers::static_vector<double, NVAR> UL;
+        amr::containers::static_vector<double, NVAR> UR;
+
+        // Coalesced read from Global Memory (patches) into Registers (UL, UR)
+        auto fetch_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            ((UL[Is] = std::get<Is>(patches)[idx_L]), ...);
+            ((UR[Is] = std::get<Is>(patches)[idx_R]), ...);
+        };
+        fetch_state(std::make_index_sequence<NVAR>{});
+
         // Compute physical fluxes for left and right states
         amr::containers::static_vector<double, NVAR> fluxL, fluxR;
         computeFlux(UL, fluxL, direction, gamma);
@@ -147,6 +165,26 @@ public:
         for (int k = 0; k < NVAR; k++) {
             flux[k] = 0.5 * (fluxL[k] + fluxR[k]) - 0.5 * smax * (UR[k] - UL[k]);
         }
+    }
+
+    /**
+     * @brief SoA-compatible wrapper for max wave speed calculation.
+     */
+    template <typename PatchTuple>
+    static double getMaxSpeedSoA(const PatchTuple& patches, 
+                                 std::size_t idx, 
+                                 int direction, 
+                                 double gamma) {
+        
+        // Read directly from global memory into fast thread-local registers
+        amr::containers::static_vector<double, NVAR> cons;
+        auto fetch_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            ((cons[Is] = std::get<Is>(patches)[idx]), ...);
+        };
+        fetch_state(std::make_index_sequence<NVAR>{});
+
+        // Reuse the math
+        return getMaxSpeed(cons, direction, gamma);
     }
 
     /**
