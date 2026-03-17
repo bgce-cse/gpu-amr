@@ -67,9 +67,6 @@ struct DefaultAMRPolicy
     static constexpr std::size_t Dim         = Policy::Dim;
     static constexpr std::size_t NumChildren = (1 << Dim);
 
-    /**
-     * @brief Compile-time helper: make offset vector for a given child_offset
-     */
     template <std::size_t ChildOffset, std::size_t... Is>
     static constexpr amr::containers::static_vector<double, Dim>
         make_offset_vector_impl(std::index_sequence<Is...>)
@@ -85,9 +82,6 @@ struct DefaultAMRPolicy
         return make_offset_vector_impl<ChildOffset>(std::make_index_sequence<Dim>{});
     }
 
-    /**
-     * @brief Compile-time map of all child_offset → offset_vector
-     */
     template <std::size_t... Is>
     static constexpr auto make_offset_table_impl(std::index_sequence<Is...>)
     {
@@ -101,8 +95,31 @@ struct DefaultAMRPolicy
         return make_offset_table_impl(std::make_index_sequence<NumChildren>{});
     }
 
-    // The table itself, compile-time
     static constexpr auto offset_table = make_offset_table();
+
+    static constexpr std::size_t flip_child_offset(std::size_t i) noexcept
+    {
+        std::size_t result = 0;
+        for (std::size_t d = 0; d < Dim; ++d)
+        {
+            result |= ((i >> d) & 1) << d;
+        }
+        return result;
+    }
+
+    template <std::integral auto N>
+    static constexpr auto interpolation(
+        auto&                         to,
+        std::array<index_t, N> const& to_idxs,
+        auto const&                   from,
+        index_t const                 from_idx
+    ) noexcept -> void
+    {
+        for (std::size_t i = 0; i < static_cast<std::size_t>(N); ++i)
+        {
+            interpolation(to, to_idxs[i], flip_child_offset(i), from, from_idx);
+        }
+    }
 
     static constexpr auto interpolation(
         auto&          to,
@@ -115,29 +132,10 @@ struct DefaultAMRPolicy
         to[to_idx] = interpolate_impl(from[from_idx], child_offset);
     }
 
-    template <std::integral auto N>
-    static constexpr auto interpolation(
-        auto&                         to,
-        std::array<index_t, N> const& to_idxs,
-        auto const&                   from,
-        index_t const                 from_idx
-    ) noexcept -> void
-    {
-        for (index_t i{}; i != index_t{ N }; ++i)
-        {
-            interpolation(to, to_idxs[i], i, from, from_idx);
-        }
-    }
-
-    /**
-     * @brief Interpolate values during AMR prolongation
-     * Handles three cases: DG tensors, vectors of DG tensors, and everything else
-     */
     template <typename Value>
     static constexpr Value
         interpolate_impl(const Value& parent_val, std::size_t child_offset)
     {
-        // Case 1: DG tensor (S1) → real prolongation via basis evaluation
         if constexpr (is_dg_tensor_v<Value>)
         {
             using tensor_t      = Value;
@@ -148,22 +146,16 @@ struct DefaultAMRPolicy
 
             const vector_t& offset = offset_table[child_offset];
 
-            // std::cout << "[INTERPOLATE] parent_val offset " << child_offset << ": "
-            //           << parent_val << "\n";
-
             multi_index_t idx{};
             do
             {
                 vector_t x{};
-                x = 0.5 * global_t::Quadrature::tensor_point(idx) + offset;
-
+                x           = 0.5 * global_t::Quadrature::tensor_point(idx) + offset;
                 result[idx] = global_t::Basis::evaluate_basis(parent_val, x);
             } while (idx.increment());
 
-            // std::cout << "[INTERPOLATE] result: " << result << "\n";
             return result;
         }
-        // Case 2: Vector of DG tensors (S2 flux) → recursively interpolate each component
         else
         {
             Value result{};
@@ -171,10 +163,6 @@ struct DefaultAMRPolicy
         }
     }
 
-    /**
-     * @brief Helper: compute child offset from parent point coordinates
-     * Determines which child quadrant the point falls into based on >= 0.5
-     */
     template <std::size_t... Is>
     static constexpr std::size_t compute_child_offset_impl(
         std::index_sequence<Is...>,
@@ -191,10 +179,6 @@ struct DefaultAMRPolicy
         return compute_child_offset_impl(std::make_index_sequence<Dim>{}, parent_point);
     }
 
-    /**
-     * @brief Helper: map parent point to child point using offset table
-     * Scales by 2.0 and shifts based on offset (subtracts 1 if offset > 0)
-     */
     template <std::size_t... Is>
     static constexpr amr::containers::static_vector<double, Dim> map_to_child_point_impl(
         std::index_sequence<Is...>,
@@ -227,32 +211,20 @@ struct DefaultAMRPolicy
     {
         using value_type = typename std::remove_cvref_t<decltype(from)>::value_type;
         amr::containers::static_vector<value_type, N> children;
-        for (index_t i{}; i != index_t{ N }; ++i)
+
+        for (std::size_t i = 0; i < static_cast<std::size_t>(N); ++i)
         {
-            children[i] = from[from_idxs[i]];
+            children[flip_child_offset(i)] = from[from_idxs[i]];
         }
         to[to_idx] = restriction_impl(children);
     }
 
-    /**
-     * @brief Coarsening (Restriction): compute coarse value from fine children
-     * Mirrors the prolongation/interpolation pattern:
-     * - Iterate over each tensor point in the parent
-     * - For each point, evaluate basis using the appropriate child based on coordinates
-     * - Use same map and mask for interpolation as prolongate
-     */
-    // Overload for single child value (backward compatibility)
-    // Overload for array of children: select appropriate child based on parent point
-    // coordinates
-    template <typename Value, std::size_t NumChildren>
-    static constexpr Value restriction_impl(
-        const amr::containers::static_vector<Value, NumChildren>& children
-    )
+    template <typename Value, std::size_t NC>
+    static constexpr Value
+        restriction_impl(const amr::containers::static_vector<Value, NC>& children)
     {
-        // Case 1: DG tensor (S1) → real restriction via basis evaluation
         if constexpr (is_dg_tensor_v<Value>)
         {
-            // std::cout << "child1 = " << children << "\n";
             using tensor_t      = Value;
             using multi_index_t = typename tensor_t::multi_index_t;
             using vector_t      = amr::containers::static_vector<double, Dim>;
@@ -262,26 +234,17 @@ struct DefaultAMRPolicy
             multi_index_t parent_idx{};
             do
             {
-                vector_t parent_point = global_t::Quadrature::tensor_point(parent_idx);
-                // std::cout << "parent point" << parent_point << "\n";
-
+                vector_t    parent_point = global_t::Quadrature::tensor_point(parent_idx);
                 std::size_t child_offset = compute_child_offset(parent_point);
-
-                const Value& child_val = children[child_offset];
-
-                // Map parent point to child point (scale by 2 and shift)
-                vector_t child_point =
+                const Value& child_val   = children[child_offset];
+                vector_t     child_point =
                     map_to_child_point(parent_point, offset_table[child_offset]);
-                // std::cout << "child offset" << child_point << "\n";
                 result[parent_idx] =
                     global_t::Basis::evaluate_basis(child_val, child_point);
-
             } while (parent_idx.increment());
-            // std::cout << "RESULT = " << result << "\n";
+
             return result;
         }
-        // Case 2: Vector of DG tensors (S2 flux) → recursively restrict each
-        // component
         else
         {
             Value result{};

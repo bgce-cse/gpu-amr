@@ -149,7 +149,7 @@ private:
         }
     }
 
-    static constexpr auto assert_in_bounds(index_t idx) noexcept -> void
+    static constexpr auto assert_in_bounds([[maybe_unused]] index_t idx) noexcept -> void
     {
         CONTRACTS_CHECK_INDEX(idx, elements());
     }

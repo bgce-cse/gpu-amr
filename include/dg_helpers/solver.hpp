@@ -1,6 +1,7 @@
 #ifndef DG_HELPERS_SOLVER_HPP
 #define DG_HELPERS_SOLVER_HPP
 
+#include "config/generated_config.hpp"
 #include "containers/container_utils.hpp"
 #include "containers/static_layout.hpp"
 #include "containers/static_shape.hpp"
@@ -10,7 +11,6 @@
 #include "dg_helpers/rhs.hpp"
 #include "dg_helpers/time_integration/time_integration.hpp"
 #include "dg_helpers/tree_builder.hpp"
-#include "config/generated_config.hpp"
 #include "ndtree/print_dg_tree_v2.hpp"
 #include <chrono>
 #include <cmath>
@@ -136,7 +136,7 @@ struct DGSolver
 
             apply_amr(timestep, next_amr_step);
 
-            if (time >= next_plot_time)
+            if (true) // time >= next_plot_time
             {
                 write_output(printer, timestep, time);
                 next_plot_time += params.plot_interval;

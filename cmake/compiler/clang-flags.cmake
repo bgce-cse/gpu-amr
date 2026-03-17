@@ -41,27 +41,33 @@ set(AMR_DEBUG_FLAGS
 	-ffinite-math-only
 	-fno-inline
 	-march=native
-	-mavx
 	-O0
 )
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64|ARM64")
+    list(APPEND AMR_DEBUG_FLAGS -mavx)
+endif()
 
 set(AMR_RELEASE_FLAGS
 	-fno-math-errno
 	-ffast-math
 	-fno-trapping-math
 	-march=native
-	-mavx
 	-O3
 )
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64|ARM64")
+    list(APPEND AMR_RELEASE_FLAGS -mavx)
+endif()
 
 set(AMR_RELWITHDEBINFO_FLAGS
 	-fno-math-errno
 	-fno-trapping-math
 	-fstrength-reduce
 	-march=native
-	-mavx
 	-O2
 )
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64|ARM64")
+    list(APPEND AMR_RELWITHDEBINFO_FLAGS -mavx)
+endif()
 
 set(AMR_SANITIZERS
 	-fsanitize=address
@@ -69,11 +75,14 @@ set(AMR_SANITIZERS
 	-fsanitize=float-cast-overflow
 	-fsanitize=float-divide-by-zero
 	-fsanitize=integer-divide-by-zero
-	-fsanitize=leak
 	-fsanitize=null
 	-fsanitize=signed-integer-overflow
 	-fsanitize=undefined
 )
+
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64|ARM64")
+    list(APPEND AMR_SANITIZERS 	-fsanitize=leak)
+endif()
 
 set(CONSTEXPR_LIMIT_FLAGS
 )

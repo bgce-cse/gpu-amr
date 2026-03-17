@@ -151,7 +151,8 @@ public:
             fmt::format_string<Args...> fmt,
             Args const&... args) -> void
     {
-        const auto msg = detail::format_to_buffer(fmt, fmt::make_format_args(args...));
+        const auto msg =
+            detail::format_to_buffer(fmt.get(), fmt::make_format_args(args...));
         log(sev, msg);
     }
 
