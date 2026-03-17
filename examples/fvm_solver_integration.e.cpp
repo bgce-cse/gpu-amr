@@ -186,8 +186,6 @@ int main()
             solver.get_tree().halo_exchange_update();
         }
 
-        if (step > 100) CONTRACTS_CHECK(false);
-
         t += dt;
 
 #if VTK_PRINT
