@@ -7,6 +7,8 @@
 #include "ndtree/patch_layout.hpp"
 #include "solver/amr_solver_MUSCL.hpp"
 #include "solver/cell_types.hpp"
+#include "solver/error_norms.hpp"
+#include "solver/EulerPhysics.hpp"
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -21,12 +23,12 @@
 int main()
 {
     std::cout << "Hello AMR world\n";
-    constexpr std::size_t N    = 20;
+    constexpr std::size_t N    = 10;
     constexpr std::size_t M    = 20;
     constexpr std::size_t Halo = 2;
 
-    constexpr double physics_x = 1000;
-    constexpr double physics_y = 1000;
+    constexpr double physics_x = 1.0;
+    constexpr double physics_y = 1.0;
     double t_output = 5;
 
 
@@ -108,12 +110,13 @@ int main()
     constexpr double EPS = 0.1;
     constexpr double C   = 1.0;
 
-    auto manufacturedIC = [](double x, double y)
+    auto manufacturedIC = [=](double x, double y)
         -> amr::containers::static_vector<double, 4>
     {
         amr::containers::static_vector<double, 4> prim;
 
-        double rho = 1.0 + EPS * std::sin(2.0 * M_PI * (x + y));
+        //double rho = 1.0 + EPS * std::sin(2.0 * M_PI * (x + y));
+        double rho = 1.0 + EPS * std::sin(2.0 * M_PI * (x / physics_x + y / physics_y));
         double u   = C;
         double v   = C;
         double p   = 1.0;
@@ -139,8 +142,7 @@ int main()
     while (t < t_output)
     {
         double dt = solver.compute_time_step();
-
-        //std::cout << "Step " << step << ", t=" << t << ", dt=" << dt << '\n';
+        if (t + dt > t_output) dt = t_output - t;
 
         solver.time_step(dt);
         solver.get_tree().halo_exchange_update();
@@ -150,6 +152,41 @@ int main()
     }
     std::cout << "Final t = " << t << "\n";
 
+    auto exact_solution_prim = make_exact_advection_solution_2d(
+        manufacturedIC,
+        C, C,
+        0.0, physics_x,
+        0.0, physics_y,
+        true
+    );
+
+    auto exact_solution_cons = [&](double x, double y, double t_now)
+    {
+        const auto prim = exact_solution_prim(x, y, t_now);
+
+        amr::containers::static_vector<double, 4> cons;
+        EulerPhysics2D::primitiveToConservative(prim, cons, 1.4);
+
+        return cons;
+    };
+
+    const auto err = compute_error_norms_euler_2d<tree_t, physics_t>(
+        solver.get_tree(),
+        t,
+        exact_solution_cons
+    );
+
+    print_error_norms<4>(
+        err,
+        { "rho", "rhou", "rhov", "E" }
+    );
+
+    std::printf(
+        "N=%zu  L1(rho)=%.8e  L2(rho)=%.8e  Linf(rho)=%.8e\n",
+        N, err.l1[0], err.l2[0], err.linf[0]
+    );
+
+    /*
     std::vector<double> rho_snapshot;
 
     auto& tree = solver.get_tree();
@@ -163,9 +200,8 @@ int main()
         }
     }
 
-    std::ofstream out("rho_N20.txt");
-    for (double v : rho_snapshot) out << v << "\n";
-
     std::cout << "\nSimulation completed.\n";
+    */
+
     return 0;
 }
