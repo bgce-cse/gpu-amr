@@ -43,7 +43,6 @@
 
 #define DEFAULT_SOURCE_LOG_IGNORE(...) ((void)0)
 
-//
 // -----------------------------------------------------------------------------
 // Logging macros (compile-time stripped)
 // -----------------------------------------------------------------------------
@@ -160,6 +159,7 @@ public:
 };
 
 } // namespace utility::logging
+
 #endif
 
 #endif // INCLUDED_UTILITY_LOGGING

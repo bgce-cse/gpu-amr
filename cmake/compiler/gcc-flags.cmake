@@ -93,7 +93,7 @@ set(AMR_SANITIZERS
 	-fsanitize=undefined
 )
 
-set(CONSTEXPR_LIMIT_FLAGS
+set(AMR_CONSTEXPR_LIMIT_FLAGS
     -fconstexpr-ops-limit=10000000000
     -fconstexpr-loop-limit=1048576
 )

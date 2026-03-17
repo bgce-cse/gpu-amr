@@ -1,81 +1,70 @@
 #ifndef INCLUDED_UTILITY_CONTRACTS
 #define INCLUDED_UTILITY_CONTRACTS
 
-#include "utility_concepts.hpp"
+#include <cassert>
 #include <concepts>
+#include <cstdlib>
+#include <iostream>
 #include <utility>
 
-#ifndef NDEBUG
-#    define CONTRACTS_CHECK(expr) utility::contracts::check(expr)
+#ifdef AMR_ENABLE_CONTRACTS
+#    define CONTRACTS_CHECK(expr) ::utility::contracts::check((expr), __FILE__, __LINE__)
+#    define CONTRACTS_CHECK_RANGE(i, low, high) \
+        ::utility::contracts::check_range((i), (low), (high), __FILE__, __LINE__)
+#    define CONTRACTS_CHECK_INDEX(i, size) \
+        ::utility::contracts::check_index((i), (size), __FILE__, __LINE__)
 #else
-#    define CONTRACTS_CHECK(expr) ((void)0)
+#    define CONTRACTS_CHECK(expr)               ((void)0)
+#    define CONTRACTS_CHECK_RANGE(i, low, high) ((void)0)
+#    define CONTRACTS_CHECK_INDEX(i, size)      ((void)0)
 #endif
 
 namespace utility::contracts
 {
 
-template <concepts::Arithmetic T>
-[[gnu::always_inline]]
-constexpr auto check_range(T const& i, T const& low, T const& high) noexcept -> void
+[[noreturn]]
+constexpr auto contract_fail(const char* file, int line) -> void
 {
     if (std::is_constant_evaluated())
     {
-        if constexpr (std::is_signed_v<T>)
-        {
-            if (i < low) std::unreachable();
-        }
-        if (i >= high) std::unreachable();
+        std::unreachable();
     }
-#ifndef NDEBUG
     else
     {
-        if constexpr (std::is_signed_v<T>)
-        {
-            if (i < low) [[unlikely]]
-                std::terminate();
-        }
-        if (i >= high) [[unlikely]]
-            std::terminate();
+        std::cerr << "Contract violation at " << file << ":" << line << std::endl;
+        std::exit(EXIT_FAILURE);
     }
-#else
-    else
-    {
-        if constexpr (std::is_signed_v<T>)
-        {
-            if ((i < low) || (i >= high)) std::unreachable();
-        }
-    }
-#endif
 }
 
-template <concepts::Arithmetic T>
-[[gnu::always_inline]]
-constexpr auto check_index(T const& i, T const& size) noexcept -> void
+constexpr auto check(bool cond, const char* file, int line) noexcept -> void
 {
-    check_range(i, T{}, size);
+    if (!cond) contract_fail(file, line);
 }
 
-[[gnu::always_inline]]
-constexpr auto check(auto&& cond) noexcept -> void
-    requires(std::is_convertible_v<std::remove_cvref_t<decltype(cond)>, bool>)
+template <std::integral I>
+constexpr auto check_range(
+    I const&    i,
+    I const&    low,
+    I const&    high,
+    const char* file,
+    int         line
+) noexcept -> void
 {
-    const auto b = static_cast<bool>(cond);
-    if (std::is_constant_evaluated())
+    check((i >= low) && (i < high));
+}
+
+template <std::integral I>
+constexpr auto check_index(I const& i, I const& size, const char* file, int line) noexcept
+    -> void
+{
+    if constexpr (std::is_signed_v<I>)
     {
-        if (!b) std::unreachable();
+        check((i >= I{}) && (i < size), file, line);
     }
-#ifndef NDEBUG
     else
     {
-        if (!b) [[unlikely]]
-            std::terminate();
+        check(i < size, file, line);
     }
-#else
-    else
-    {
-        if (!b) std::unreachable();
-    }
-#endif
 }
 
 } // namespace utility::contracts

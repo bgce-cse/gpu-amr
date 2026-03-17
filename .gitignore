@@ -171,6 +171,8 @@ dkms.conf
 *.cubin
 *.fatbin
 
+.DS_Store
+
 ####### Output
 *.vtk
 *vtk*

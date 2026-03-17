@@ -343,7 +343,7 @@ public:
     ) -> std::array<index_t, s_rank>
     {
         static_assert(s_rank > rank_t{ 1 });
-        utility::contracts::check_index(neighbor_linear_index, s_nd_fanout / s_1d_fanout);
+        CONTRACTS_CHECK_INDEX(neighbor_linear_index, s_nd_fanout / s_1d_fanout);
         return [&d](index_t idx)
         {
             std::array<index_t, s_rank> ret;

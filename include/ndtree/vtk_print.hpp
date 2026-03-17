@@ -6,6 +6,7 @@
 #include "utility/error_handling.hpp"
 #include "utility/logging.hpp"
 #include "utility/utility_concepts.hpp"
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 

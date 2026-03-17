@@ -96,7 +96,10 @@ int main()
 
     using patch_index_t  = amr::ndt::morton::morton_id<9u, 2u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
-    using tree_t         = amr::ndt::tree::ndtree<cell, patch_index_t, patch_layout_t>;
+    using intergrid_operator_t =
+        amr::ndt::intergrid_operator::linear_interpolator<patch_layout_t>;
+    using tree_t =
+        amr::ndt::tree::ndtree<cell, patch_index_t, patch_layout_t, intergrid_operator_t>;
     using physics_t =
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 

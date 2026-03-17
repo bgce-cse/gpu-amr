@@ -38,7 +38,7 @@ constexpr auto operator==(C const& c1, C const& c2) noexcept -> bool
 {
     if constexpr (std::is_floating_point_v<typename C::value_type>)
     {
-        return nearly_equals(c1, c2);
+        return approx_equals(c1, c2);
     }
     else
     {
@@ -55,7 +55,7 @@ constexpr auto operator!=(C const& c1, C const& c2) noexcept -> bool
 
 template <concepts::Container C>
 [[nodiscard]]
-constexpr auto nearly_equals(
+constexpr auto approx_equals(
     C const&                     c1,
     C const&                     c2,
     const typename C::value_type epsilon = 1e-4

@@ -6,18 +6,22 @@ Adaptative Mesh Refinement (AMR) framework.
 
 ## Build
 
-The examples for this project in the `examples/` directory. Examples with a `.e.cpp` extension, are automatically detected by CMake.\
-The examples for this project in the `benchmark/` directory. Benchmarks with a `.b.cpp` extension, are automatically detected by CMake.\
+The examples for this project in the `examples/` directory. Files with a `.e.cpp` extension, are automatically detected by CMake.\
+The benchmarks for this project in the `benchmark/` directory. Files with a `.b.cpp` extension, are automatically detected by CMake.\
+The testes for this project in the `test/` directory. Files with a `.t.cpp` extension, are automatically detected by CMake.
 
-These examples can be compiled with cmake using the provided CMakeLists.txt in
-the root directory.\
-One possible way to compile is:
-1. Create a build directory and move into it: `mkdir build && cd build`
-2. Run cmake: `cmake -DCMAKE_BUILD_TYPE={Debug,Release,RelWithDebInfo} [-DOPTIONS=OPT...] ..`
-3. Run the generated Makefile: `make`
+The project is built with CMake. In order to allow multiple compiler toolchains
+an appropriate driver is required.
+CMakePresets.json contains defaults for the most common configurations and new
+configurations should be added for other compilers, toolchains or common
+configurations.
+
+The project can be build using theses presets, for example, from the root directory
+1. Generate the configuration and build output directory: `cmake --preset $(preset) [-DOPTIONS=OPT...]`
+2. Build the project: `cmake --build --preset $(preset)`\
 If compilation is successful, the build output will be located in
-`bin/{Debug,Release,RelWithDebInfo}/$(example)`.
-Refer to [Compile time configuration](#Compile_time_configuration) for further details.
+`build/$(preset)/bin/examples/$(example).o`.\
+Available presets can be listed with `cmake --list-presets`.
 
 ### Build Options
 
@@ -25,20 +29,22 @@ The optional build flags `OPTIONS` are used to enable parts of the project that 
 The supported arguments are
 - `ENABLE_SANITIZERS={OFF,ON}`: Disables/Enables the use of sanitizers. Defaults to `ON`.
 - `LOG_LEVEL={TRACE,DEBUG,INFO,WARNING,ERROR,FATAL,OFF}`: Control the logging level. Defaults to `INFO`.
+- `EXECUTION={PAR,SEQ}`: Control the logging level. Defaults to `SEQ`.
 
 ### Compile Time Configuration
 
-Work in progress
+Compile time configuration of the solver is done through `config/config.yaml`
+and a parser in `cmake/functions/GenerateConfig.cmake`. The generated
+configuration file is located in `include/config/generated_config.hpp`.
 
 ## Testing
 
 The tests for this project in the `tests/` directory. Tests with a `.t.cpp` extension, are automatically detected by CMake.\
 GoogleTest has been used as the testing framework.
 
-Test can be run after building. For example, from the project root directory:
-1. `cmake -S . -B build`
-1. `cmake --build build --parallel 12`
-1. `ctest --test-dir build/tests`
+Test can be run after building. For example, from the project root directory,
+after a successful build:
+1. `ctest --test-dir build/$(preset)/tests`
 
 ## Performance Analysis
 

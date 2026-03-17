@@ -2,6 +2,7 @@
 #include "containers/static_shape.hpp"
 #include "containers/static_vector.hpp"
 #include "morton/morton_id.hpp"
+#include "ndtree/intergrid_operator.hpp"
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
@@ -16,6 +17,8 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+
+#define VTK_PRINT (true)
 
 int main()
 {
@@ -33,17 +36,26 @@ int main()
 
     using patch_index_t  = amr::ndt::morton::morton_id<7u, 2u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
-    using tree_t =
-        amr::ndt::tree::ndtree<amr::cell::EulerCell2D, patch_index_t, patch_layout_t>;
+    using intergrid_operator_t =
+        amr::ndt::intergrid_operator::linear_interpolator<patch_layout_t>;
+    using tree_t = amr::ndt::tree::ndtree<
+        amr::cell::EulerCell2D,
+        patch_index_t,
+        patch_layout_t,
+        intergrid_operator_t>;
 
     using physics_t =
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
+#if VTK_PRINT
     amr::ndt::print::vtk_print<physics_t> printer("euler_print");
+#endif
 
-    double            tmax            = 400; // Example tmax, adjust as needed
-    double            print_frequency = 5.0; // Print every 10 seconds
-    const std::string output_prefix   = "solver_integration_test_refine";
+    double tmax = 400; // Example tmax, adjust as needed
+    [[maybe_unused]]
+    double print_frequency = 5.0; // Print every 10 seconds
+    [[maybe_unused]]
+    const std::string output_prefix = "solver_integration_test_refine";
 
     int inital_refinement = 3;
 
@@ -139,14 +151,18 @@ int main()
     solver.initialize(acousticPulseIC);
     solver.get_tree().halo_exchange_update();
 
-    // Print initial state
+// Print initial state
+#if VTK_PRINT
     printer.print(solver.get_tree(), "_iteration_0.vtk");
+#endif
 
     // Main Simulation Loop
-    double t               = 0.0;
-    int    step            = 1;
+    double t    = 0.0;
+    int    step = 1;
+    [[maybe_unused]]
     double next_print_time = print_frequency;
-    int    output_counter  = 1;
+    [[maybe_unused]]
+    int output_counter = 1;
 
     std::cout << "\nStarting AMR simulation...\n";
 
@@ -161,7 +177,8 @@ int main()
 
         solver.time_step(dt);
         solver.get_tree().halo_exchange_update();
-        cell_update_count += solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
+        cell_update_count +=
+            solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
 
         if (step % 5 == 0)
         {
@@ -171,6 +188,7 @@ int main()
 
         t += dt;
 
+#if VTK_PRINT
         // Print only when we've passed the next print time
         if (t >= next_print_time)
         {
@@ -181,6 +199,7 @@ int main()
             next_print_time += print_frequency;
             output_counter++;
         }
+#endif
 
         step++;
     }
