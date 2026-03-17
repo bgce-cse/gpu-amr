@@ -1,6 +1,7 @@
 #ifndef DG_HELPERS_SOLVER_HPP
 #define DG_HELPERS_SOLVER_HPP
 
+#include "config/generated_config.hpp"
 #include "containers/container_utils.hpp"
 #include "containers/static_layout.hpp"
 #include "containers/static_shape.hpp"
@@ -10,12 +11,11 @@
 #include "dg_helpers/rhs.hpp"
 #include "dg_helpers/time_integration/time_integration.hpp"
 #include "dg_helpers/tree_builder.hpp"
-#include "config/generated_config.hpp"
 #include "ndtree/print_dg_tree_v2.hpp"
+#include "utility/logging.hpp"
 #include <chrono>
 #include <cmath>
 #include <cstddef>
-#include <iostream>
 #include <limits>
 #include <string>
 
@@ -144,9 +144,10 @@ struct DGSolver
         }
         const auto end      = std::chrono::steady_clock::now();
         const auto duration = std::chrono::duration<double>(end - start).count();
-        std::cout << "Processed cells:\t" << processed_cell_count << '\n';
-        std::cout << "Processed cells/s\t: " << (double)processed_cell_count / duration
-                  << '\n';
+        DEFAULT_SOURCE_LOG_PROGRESS("Processed cells:\t{}\n", processed_cell_count);
+        DEFAULT_SOURCE_LOG_PROGRESS(
+            "Processed cells/s:\t{}\n", (double)processed_cell_count / duration
+        );
     }
 
 private:
@@ -275,10 +276,14 @@ private:
             else
                 ++n_stable;
         }
-        const auto old_size = tree().size();
-        std::cout << "[AMR] step=" << timestep << "  patches=" << old_size
-                  << "  votes: refine=" << n_refine << " coarsen=" << n_coarsen
-                  << " stable=" << n_stable << "\n";
+        DEFAULT_SOURCE_LOG_PROGRESS("step={}", timestep);
+        DEFAULT_SOURCE_LOG_INFO(
+            "patches={}\tvotes:\trefine={}\tcoarsen={}\tstable={}",
+            tree().size(),
+            n_refine,
+            n_coarsen,
+            n_stable
+        );
 
         // Build a look-up map keyed by patch_index_t for the
         // tree's callback.
@@ -296,7 +301,7 @@ private:
             }
         );
 
-        std::cout << "[AMR] after reconstruct: patches=" << tree().size() << "\n";
+        DEFAULT_SOURCE_LOG_INFO("after reconstruct: patches={}", tree().size());
 
         // Halo exchange after AMR so newly created patches have valid halos
         tree().halo_exchange_update();
@@ -311,7 +316,7 @@ private:
     {
         const std::string ext = "_t" + std::to_string(timestep) + ".vtk";
         printer.template print<S1>(tree(), ext);
-        std::cout << "Output " << ext << " time=" << time << "\n";
+        DEFAULT_SOURCE_LOG_PROGRESS("Output {} time={}", ext, time);
     }
 };
 
