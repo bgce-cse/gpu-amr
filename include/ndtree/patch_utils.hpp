@@ -42,7 +42,7 @@ constexpr auto is_halo_cell(typename Layout::index_t linear_index) noexcept -> b
     constexpr auto const& sizes      = layout_t::sizes();
     constexpr size_type   halo_width = patch_layout_t::halo_width();
 
-    utility::contracts::check_index(linear_index, layout_t::flat_size());
+    CONTRACTS_CHECK_INDEX(linear_index, layout_t::flat_size());
 
     for (auto j = decltype(rank){}; j != rank; ++j)
     {
@@ -481,30 +481,45 @@ struct halo_exchange_impl_t
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
+            CONTRACTS_CHECK(
+                (positive && (contact_quadrant[dim] == index_t{})) ||
+                (!positive && (contact_quadrant[dim] == s_1d_fanout - index_t{ 1 }))
+            );
+
             std::array<index_t, s_rank> from_idxs{};
             for (auto i = index_t{}; i != s_rank; ++i)
             {
+                CONTRACTS_CHECK_INDEX(contact_quadrant[i], s_1d_fanout);
                 CONTRACTS_CHECK(
-                    i == dim
-                        ? (idxs[i] < s_1d_fanout || idxs[i] >= s_1d_fanout + s_sizes[i])
-                        : (idxs[i] >= s_1d_fanout && idxs[i] < s_1d_fanout + s_sizes[i])
+                    i == dim ? ((!positive && (idxs[i] < s_halo_width)) ||
+                                (positive && (idxs[i] >= s_halo_width + s_sizes[i])))
+                             : ((idxs[i] >= s_halo_width) &&
+                                (idxs[i] < s_halo_width + s_sizes[i]))
                 );
+
                 const auto cells_per_block = (s_sizes[i] / s_1d_fanout);
-                const auto block_offset =
-                    (i == dim && !positive)
-                        ? (cells_per_block - s_halo_width / s_1d_fanout)
-                        : index_t{};
-                const auto idx_offset =
-                    i == dim ? (direction.is_positive() ? s_sizes[i] + s_halo_width
-                                                        : index_t{})
-                             : s_halo_width;
-                utility::contracts::check_index(
-                    idxs[i] - idx_offset, i == dim ? s_halo_width : s_sizes[i]
-                );
-                utility::contracts::check_index(contact_quadrant[i], s_1d_fanout);
+                const auto fine_mapped_idx =
+                    (i == dim) ? (positive ? idxs[i] - s_sizes[i] - s_halo_width
+                                           : idxs[i] + s_sizes[i] - s_halo_width)
+                               : idxs[i] - s_halo_width;
                 from_idxs[i] = s_halo_width + (contact_quadrant[i] * cells_per_block) +
-                               block_offset + (idxs[i] - idx_offset) / s_1d_fanout;
-                utility::contracts::check_index(from_idxs[i] - s_halo_width, s_sizes[i]);
+                               fine_mapped_idx / s_1d_fanout;
+                // const auto cells_per_block = (s_sizes[i] / s_1d_fanout);
+                // const auto block_offset =
+                //     (i == dim && !positive)
+                //         ? (cells_per_block - s_halo_width / s_1d_fanout)
+                //         : index_t{};
+                // const auto idx_offset =
+                //     i == dim ? (direction.is_positive() ? s_sizes[i] + s_halo_width
+                //                                         : index_t{})
+                //              : s_halo_width;
+                // CONTRACTS_CHECK_INDEX(
+                //     idxs[i] - idx_offset, i == dim ? s_halo_width : s_sizes[i]
+                // );
+                // CONTRACTS_CHECK_INDEX(contact_quadrant[i], s_1d_fanout);
+                // from_idxs[i] = s_halo_width + (contact_quadrant[i] * cells_per_block) +
+                //                block_offset + (idxs[i] - idx_offset) / s_1d_fanout;
+                CONTRACTS_CHECK_INDEX(from_idxs[i] - s_halo_width, s_sizes[i]);
             }
 
             const auto child_offset =

@@ -66,10 +66,20 @@ target_compile_definitions(utility_logging PUBLIC
     LOGGING_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
 )
 
+# ----------------------------
+# Logging
+# ----------------------------
 set(LOG_LEVEL "INFO" CACHE STRING "Logging level")
 
 set_property(CACHE LOG_LEVEL PROPERTY STRINGS
     TRACE DEBUG INFO WARNING ERROR FATAL OFF)
+
+# ----------------------------
+# Contracts
+# ----------------------------
+set(CONTRACTS ON CACHE BOOL "Enable contracts")
+
+set_property(CACHE CONTRACTS PROPERTY VALUE ON OFF)
 
 # ----------------------------
 # Options
@@ -136,6 +146,7 @@ add_library(amr_benchmarks INTERFACE)
 add_library(amr_tests INTERFACE)
 
 target_compile_definitions(amr_examples INTERFACE
+    $<$<BOOL:${CONTRACTS}>:AMR_ENABLE_CONTRACTS=1>
     AMR_LOG_LEVEL=${LOG_LEVEL}
     AMR_EXECUTION=${EXECUTION}
 )
@@ -146,6 +157,7 @@ target_compile_definitions(amr_benchmarks INTERFACE
 )
 
 target_compile_definitions(amr_tests INTERFACE
+    $<$<BOOL:${CONTRACTS}>:AMR_ENABLE_CONTRACTS=1>
     AMR_LOG_LEVEL=OFF
     AMR_EXECUTION=${EXECUTION}
 )

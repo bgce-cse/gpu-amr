@@ -54,7 +54,7 @@ public:
     [[nodiscard]]
     static constexpr auto size(index_t const i) noexcept -> size_type
     {
-        utility::contracts::check_index(i, rank());
+        CONTRACTS_CHECK_INDEX(i, rank());
         return s_sizes[i];
     }
 

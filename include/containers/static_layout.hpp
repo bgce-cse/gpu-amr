@@ -119,7 +119,7 @@ public:
         auto linear_idx = std::transform_reduce(
             std::cbegin(idxs), std::cend(idxs), std::cbegin(s_strides), index_t{}
         );
-        utility::contracts::check_index(linear_idx, static_layout::elements());
+        CONTRACTS_CHECK_INDEX(linear_idx, static_layout::elements());
         return linear_idx;
     }
 
@@ -145,13 +145,13 @@ private:
     {
         for (auto d = rank_t{}; d != s_rank; ++d)
         {
-            utility::contracts::check_index(idxs[d], s_sizes[d]);
+            CONTRACTS_CHECK_INDEX(idxs[d], s_sizes[d]);
         }
     }
 
     static constexpr auto assert_in_bounds(index_t idx) noexcept -> void
     {
-        utility::contracts::check_index(idx, elements());
+        CONTRACTS_CHECK_INDEX(idx, elements());
     }
 #endif
 };

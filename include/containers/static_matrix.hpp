@@ -62,7 +62,7 @@ public:
     [[nodiscard]]
     static constexpr auto size(index_t const i) noexcept -> size_type
     {
-        utility::contracts::check_index(i, rank());
+        CONTRACTS_CHECK_INDEX(i, rank());
         return layout_t::size(i);
     }
 
@@ -81,7 +81,7 @@ public:
     [[nodiscard]]
     static constexpr auto stride(index_t const i) noexcept -> size_type
     {
-        utility::contracts::check_index(i, rank());
+        CONTRACTS_CHECK_INDEX(i, rank());
         return layout_t::stride(i);
     }
 
@@ -141,8 +141,8 @@ public:
     constexpr auto assert_in_bounds(size_type const j, size_type const i) const noexcept
         -> void
     {
-        utility::contracts::check_index(i, size(0));
-        utility::contracts::check_index(j, size(1));
+        CONTRACTS_CHECK_INDEX(i, size(0));
+        CONTRACTS_CHECK_INDEX(j, size(1));
     }
 #endif
 

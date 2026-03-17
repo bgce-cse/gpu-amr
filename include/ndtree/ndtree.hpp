@@ -245,7 +245,7 @@ public:
         patch_direction_t const& d
     ) const noexcept -> neighbor_patch_index_variant_t
     {
-        utility::contracts::check_index(idx, m_size);
+        CONTRACTS_CHECK_INDEX(idx, m_size);
         return m_neighbors[idx][d.index()];
     }
 

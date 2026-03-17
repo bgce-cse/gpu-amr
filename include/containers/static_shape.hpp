@@ -1,8 +1,8 @@
 #ifndef AMR_INCLUDED_STATIC_SHAPE
 #define AMR_INCLUDED_STATIC_SHAPE
 
-#include "utility/utility_concepts.hpp"
 #include "utility/contracts.hpp"
+#include "utility/utility_concepts.hpp"
 #include <array>
 
 #ifndef NDEBUG
@@ -54,7 +54,7 @@ public:
     [[nodiscard]]
     static constexpr auto size(index_t const i) noexcept -> size_type
     {
-        utility::contracts::check_index(i, s_rank);
+        CONTRACTS_CHECK_INDEX(i, s_rank);
         using container_index_t =
             typename std::remove_cvref_t<decltype(s_sizes)>::size_type;
         return s_sizes[static_cast<container_index_t>(i)];
