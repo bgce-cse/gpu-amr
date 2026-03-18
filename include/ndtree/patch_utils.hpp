@@ -182,13 +182,15 @@ constexpr auto halo_apply_section_impl(
                 );
             },
             // Finer impl
-            [&tree, &p_i, &n_idx, &args...](
+            [&tree, &p_i, &n_idx, &idx, &args...](
                 typename n_linear_idx_varant_t::finer const& neighbor
             )
             {
                 using neighbor_t = std::remove_cvref_t<decltype(neighbor)>;
                 using patch_t =
                     typename std::remove_cvref_t<decltype(tree)>::template patch_t<T>;
+
+                Halo_Exchange_Operator::s_debug_current_patch_linear_idx = idx;
 
                 const auto p_neighbors = utility::compile_time_utility::array_factory<
                     std::reference_wrapper<typename patch_t::container_t>,
@@ -209,6 +211,7 @@ constexpr auto halo_apply_section_impl(
                     p_i.data(),
                     Halo_Exchange_Operator::finer,
                     p_neighbors,
+                    neighbor.ids,
                     D,
                     std::forward<decltype(args)>(args)...
                 );
@@ -347,6 +350,7 @@ struct halo_exchange_impl_t
     static constexpr auto s_1d_fanout = static_cast<index_t>(patch_index_t::fanout());
     static constexpr auto s_nd_fanout = static_cast<index_t>(patch_index_t::nd_fanout());
     static constexpr auto s_sizes     = patch_layout_t::data_layout_t::sizes();
+    inline static thread_local index_t s_debug_current_patch_linear_idx{};
 
     using projection_hypercube_t = amr::containers::utils::types::tensor::hypercube_t<
         typename patch_layout_t::padded_layout_t::index_t,
@@ -415,6 +419,7 @@ struct halo_exchange_impl_t
         static constexpr auto operator()(
             auto&                                     current_patch,
             std::ranges::contiguous_range auto const& neighbor_patches,
+            auto const&                               neighbor_patch_ids,
             auto const&                               direction,
             auto const&                               idxs,
             [[maybe_unused]] auto&&... args
@@ -445,22 +450,47 @@ struct halo_exchange_impl_t
 
             const auto fine_patch_idx = compute_fine_patch_index();
             auto&      fine_patch     = neighbor_patches[fine_patch_idx].get();
+            [[maybe_unused]]
+            const auto fine_patch_lidx = neighbor_patch_ids[fine_patch_idx];
 
             auto from_idxs = idxs;
-            from_idxs[dim] = positive ? (from_idxs[dim] - index_t{ s_sizes[dim] })
-                                      : (from_idxs[dim] + index_t{ s_sizes[dim] });
+            from_idxs[dim] = positive ? (from_idxs[dim] + index_t{ s_sizes[dim] })
+                                      : (from_idxs[dim] - index_t{ s_sizes[dim] });
 
             auto base_fine_idxs = from_idxs;
-
-            base_fine_idxs[dim] =
-                ((from_idxs[dim] - s_halo_width) * s_1d_fanout) % s_sizes[dim] +
-                s_halo_width;
+            for (index_t d = 0; d != s_rank; ++d)
+            {
+                const auto section_size = s_sizes[d] / s_1d_fanout;
+                base_fine_idxs[d] =
+                    ((from_idxs[d] - s_halo_width) % section_size) * s_1d_fanout +
+                    s_halo_width;
+            }
 
             const auto base_linear_idx =
                 patch_layout_t::padded_layout_t::linear_index(base_fine_idxs);
             const auto fine_linear_idxs =
                 detail::hypercube_offset<patch_layout_t, 2>(base_linear_idx);
             const auto to_idx = patch_layout_t::padded_layout_t::linear_index(idxs);
+            [[maybe_unused]]
+            const auto signed_dir = positive ? "+" : "-";
+
+            // DEFAULT_SOURCE_LOG_INFO(
+            //     "coarse_patch_lidx={}, halo_cell_lidx={}, direction={}{} , "
+            //     "fine_patch_lidx={}, fine_patch_idx={}, base_linear_idx={}",
+            //     s_debug_current_patch_linear_idx,
+            //     to_idx,
+            //     signed_dir,
+            //     dim,
+            //     fine_patch_lidx,
+            //     fine_patch_idx,
+            //     base_linear_idx
+            // );
+            // for (index_t fi = index_t{}; fi != s_nd_fanout; ++fi)
+            // {
+            //     DEFAULT_SOURCE_LOG_INFO(
+            //         "finer_cells_lidx[{}]={}", fi, fine_linear_idxs[fi]
+            //     );
+            // }
             intergrid_operator_t::restriction(
                 current_patch, to_idx, fine_patch, fine_linear_idxs
             );
