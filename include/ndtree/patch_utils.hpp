@@ -152,7 +152,7 @@ constexpr auto halo_apply_section_impl(
     using patch_layout_t        = typename tree_t::patch_layout_t;
     auto& p_i = std::forward<decltype(tree)>(tree).template get_patch<T>(idx);
 
-    DEFAULT_SOURCE_LOG_TRACE("{} halo exchange in direction {}", n_idx.repr(), D.repr());
+    DEFAULT_SOURCE_LOG_DEBUG("{} halo exchange in direction {}", n_idx.repr(), D.repr());
     std::visit(
         utils::overloads{
             // None impl
@@ -425,40 +425,35 @@ struct halo_exchange_impl_t
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
-            const auto compute_fine_patch_index = [&idxs, &dim]() -> index_t
-            {
-                index_t patch_linear_idx = 0;
-                index_t stride           = 1;
-
-                for (index_t d = 0; d != s_rank; ++d)
-                {
-                    if (d == dim)
-                    {
-                        continue;
-                    }
-                    const auto section_size = s_sizes[d] / s_1d_fanout;
-                    const auto section_idx  = (idxs[d] - s_halo_width) / section_size;
-
-                    patch_linear_idx += section_idx * stride;
-                    stride *= s_1d_fanout;
-                }
-                return patch_linear_idx;
-            };
-
-            const auto fine_patch_idx = compute_fine_patch_index();
-            DEFAULT_SOURCE_LOG_DEBUG("Fine patch idx:\t{}", fine_patch_idx);
-
             auto from_idxs      = idxs;
             from_idxs[dim]      = positive ? (from_idxs[dim] - index_t{ s_sizes[dim] })
                                            : (from_idxs[dim] + index_t{ s_sizes[dim] });
+
+            index_t fine_patch_idx = 0;
+            index_t stride         = 1;
             auto base_fine_idxs = from_idxs;
-            base_fine_idxs[dim] =
-                ((from_idxs[dim] - s_halo_width) * s_1d_fanout) % s_sizes[dim] +
-                s_halo_width;
+            for (index_t d = 0; d != s_rank; ++d)
+            {
+                base_fine_idxs[dim] =
+                    ((from_idxs[dim] - s_halo_width) * s_1d_fanout) % s_sizes[dim] +
+                    s_halo_width;
+                if (d == dim)
+                {
+                    continue;
+                }
+                const auto section_size = s_sizes[d] / s_1d_fanout;
+                const auto section_idx  = (idxs[d] - s_halo_width) / section_size;
+
+                fine_patch_idx += section_idx * stride;
+                stride *= s_1d_fanout;
+            }
+
+            DEFAULT_SOURCE_LOG_DEBUG("Fine patch idx:\t{}", fine_patch_idx);
+
             const auto base_fine_idx =
                 patch_layout_t::padded_layout_t::linear_index(base_fine_idxs);
             DEFAULT_SOURCE_LOG_DEBUG("Base fine idxs:\t{}", base_fine_idxs);
-            DEFAULT_SOURCE_LOG_DEBUG("Fine linear idx:\t{}", base_fine_idx);
+            DEFAULT_SOURCE_LOG_DEBUG("Fine fine idx:\t{}", base_fine_idx);
 
             const auto fine_linear_idxs =
                 detail::hypercube_offset<patch_layout_t, 2>(base_fine_idx);

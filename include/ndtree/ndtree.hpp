@@ -944,7 +944,7 @@ private:
         {
             for (linear_index_t i = 0; i != m_size; ++i)
             {
-                assert(m_index_map.contains(m_linear_index_map[i]));
+                CONTRACTS_CHECK(m_index_map.contains(m_linear_index_map[i]));
                 if (m_index_map.at(m_linear_index_map[i]) != i)
                 {
                     DEFAULT_SOURCE_LOG_ERROR("index map is not correct");
