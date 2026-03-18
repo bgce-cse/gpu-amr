@@ -32,6 +32,7 @@ constexpr auto contract_fail(const char* file, int line) -> void
     else
     {
         std::cerr << "Contract violation at " << file << ":" << line << std::endl;
+        assert(false);
         std::exit(EXIT_FAILURE);
     }
 }

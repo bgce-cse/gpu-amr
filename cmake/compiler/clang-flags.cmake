@@ -75,5 +75,4 @@ set(AMR_SANITIZERS
 	-fsanitize=undefined
 )
 
-set(CONSTEXPR_LIMIT_FLAGS
-)
+set(CONSTEXPR_LIMIT_FLAGS)
