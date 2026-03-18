@@ -428,52 +428,36 @@ struct halo_exchange_impl_t
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
-            const auto compute_fine_patch_index = [&idxs, &dim]() -> index_t
-            {
-                index_t patch_linear_idx = 0;
-                index_t stride           = 1;
+            index_t patch_linear_idx = 0;
+            index_t stride           = 1;
+            auto    base_fine_idxs   = idxs;
 
-                for (index_t d = 0; d < s_rank; ++d)
-                {
-                    if (d == dim)
-                    {
-                        continue;
-                    }
-                    const auto section_size = s_sizes[d] / s_1d_fanout;
-                    const auto section_idx  = (idxs[d] - s_halo_width) / section_size;
+            base_fine_idxs[dim] = positive ? (idxs[dim] + index_t{ s_sizes[dim] })
+                                           : (idxs[dim] - index_t{ s_sizes[dim] });
 
-                    patch_linear_idx += section_idx * stride;
-                    stride *= s_1d_fanout;
-                }
-                return patch_linear_idx;
-            };
-
-            const auto fine_patch_idx = compute_fine_patch_index();
-            auto&      fine_patch     = neighbor_patches[fine_patch_idx].get();
-            [[maybe_unused]]
-            const auto fine_patch_lidx = neighbor_patch_ids[fine_patch_idx];
-
-            auto from_idxs = idxs;
-            from_idxs[dim] = positive ? (from_idxs[dim] + index_t{ s_sizes[dim] })
-                                      : (from_idxs[dim] - index_t{ s_sizes[dim] });
-
-            auto base_fine_idxs = from_idxs;
-            for (index_t d = 0; d != s_rank; ++d)
+            for (index_t d = 0; d < s_rank; ++d)
             {
                 const auto section_size = s_sizes[d] / s_1d_fanout;
-                base_fine_idxs[d] =
-                    ((from_idxs[d] - s_halo_width) % section_size) * s_1d_fanout +
-                    s_halo_width;
+                const auto from_d       = base_fine_idxs[d];
+                const auto local_d      = from_d - s_halo_width;
+
+                if (d != dim)
+                {
+                    patch_linear_idx += (local_d / section_size) * stride;
+                    stride *= s_1d_fanout;
+                }
+                base_fine_idxs[d] = (local_d % section_size) * s_1d_fanout + s_halo_width;
             }
+
+            auto& fine_patch = neighbor_patches[patch_linear_idx].get();
+            [[maybe_unused]]
+            const auto fine_patch_lidx = neighbor_patch_ids[patch_linear_idx];
 
             const auto base_linear_idx =
                 patch_layout_t::padded_layout_t::linear_index(base_fine_idxs);
             const auto fine_linear_idxs =
                 detail::hypercube_offset<patch_layout_t, 2>(base_linear_idx);
             const auto to_idx = patch_layout_t::padded_layout_t::linear_index(idxs);
-            [[maybe_unused]]
-            const auto signed_dir = positive ? "+" : "-";
-
             // DEFAULT_SOURCE_LOG_INFO(
             //     "coarse_patch_lidx={}, halo_cell_lidx={}, direction={}{} , "
             //     "fine_patch_lidx={}, fine_patch_idx={}, base_linear_idx={}",
