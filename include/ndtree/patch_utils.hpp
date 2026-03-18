@@ -420,6 +420,8 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            DEFAULT_SOURCE_LOG_DEBUG("Idxs: {}", idxs);
+
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
@@ -428,7 +430,7 @@ struct halo_exchange_impl_t
                 index_t patch_linear_idx = 0;
                 index_t stride           = 1;
 
-                for (index_t d = 0; d < s_rank; ++d)
+                for (index_t d = 0; d != s_rank; ++d)
                 {
                     if (d == dim)
                     {
@@ -444,23 +446,26 @@ struct halo_exchange_impl_t
             };
 
             const auto fine_patch_idx = compute_fine_patch_index();
-            auto&      fine_patch     = neighbor_patches[fine_patch_idx].get();
+            DEFAULT_SOURCE_LOG_DEBUG("Fine patch idx:\t{}", fine_patch_idx);
 
-            auto from_idxs = idxs;
-            from_idxs[dim] = positive ? (from_idxs[dim] - index_t{ s_sizes[dim] })
-                                      : (from_idxs[dim] + index_t{ s_sizes[dim] });
-
+            auto from_idxs      = idxs;
+            from_idxs[dim]      = positive ? (from_idxs[dim] - index_t{ s_sizes[dim] })
+                                           : (from_idxs[dim] + index_t{ s_sizes[dim] });
             auto base_fine_idxs = from_idxs;
-
             base_fine_idxs[dim] =
                 ((from_idxs[dim] - s_halo_width) * s_1d_fanout) % s_sizes[dim] +
                 s_halo_width;
-
-            const auto base_linear_idx =
+            const auto base_fine_idx =
                 patch_layout_t::padded_layout_t::linear_index(base_fine_idxs);
+            DEFAULT_SOURCE_LOG_DEBUG("Base fine idxs:\t{}", base_fine_idxs);
+            DEFAULT_SOURCE_LOG_DEBUG("Fine linear idx:\t{}", base_fine_idx);
+
             const auto fine_linear_idxs =
-                detail::hypercube_offset<patch_layout_t, 2>(base_linear_idx);
+                detail::hypercube_offset<patch_layout_t, 2>(base_fine_idx);
             const auto to_idx = patch_layout_t::padded_layout_t::linear_index(idxs);
+            DEFAULT_SOURCE_LOG_DEBUG("Fine patch idxs:\t{}", fine_linear_idxs);
+
+            auto& fine_patch = neighbor_patches[fine_patch_idx].get();
             intergrid_operator_t::restriction(
                 current_patch, to_idx, fine_patch, fine_linear_idxs
             );
@@ -504,21 +509,6 @@ struct halo_exchange_impl_t
                                : idxs[i] - s_halo_width;
                 from_idxs[i] = s_halo_width + (contact_quadrant[i] * cells_per_block) +
                                fine_mapped_idx / s_1d_fanout;
-                // const auto cells_per_block = (s_sizes[i] / s_1d_fanout);
-                // const auto block_offset =
-                //     (i == dim && !positive)
-                //         ? (cells_per_block - s_halo_width / s_1d_fanout)
-                //         : index_t{};
-                // const auto idx_offset =
-                //     i == dim ? (direction.is_positive() ? s_sizes[i] + s_halo_width
-                //                                         : index_t{})
-                //              : s_halo_width;
-                // CONTRACTS_CHECK_INDEX(
-                //     idxs[i] - idx_offset, i == dim ? s_halo_width : s_sizes[i]
-                // );
-                // CONTRACTS_CHECK_INDEX(contact_quadrant[i], s_1d_fanout);
-                // from_idxs[i] = s_halo_width + (contact_quadrant[i] * cells_per_block) +
-                //                block_offset + (idxs[i] - idx_offset) / s_1d_fanout;
                 CONTRACTS_CHECK_INDEX(from_idxs[i] - s_halo_width, s_sizes[i]);
             }
 

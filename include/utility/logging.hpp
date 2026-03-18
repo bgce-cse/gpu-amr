@@ -53,7 +53,7 @@
 #    define LOG_LEVEL_INFO     spdlog::level::info
 #    define LOG_LEVEL_PROGRESS spdlog::level::info
 #    define LOG_LEVEL_WARNING  spdlog::level::warn
-#    define LOG_LEVEL_ERROR    spdlog::level::error
+#    define LOG_LEVEL_ERROR    spdlog::level::err
 #    define LOG_LEVEL_FATAL    spdlog::level::critical
 #else
 enum struct log_level
@@ -65,7 +65,6 @@ enum struct log_level
     warning,
     error,
     fatal,
-    off,
 };
 #    define LOG_LEVEL_TRACE    log_level::trace
 #    define LOG_LEVEL_DEBUG    log_level::debug
@@ -149,6 +148,7 @@ enum struct log_level
 #    include <fmt/format.h>
 #    include <string_view>
 #    ifdef ENABLE_SPDLOG
+#        include <fmt/ranges.h>
 #        include <spdlog/common.h>
 #        include <spdlog/spdlog.h>
 #    else
@@ -219,9 +219,9 @@ struct default_logger
     }
 };
 
-} // namespace utility::logging
-
 #    endif // ENABLE_SPDLOG
+
+} // namespace utility::logging
 
 #endif
 

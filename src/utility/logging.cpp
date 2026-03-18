@@ -2,12 +2,12 @@
 
 #ifdef ENABLE_SPDLOG
 
-#include "spdlog/sinks/basic_file_sink.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
-#include <memory>
-#include <thread>
-#include <unistd.h>
-#include <vector>
+#    include "spdlog/sinks/basic_file_sink.h"
+#    include "spdlog/sinks/stdout_color_sinks.h"
+#    include <memory>
+#    include <thread>
+#    include <unistd.h>
+#    include <vector>
 
 namespace utility::logging
 {
@@ -30,7 +30,7 @@ auto default_logger::init() -> void
     static bool initialized = []
     {
         auto stdout_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-        stdout_sink->set_level(spdlog::level::info);
+        stdout_sink->set_level(spdlog::level::debug);
         stdout_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
 
         auto general_sink =
