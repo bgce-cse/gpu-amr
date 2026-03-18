@@ -72,6 +72,7 @@ public:
         return fill_state(std::make_index_sequence<NVAR>{});
     }
 
+    template <auto Buffer>
     void set_full_state(
         const linear_index_t                                      patch_idx,
         const std::size_t                                         linear_idx,
@@ -80,10 +81,9 @@ public:
     {
         auto write_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) -> void
         {
-            ((m_tree.template get_patch<
-                  typename std::tuple_element<Is, typename EquationT::FieldTags>::type>(
-                  patch_idx
-              )[linear_idx] = state[Is]),
+            ((m_tree.template get_out_patch<
+                  typename std::tuple_element<Is, typename EquationT::FieldTags>::type,
+                  Buffer>(patch_idx)[linear_idx] = state[Is]),
              ...);
         };
         write_state(std::make_index_sequence<NVAR>{});
@@ -122,7 +122,7 @@ public:
                     amr::containers::static_vector<arithmetic_t, NVAR> cons;
                     EquationT::primitiveToConservative(prim, cons, m_gamma);
 
-                    set_full_state(p_idx, linear_idx, cons);
+                    set_full_state<tree_t::current_buffer>(p_idx, linear_idx, cons);
                 },
                 std::forward<decltype(init_func)>(init_func)
             );
@@ -131,72 +131,85 @@ public:
 
     auto time_step(const arithmetic_t dt) -> void
     {
-        constexpr auto patch_data_size = data_layout_t::flat_size();
+        static constexpr auto patch_data_size = data_layout_t::flat_size();
         // Stride for moving "up" or "down" in the patch (Y-direction)
-        constexpr auto stride_y =
+        static constexpr auto stride_y =
             patch_layout_t::padded_layout_t::shape_t::sizes()[DIM - 1];
         // Stride for Z (only used if DIM=3)
         // TODO: Maybe use the stride accessors layout types provide
-        constexpr auto stride_z =
+        static constexpr auto stride_z =
             (DIM == 3) ? patch_layout_t::padded_layout_t::shape_t::sizes()[1] * stride_y
                        : 0;
 
-        for (std::size_t p_idx = 0; p_idx != m_tree.size(); ++p_idx)
-        {
-            const auto patch_id = m_tree.get_node_index_at(p_idx);
-            const auto c_size   = GeometryT::cell_sizes(patch_id);
+        auto const r = std::views::iota(decltype(m_tree.size()){}, m_tree.size());
+        std::for_each(
+            AMR_EXECUTION_POLICY,
+            std::cbegin(r),
+            std::cend(r),
+            [this, dt](auto const p_idx) mutable
+            {
+                const auto patch_id = m_tree.get_node_index_at(p_idx);
+                const auto c_size   = GeometryT::cell_sizes(patch_id);
 
-            std::
-                array<amr::containers::static_vector<arithmetic_t, NVAR>, patch_data_size>
+                std::array<
+                    amr::containers::static_vector<arithmetic_t, NVAR>,
+                    patch_data_size>
                     update_buffer{};
 
-            int buffer_idx = 0;
-            amr::containers::manipulators::shaped_for<
-                typename patch_layout_t::interior_iteration_control_t>(
-                [this, p_idx, dt, &c_size](
-                    auto& out_buffer, auto& out_i, auto const& idxs
-                )
-                {
-                    const auto linear_idx = padded_layout_t::linear_index(idxs);
-                    const auto U_cell     = get_full_state(p_idx, linear_idx);
-                    out_buffer[out_i]     = U_cell;
-
-                    // Generic loop over dimensions (X, Y, Z)
-                    for (int d = 0; d < DIM; ++d)
+                int buffer_idx = 0;
+                amr::containers::manipulators::shaped_for<
+                    typename patch_layout_t::interior_iteration_control_t>(
+                    [this, p_idx, dt, &c_size](
+                        auto& out_buffer, auto& out_i, auto const& idxs
+                    )
                     {
-                        const auto stride = (d == 0) ? 1 : (d == 1 ? stride_y : stride_z);
+                        const auto linear_idx = padded_layout_t::linear_index(idxs);
+                        const auto U_cell     = get_full_state(p_idx, linear_idx);
+                        out_buffer[out_i]     = U_cell;
 
-                        const auto U_L = get_full_state(p_idx, linear_idx - stride);
-                        const auto U_R = get_full_state(p_idx, linear_idx + stride);
-
-                        // TODO: Remove out paramters if possible
-                        // TODO: Evaluate merging both calls into one since they share
-                        // input params
-                        amr::containers::static_vector<arithmetic_t, NVAR> fL, fR;
-                        EquationT::rusanovFlux(U_L, U_cell, fL, d, m_gamma);
-                        EquationT::rusanovFlux(U_cell, U_R, fR, d, m_gamma);
-
-                        for (int k = 0; k < NVAR; ++k)
+                        // Generic loop over dimensions (X, Y, Z)
+                        for (int d = 0; d < DIM; ++d)
                         {
-                            out_buffer[out_i][k] -= (dt / c_size[d]) * (fR[k] - fL[k]);
+                            const auto stride =
+                                (d == 0) ? 1 : (d == 1 ? stride_y : stride_z);
+
+                            const auto U_L = get_full_state(p_idx, linear_idx - stride);
+                            const auto U_R = get_full_state(p_idx, linear_idx + stride);
+
+                            // TODO: Remove out paramters if possible
+                            // TODO: Evaluate merging both calls into one since they share
+                            // input params
+                            amr::containers::static_vector<arithmetic_t, NVAR> fL, fR;
+                            EquationT::rusanovFlux(U_L, U_cell, fL, d, m_gamma);
+                            EquationT::rusanovFlux(U_cell, U_R, fR, d, m_gamma);
+
+                            for (int k = 0; k < NVAR; ++k)
+                            {
+                                out_buffer[out_i][k] -=
+                                    (dt / c_size[d]) * (fR[k] - fL[k]);
+                            }
                         }
-                    }
-                    out_i++;
-                },
-                update_buffer,
-                buffer_idx
-            );
-            buffer_idx = 0;
-            amr::containers::manipulators::shaped_for<
-                typename patch_layout_t::interior_iteration_control_t>(
-                [this, p_idx, &update_buffer](auto& out_i, auto const& idxs)
-                {
-                    const auto linear_idx = padded_layout_t::linear_index(idxs);
-                    set_full_state(p_idx, linear_idx, update_buffer[out_i++]);
-                },
-                buffer_idx
-            );
-        }
+                        out_i++;
+                    },
+                    update_buffer,
+                    buffer_idx
+                );
+                buffer_idx = 0;
+                amr::containers::manipulators::shaped_for<
+                    typename patch_layout_t::interior_iteration_control_t>(
+                    [this, p_idx, &update_buffer](auto& out_i, auto const& idxs)
+                    {
+                        const auto linear_idx = padded_layout_t::linear_index(idxs);
+                        set_full_state<tree_t::next_buffer>(
+                            p_idx, linear_idx, update_buffer[out_i++]
+                        );
+                    },
+                    buffer_idx
+                );
+            }
+        );
+        m_tree.swap_buffers();
+        m_tree.halo_exchange_update();
     }
 
     auto compute_time_step() const -> arithmetic_t

@@ -138,6 +138,29 @@ public:
     using index_map_const_iterator_t = typename index_map_t::const_iterator;
 
 public:
+    struct current_buffer_t
+    {
+        template <typename U>
+        constexpr auto operator==(U) const noexcept -> bool
+        {
+            return std::is_same_v<current_buffer_t, U>;
+        };
+    };
+
+    static constexpr current_buffer_t current_buffer{};
+
+    struct next_buffer_t
+    {
+        template <typename U>
+        constexpr auto operator==(U) const noexcept -> bool
+        {
+            return std::is_same_v<next_buffer_t, U>;
+        };
+    };
+
+    static constexpr next_buffer_t next_buffer{};
+
+public:
     [[nodiscard]]
     static constexpr auto rank() noexcept -> auto const&
     {
@@ -163,6 +186,15 @@ public:
                  ...);
             },
             m_data_buffers
+        );
+        std::apply(
+            [size](auto&... b)
+            {
+                ((void)(b = (pointer_t<value_t<decltype(b)>>)
+                            std::malloc(size * sizeof(value_t<decltype(b)>))),
+                 ...);
+            },
+            m_next_buffers
         );
         m_linear_index_map =
             (pointer_t<patch_index_t>)std::malloc(size * sizeof(patch_index_t));
@@ -192,6 +224,7 @@ public:
         std::free(m_reorder_buffer);
         std::free(m_linear_index_map);
         std::free(m_neighbors);
+        std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_next_buffers);
         std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_data_buffers);
     }
 
@@ -237,6 +270,53 @@ public:
         const auto linear_index = m_index_map.at(patch_idx);
         CONTRACTS_CHECK(linear_index < m_size);
         return std::get<Map_Type::index()>(m_data_buffers)[linear_index];
+    }
+
+    template <concepts::MapType Map_Type, auto Buffer>
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
+    auto get_out_patch(linear_index_t const linear_index) noexcept -> patch_t<Map_Type>&
+    {
+        return const_cast<patch_t<Map_Type>&>(
+            std::as_const(*this).template get_out_patch<Map_Type, Buffer>(linear_index)
+        );
+    }
+
+    template <concepts::MapType Map_Type, auto Buffer>
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
+    auto get_out_patch(linear_index_t const linear_index) const noexcept
+        -> patch_t<Map_Type> const&
+    {
+        CONTRACTS_CHECK(linear_index < m_size);
+        if constexpr (Buffer == current_buffer)
+            return std::get<Map_Type::index()>(m_data_buffers)[linear_index];
+        if constexpr (Buffer == next_buffer)
+            return std::get<Map_Type::index()>(m_next_buffers)[linear_index];
+        else
+            utility::error_handling::assert_unreachable();
+    }
+
+    template <concepts::MapType Map_Type, auto Buffer>
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
+    auto get_out_patch(patch_index_t const patch_idx) noexcept -> patch_t<Map_Type>&
+    {
+        return const_cast<patch_t<Map_Type>&>(
+            std::as_const(*this).template get_out_patch<Map_Type, Buffer>(patch_idx)
+        );
+    }
+
+    template <concepts::MapType Map_Type, auto Buffer>
+    [[nodiscard, gnu::always_inline, gnu::flatten]]
+    auto get_out_patch(patch_index_t const patch_idx) const noexcept
+        -> patch_t<Map_Type> const&
+    {
+        const auto linear_index = m_index_map.at(patch_idx);
+        CONTRACTS_CHECK(linear_index < m_size);
+        if constexpr (Buffer == current_buffer)
+            return std::get<Map_Type::index()>(m_data_buffers)[linear_index];
+        if constexpr (Buffer == next_buffer)
+            return std::get<Map_Type::index()>(m_next_buffers)[linear_index];
+        else
+            utility::error_handling::assert_unreachable();
     }
 
     [[nodiscard, gnu::always_inline, gnu::flatten]]
@@ -551,8 +631,8 @@ public:
 #ifdef AMR_NDTREE_ENABLE_CHECKS
                         else
                         {
-                            // Neighbor may have been recombined earlier in the same AMR
-                            // pass.
+                            // Neighbor may have been recombined earlier in the same
+                            // AMR pass.
                             DEFAULT_SOURCE_LOG_WARNING(
                                 "Missing same-level neighbor during recombining: " +
                                 neighbor_data.id.repr()
@@ -864,7 +944,7 @@ private:
         {
             for (linear_index_t i = 0; i != m_size; ++i)
             {
-                assert(m_index_map.contains(m_linear_index_map[i]));
+                CONTRACTS_CHECK(m_index_map.contains(m_linear_index_map[i]));
                 if (m_index_map.at(m_linear_index_map[i]) != i)
                 {
                     DEFAULT_SOURCE_LOG_ERROR("index map is not correct");
@@ -998,6 +1078,26 @@ private:
     }
 
 public:
+    constexpr auto swap_buffers() noexcept -> void
+    {
+        DEFAULT_SOURCE_LOG_TRACE("Swap buffers");
+        std::swap(m_data_buffers, m_next_buffers);
+#ifndef NDEBUG
+        std::apply(
+            [this](auto&&... b)
+            {
+                (std::fill_n(
+                     (unwrap_value_t<decltype(b)>*)b,
+                     m_size * patch_layout_t::padded_layout_t::flat_size(),
+                     -1000
+                 ),
+                 ...);
+            },
+            m_next_buffers
+        );
+#endif
+    }
+
     constexpr auto halo_exchange_update() noexcept -> void
 
     {
@@ -1123,6 +1223,7 @@ private:
 private:
     index_map_t                m_index_map;
     deconstructed_buffers_t    m_data_buffers;
+    deconstructed_buffers_t    m_next_buffers;
     linear_index_map_t         m_linear_index_map;
     linear_index_array_t       m_reorder_buffer;
     flat_refine_status_array_t m_refine_status_buffer;

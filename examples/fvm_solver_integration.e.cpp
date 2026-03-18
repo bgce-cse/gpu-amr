@@ -18,8 +18,6 @@
 #include <iostream>
 #include <string>
 
-#define VTK_PRINT (true)
-
 int main()
 {
     std::cout << "Hello AMR world\n";
@@ -47,9 +45,7 @@ int main()
     using physics_t =
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
-#if VTK_PRINT
     amr::ndt::print::vtk_print<physics_t> printer("euler_print");
-#endif
 
     double tmax = 400; // Example tmax, adjust as needed
     [[maybe_unused]]
@@ -151,10 +147,8 @@ int main()
     solver.initialize(acousticPulseIC);
     solver.get_tree().halo_exchange_update();
 
-// Print initial state
-#if VTK_PRINT
+    // Print initial state
     printer.print(solver.get_tree(), "_iteration_0.vtk");
-#endif
 
     // Main Simulation Loop
     double t    = 0.0;
@@ -176,7 +170,6 @@ int main()
         DEFAULT_SOURCE_LOG_PROGRESS("Step: {},\tt: {:.5f},\tdt: {:.5f} ", step, t, dt);
 
         solver.time_step(dt);
-        solver.get_tree().halo_exchange_update();
         cell_update_count +=
             solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
 
@@ -188,7 +181,6 @@ int main()
 
         t += dt;
 
-#if VTK_PRINT
         // Print only when we've passed the next print time
         if (t >= next_print_time)
         {
@@ -199,7 +191,6 @@ int main()
             output_counter++;
             DEFAULT_SOURCE_LOG_INFO("Written vtk output: {}", file_extension);
         }
-#endif
 
         step++;
     }
