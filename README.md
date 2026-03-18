@@ -31,7 +31,7 @@ The supported arguments are
 - `LOG_LEVEL={TRACE,DEBUG,INFO,PROGRESS,WARNING,ERROR,FATAL,OFF}`: Control the logging level. Defaults to `INFO`.
 - `EXECUTION={PAR,SEQ}`: Control the logging level. Defaults to `SEQ`.
 - `CONTRACTS={ON,OFF}`: Enable contract checks. Defaults to `ON` on debug and
-`OFF` on release builds.
+- `ENABLE_SPDLOG={ON,OFF}`: Enable `spdlog` as the logging backend or default to use `std::cout` for logging. Defaults to `ON`.
 
 ### Compile Time Configuration
 

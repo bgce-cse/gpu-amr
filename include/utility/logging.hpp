@@ -47,67 +47,96 @@
 
 #define DEFAULT_SOURCE_LOG_IGNORE(...) ((void)0)
 
+#if ENABLE_SPDLOG
+#    define LOG_LEVEL_TRACE    spdlog::level::trace
+#    define LOG_LEVEL_DEBUG    spdlog::level::debug
+#    define LOG_LEVEL_INFO     spdlog::level::info
+#    define LOG_LEVEL_PROGRESS spdlog::level::info
+#    define LOG_LEVEL_WARNING  spdlog::level::warn
+#    define LOG_LEVEL_ERROR    spdlog::level::error
+#    define LOG_LEVEL_FATAL    spdlog::level::critical
+#else
+enum struct log_level
+{
+    trace,
+    debug,
+    info,
+    progress,
+    warning,
+    error,
+    fatal,
+    off,
+};
+#    define LOG_LEVEL_TRACE    log_level::trace
+#    define LOG_LEVEL_DEBUG    log_level::debug
+#    define LOG_LEVEL_INFO     log_level::info
+#    define LOG_LEVEL_PROGRESS log_level::progress
+#    define LOG_LEVEL_WARNING  log_level::warning
+#    define LOG_LEVEL_ERROR    log_level::error
+#    define LOG_LEVEL_FATAL    log_level::fatal
+#endif
+
 // -----------------------------------------------------------------------------
 // Logging macros (compile-time stripped)
 // -----------------------------------------------------------------------------
 #if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_TRACE
-#    define DEFAULT_SOURCE_LOG_TRACE(fmt, ...)                   \
-        utility::logging::default_logger::log(                   \
-            spdlog::level::trace, fmt __VA_OPT__(, ) __VA_ARGS__ \
+#    define DEFAULT_SOURCE_LOG_TRACE(fmt, ...)              \
+        utility::logging::default_logger::log(              \
+            LOG_LEVEL_TRACE, fmt __VA_OPT__(, ) __VA_ARGS__ \
         )
 #else
 #    define DEFAULT_SOURCE_LOG_TRACE(...) DEFAULT_SOURCE_LOG_IGNORE(__VA_ARGS__)
 #endif
 
 #if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_DEBUG
-#    define DEFAULT_SOURCE_LOG_DEBUG(fmt, ...)                   \
-        utility::logging::default_logger::log(                   \
-            spdlog::level::debug, fmt __VA_OPT__(, ) __VA_ARGS__ \
+#    define DEFAULT_SOURCE_LOG_DEBUG(fmt, ...)              \
+        utility::logging::default_logger::log(              \
+            LOG_LEVEL_DEBUG, fmt __VA_OPT__(, ) __VA_ARGS__ \
         )
 #else
 #    define DEFAULT_SOURCE_LOG_DEBUG(...) DEFAULT_SOURCE_LOG_IGNORE(__VA_ARGS__)
 #endif
 
 #if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_INFO
-#    define DEFAULT_SOURCE_LOG_INFO(fmt, ...)                   \
-        utility::logging::default_logger::log(                  \
-            spdlog::level::info, fmt __VA_OPT__(, ) __VA_ARGS__ \
+#    define DEFAULT_SOURCE_LOG_INFO(fmt, ...)              \
+        utility::logging::default_logger::log(             \
+            LOG_LEVEL_INFO, fmt __VA_OPT__(, ) __VA_ARGS__ \
         )
 #else
 #    define DEFAULT_SOURCE_LOG_INFO(...) DEFAULT_SOURCE_LOG_IGNORE(__VA_ARGS__)
 #endif
 
 #if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_PROGRESS
-#    define DEFAULT_SOURCE_LOG_PROGRESS(fmt, ...)               \
-        utility::logging::default_logger::log(                  \
-            spdlog::level::info, fmt __VA_OPT__(, ) __VA_ARGS__ \
+#    define DEFAULT_SOURCE_LOG_PROGRESS(fmt, ...)              \
+        utility::logging::default_logger::log(                 \
+            LOG_LEVEL_PROGRESS, fmt __VA_OPT__(, ) __VA_ARGS__ \
         )
 #else
 #    define DEFAULT_SOURCE_LOG_PROGRESS(...) DEFAULT_SOURCE_LOG_IGNORE(__VA_ARGS__)
 #endif
 
 #if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_WARNING
-#    define DEFAULT_SOURCE_LOG_WARNING(fmt, ...)                \
-        utility::logging::default_logger::log(                  \
-            spdlog::level::warn, fmt __VA_OPT__(, ) __VA_ARGS__ \
+#    define DEFAULT_SOURCE_LOG_WARNING(fmt, ...)              \
+        utility::logging::default_logger::log(                \
+            LOG_LEVEL_WARNING, fmt __VA_OPT__(, ) __VA_ARGS__ \
         )
 #else
 #    define DEFAULT_SOURCE_LOG_WARNING(...) DEFAULT_SOURCE_LOG_IGNORE(__VA_ARGS__)
 #endif
 
 #if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_ERROR
-#    define DEFAULT_SOURCE_LOG_ERROR(fmt, ...)                 \
-        utility::logging::default_logger::log(                 \
-            spdlog::level::err, fmt __VA_OPT__(, ) __VA_ARGS__ \
+#    define DEFAULT_SOURCE_LOG_ERROR(fmt, ...)              \
+        utility::logging::default_logger::log(              \
+            LOG_LEVEL_ERROR, fmt __VA_OPT__(, ) __VA_ARGS__ \
         )
 #else
 #    define DEFAULT_SOURCE_LOG_ERROR(...) DEFAULT_SOURCE_LOG_IGNORE(__VA_ARGS__)
 #endif
 
 #if DEFAULT_SOURCE_LOG_LEVEL <= DEFAULT_SOURCE_LOG_LEVEL_FATAL
-#    define DEFAULT_SOURCE_LOG_FATAL(fmt, ...)                      \
-        utility::logging::default_logger::log(                      \
-            spdlog::level::critical, fmt __VA_OPT__(, ) __VA_ARGS__ \
+#    define DEFAULT_SOURCE_LOG_FATAL(fmt, ...)              \
+        utility::logging::default_logger::log(              \
+            LOG_LEVEL_FATAL, fmt __VA_OPT__(, ) __VA_ARGS__ \
         )
 #else
 #    define DEFAULT_SOURCE_LOG_FATAL(...) DEFAULT_SOURCE_LOG_IGNORE(__VA_ARGS__)
@@ -118,9 +147,13 @@
 
 #    include <fmt/core.h>
 #    include <fmt/format.h>
-#    include <spdlog/common.h>
-#    include <spdlog/spdlog.h>
 #    include <string_view>
+#    if ENABLE_SPDLOG
+#        include <spdlog/common.h>
+#        include <spdlog/spdlog.h>
+#    else
+#        include <iostream>
+#    endif
 
 namespace utility::logging
 {
@@ -139,6 +172,8 @@ inline std::string_view format_to_buffer(fmt::string_view fmt, fmt::format_args 
 }
 
 } // namespace detail
+
+#    if ENABLE_SPDLOG
 
 class default_logger
 {
@@ -160,8 +195,8 @@ public:
 
     template <typename... Args>
     static auto
-        log(spdlog::level::level_enum   sev,
-            fmt::format_string<Args...> fmt,
+        log(spdlog::level::level_enum const sev,
+            fmt::format_string<Args...>     fmt,
             Args const&... args) -> void
     {
         const auto msg = detail::format_to_buffer(fmt, fmt::make_format_args(args...));
@@ -171,7 +206,22 @@ public:
     static auto log(spdlog::level::level_enum sev, std::string_view msg) -> void;
 };
 
+#    else
+
+struct default_logger
+{
+    template <typename... Args>
+    static auto log(log_level, fmt::format_string<Args...> fmt, Args const&... args)
+        -> void
+    {
+        const auto msg = detail::format_to_buffer(fmt, fmt::make_format_args(args...));
+        std::cout << msg << '\n';
+    }
+};
+
 } // namespace utility::logging
+
+#    endif // ENABLE_SPDLOG
 
 #endif
 

@@ -1,4 +1,7 @@
 #include "utility/logging.hpp"
+
+#if ENABLE_SPDLOG
+
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include <memory>
@@ -80,3 +83,5 @@ auto default_logger::log(spdlog::level::level_enum sev, std::string_view msg) ->
 }
 
 } // namespace utility::logging
+
+#endif // ENABLE_SPDLOG
