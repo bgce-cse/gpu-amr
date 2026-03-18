@@ -420,32 +420,29 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            DEFAULT_SOURCE_LOG_DEBUG("Idxs: {}", idxs);
+            DEFAULT_SOURCE_LOG_DEBUG("Idxs:\t{}", idxs);
 
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
-            auto from_idxs      = idxs;
-            from_idxs[dim]      = positive ? (from_idxs[dim] - index_t{ s_sizes[dim] })
-                                           : (from_idxs[dim] + index_t{ s_sizes[dim] });
 
             index_t fine_patch_idx = 0;
             index_t stride         = 1;
-            auto base_fine_idxs = from_idxs;
+            auto base_fine_idxs = idxs;
+            base_fine_idxs[dim] = positive ? (base_fine_idxs[dim] - index_t{ s_sizes[dim] })
+                                      : (base_fine_idxs[dim] + index_t{ s_sizes[dim] });
             for (index_t d = 0; d != s_rank; ++d)
             {
                 base_fine_idxs[dim] =
-                    ((from_idxs[dim] - s_halo_width) * s_1d_fanout) % s_sizes[dim] +
+                    ((base_fine_idxs[dim] - s_halo_width) * s_1d_fanout) % s_sizes[dim] +
                     s_halo_width;
-                if (d == dim)
+                if (d != dim)
                 {
-                    continue;
+                    const auto section_size = s_sizes[d] / s_1d_fanout;
+                    const auto section_idx  = (idxs[d] - s_halo_width) / section_size;
+                    fine_patch_idx += section_idx * stride;
+                    stride *= s_1d_fanout;
                 }
-                const auto section_size = s_sizes[d] / s_1d_fanout;
-                const auto section_idx  = (idxs[d] - s_halo_width) / section_size;
-
-                fine_patch_idx += section_idx * stride;
-                stride *= s_1d_fanout;
             }
 
             DEFAULT_SOURCE_LOG_DEBUG("Fine patch idx:\t{}", fine_patch_idx);
@@ -478,6 +475,9 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            DEFAULT_SOURCE_LOG_DEBUG("Idxs:\t{}", idxs);
+            DEFAULT_SOURCE_LOG_DEBUG("Contact quadrant:\t{}", contact_quadrant);
+
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
@@ -486,7 +486,9 @@ struct halo_exchange_impl_t
                 (!positive && (contact_quadrant[dim] == s_1d_fanout - index_t{ 1 }))
             );
 
-            std::array<index_t, s_rank> from_idxs{};
+            auto from_idxs = idxs;
+            from_idxs[dim] = positive ? (from_idxs[dim] - index_t{ s_sizes[dim] })
+                                      : (from_idxs[dim] + index_t{ s_sizes[dim] });
             for (auto i = index_t{}; i != s_rank; ++i)
             {
                 CONTRACTS_CHECK_INDEX(contact_quadrant[i], s_1d_fanout);
@@ -498,20 +500,20 @@ struct halo_exchange_impl_t
                 );
 
                 const auto cells_per_block = (s_sizes[i] / s_1d_fanout);
-                const auto fine_mapped_idx =
-                    (i == dim) ? (positive ? idxs[i] - s_sizes[i] - s_halo_width
-                                           : idxs[i] + s_sizes[i] - s_halo_width)
-                               : idxs[i] - s_halo_width;
                 from_idxs[i] = s_halo_width + (contact_quadrant[i] * cells_per_block) +
-                               fine_mapped_idx / s_1d_fanout;
+                               (from_idxs[i] - s_halo_width) / s_1d_fanout;
                 CONTRACTS_CHECK_INDEX(from_idxs[i] - s_halo_width, s_sizes[i]);
             }
+            DEFAULT_SOURCE_LOG_DEBUG("From idxs:\t{}", from_idxs);
 
             const auto child_offset =
                 projection_hypercube_t::linear_index(contact_quadrant);
+            DEFAULT_SOURCE_LOG_DEBUG("Child offset:\t{}", child_offset);
             const auto to_idx = patch_layout_t::padded_layout_t::linear_index(idxs);
+            DEFAULT_SOURCE_LOG_DEBUG("To idx:\t{}", to_idx);
             const auto from_idx =
                 patch_layout_t::padded_layout_t::linear_index(from_idxs);
+            DEFAULT_SOURCE_LOG_DEBUG("From idx:\t{}", from_idx);
             intergrid_operator_t::interpolation(
                 self_patch, to_idx, child_offset, other_patch, from_idx
             );
