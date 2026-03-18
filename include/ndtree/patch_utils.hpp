@@ -425,16 +425,16 @@ struct halo_exchange_impl_t
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
-
             index_t fine_patch_idx = 0;
             index_t stride         = 1;
-            auto base_fine_idxs = idxs;
-            base_fine_idxs[dim] = positive ? (base_fine_idxs[dim] - index_t{ s_sizes[dim] })
+            auto    base_fine_idxs = idxs;
+            base_fine_idxs[dim] = positive
+                                      ? (base_fine_idxs[dim] - index_t{ s_sizes[dim] })
                                       : (base_fine_idxs[dim] + index_t{ s_sizes[dim] });
             for (index_t d = 0; d != s_rank; ++d)
             {
-                base_fine_idxs[dim] =
-                    ((base_fine_idxs[dim] - s_halo_width) * s_1d_fanout) % s_sizes[dim] +
+                base_fine_idxs[d] =
+                    ((base_fine_idxs[d] - s_halo_width) * s_1d_fanout) % s_sizes[dim] +
                     s_halo_width;
                 if (d != dim)
                 {

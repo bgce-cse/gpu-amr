@@ -1082,6 +1082,20 @@ public:
     {
         DEFAULT_SOURCE_LOG_TRACE("Swap buffers");
         std::swap(m_data_buffers, m_next_buffers);
+#ifndef NDEBUG
+        std::apply(
+            [this](auto&&... b)
+            {
+                (std::fill_n(
+                     (unwrap_value_t<decltype(b)>*)b,
+                     m_size * patch_layout_t::padded_layout_t::flat_size(),
+                     -1000
+                 ),
+                 ...);
+            },
+            m_next_buffers
+        );
+#endif
     }
 
     constexpr auto halo_exchange_update() noexcept -> void
