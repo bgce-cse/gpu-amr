@@ -47,7 +47,7 @@
 
 #define DEFAULT_SOURCE_LOG_IGNORE(...) ((void)0)
 
-#if ENABLE_SPDLOG
+#ifdef ENABLE_SPDLOG
 #    define LOG_LEVEL_TRACE    spdlog::level::trace
 #    define LOG_LEVEL_DEBUG    spdlog::level::debug
 #    define LOG_LEVEL_INFO     spdlog::level::info
@@ -148,7 +148,7 @@ enum struct log_level
 #    include <fmt/core.h>
 #    include <fmt/format.h>
 #    include <string_view>
-#    if ENABLE_SPDLOG
+#    ifdef ENABLE_SPDLOG
 #        include <spdlog/common.h>
 #        include <spdlog/spdlog.h>
 #    else
@@ -173,7 +173,7 @@ inline std::string_view format_to_buffer(fmt::string_view fmt, fmt::format_args 
 
 } // namespace detail
 
-#    if ENABLE_SPDLOG
+#    ifdef ENABLE_SPDLOG
 
 class default_logger
 {
