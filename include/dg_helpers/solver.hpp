@@ -136,7 +136,7 @@ struct DGSolver
 
             apply_amr(timestep, next_amr_step);
 
-            if (time >= next_plot_time) // time >= next_plot_time
+            if (time >= next_plot_time)
             {
                 write_output(printer, timestep, time);
                 next_plot_time += params.plot_interval;

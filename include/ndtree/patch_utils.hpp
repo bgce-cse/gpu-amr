@@ -207,7 +207,6 @@ constexpr auto halo_apply_section_impl(
                     p_i.data(),
                     Halo_Exchange_Operator::finer,
                     p_neighbors,
-                    neighbor.ids,
                     D,
                     std::forward<decltype(args)>(args)...
                 );
@@ -414,7 +413,6 @@ struct halo_exchange_impl_t
         static constexpr auto operator()(
             auto&                                     current_patch,
             std::ranges::contiguous_range auto const& neighbor_patches,
-            [[maybe_unused]] auto const&              neighbor_patch_ids,
             auto const&                               direction,
             auto const&                               idxs,
             [[maybe_unused]] auto&&... args

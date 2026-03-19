@@ -201,8 +201,7 @@ public:
 #endif
 
 #ifdef AMR_CONTAINERS_CHECKBOUNDS
-    constexpr auto assert_in_bounds([[maybe_unused]] size_type const idx) const noexcept
-        -> void
+    constexpr auto assert_in_bounds(size_type const idx) const noexcept -> void
     {
         CONTRACTS_CHECK_INDEX(idx, elements());
     }
