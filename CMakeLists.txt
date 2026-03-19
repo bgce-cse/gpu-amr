@@ -17,6 +17,16 @@ endif()
 # Options
 # ----------------------------
 option(ENABLE_SANITIZERS "Enable runtime sanitizers (Debug only)" ON)
+option(ENABLE_CUDA_AMR "Build CUDA AMR kernels for patch-local tree operations" OFF)
+
+if(ENABLE_CUDA_AMR)
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
+
+    if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+        set(CMAKE_CUDA_ARCHITECTURES native CACHE STRING "CUDA architectures")
+    endif()
+endif()
 
 # ----------------------------
 # Execution policy
@@ -102,6 +112,7 @@ message(STATUS "  Contracts        : ${CONTRACTS}")
 message(STATUS "  Execution policy : ${EXECUTION}")
 message(STATUS "  Log level        : ${LOG_LEVEL}")
 message(STATUS "  Sanitizers       : ${ENABLE_SANITIZERS}")
+message(STATUS "  CUDA AMR         : ${ENABLE_CUDA_AMR}")
 message(STATUS "  Output dir       : ${OUTPUT_DIR_EXAMPLES}")
 message(STATUS "----------------------------")
 
@@ -122,6 +133,40 @@ target_link_libraries(gpu_amr
     INTERFACE utility_logging
     INTERFACE amr_compiler_options
 )
+
+if(ENABLE_CUDA_AMR)
+    add_library(gpu_amr_cuda STATIC
+        src/cuda/device_buffer.cu
+        src/cuda/halo_exchange.cu
+        src/cuda/intergrid_transfer.cu
+        src/cuda/permutation.cu
+        src/cuda/refinement_criterion.cu
+        src/cuda/fvm_refinement_criterion.cu
+    )
+
+    target_include_directories(gpu_amr_cuda
+        PUBLIC ${PROJECT_SOURCE_DIR}/include
+    )
+
+    target_link_libraries(gpu_amr_cuda
+        PUBLIC CUDA::cudart
+    )
+
+    set_target_properties(gpu_amr_cuda PROPERTIES
+        CUDA_STANDARD 20
+        CUDA_STANDARD_REQUIRED ON
+        CUDA_SEPARABLE_COMPILATION ON
+        POSITION_INDEPENDENT_CODE ON
+    )
+
+    target_link_libraries(gpu_amr
+        INTERFACE gpu_amr_cuda
+    )
+
+    target_compile_definitions(gpu_amr INTERFACE
+        AMR_ENABLE_CUDA_AMR=1
+    )
+endif()
 
 # ----------------------------
 # Compiler flags
