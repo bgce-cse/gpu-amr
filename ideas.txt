@@ -1,0 +1,10 @@
+Tensors are typically too small for the GPU, so we should pack multiple tensors
+and operate on them at once.
+
+check that the integral o the new patches mathces the integral of the old
+patches
+
+nodal limiting? Patch size depends on the order of the dg scheme, not sure why.
+
+For finite volumes, have a halo layer in the patch (1 or 2 wide), fill it with
+the neighbor values and compute gradients only locally.

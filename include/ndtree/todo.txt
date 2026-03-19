@@ -1,0 +1,2 @@
+Make it a function in one of the printer namespaces and accept a generic type
+that meets the tree a api
