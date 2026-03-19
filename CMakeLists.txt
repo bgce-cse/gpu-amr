@@ -140,7 +140,6 @@ if(ENABLE_CUDA_AMR)
         src/cuda/halo_exchange.cu
         src/cuda/intergrid_transfer.cu
         src/cuda/permutation.cu
-        src/cuda/refinement_criterion.cu
         src/cuda/fvm_refinement_criterion.cu
     )
 
