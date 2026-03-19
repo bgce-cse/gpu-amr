@@ -85,7 +85,7 @@ set_property(CACHE LOG_LEVEL PROPERTY STRINGS
 # ----------------------------
 set(CONTRACTS ON CACHE BOOL "Enable contracts")
 
-set_property(CACHE CONTRACTS PROPERTY VALUE ON OFF)
+set_property(CACHE CONTRACTS PROPERTY STRINGS ON OFF)
 
 # ----------------------------
 # Options
