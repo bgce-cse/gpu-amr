@@ -73,6 +73,34 @@ public:
     }
 
     /**
+     * @brief SoA-compatible Rusanov Flux
+     * Fetches the scalar directly from the patch tuple into registers.
+     */
+    template <typename PatchTuple>
+    static void rusanovFluxSoA(
+        const PatchTuple& patches, 
+        std::size_t idx_L, 
+        std::size_t idx_R, 
+        amr::containers::static_vector<double, NVAR>& flux, 
+        int direction,
+        [[maybe_unused]] double gamma
+    ) 
+    {
+        // 1. Thread-local registers (Extract directly as plain doubles)
+        double UL_scalar = std::get<0>(patches)[idx_L];
+        double UR_scalar = std::get<0>(patches)[idx_R];
+        // 2. Physical fluxes
+        double fluxL = UL_scalar * Velocity[direction];
+        double fluxR = UR_scalar * Velocity[direction];
+        
+        // 3. Wave speed
+        double smax = std::abs(Velocity[direction]);
+        
+        // 4. Numerical Flux (Note: UL_scalar and UR_scalar don't need [0] indexing)
+        flux[0] = 0.5 * (fluxL + fluxR) - 0.5 * smax * (UR_scalar - UL_scalar);
+    }
+
+    /**
      * @brief Returns the maximum characteristic speed in a given direction.
      * Used by amr_solver::compute_time_step to satisfy the CFL condition.
      */
@@ -83,6 +111,22 @@ public:
     )
     {
         // The speed is independent of the state U in linear advection
+        return std::abs(Velocity[direction]);
+    }
+
+    /**
+     * @brief SoA-compatible Max Speed wrapper
+     * Completely bypasses the memory read to save GPU bandwidth.
+     */
+    template <typename PatchTuple>
+    static double getMaxSpeedSoA(
+        [[maybe_unused]] const PatchTuple& patches, 
+        [[maybe_unused]] std::size_t idx, 
+        int direction, 
+        [[maybe_unused]] double gamma
+    ) 
+    {
+        // The speed is independent of the state in linear advection.
         return std::abs(Velocity[direction]);
     }
 
