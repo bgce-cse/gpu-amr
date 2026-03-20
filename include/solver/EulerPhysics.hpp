@@ -89,23 +89,20 @@ public:
     /**
      * @brief Compute flux in a given direction
      * @param cons Conservative variables
+     * @param prim Primitive variables (precalculated)
      * @param flux Output flux vector
      * Flux in direction d:
      * F_d = [rho*u_d, rho*u_d*u_x + p*delta_dx, rho*u_d*u_y + p*delta_dy,
      *        (rho*u_d*u_z + p*delta_dz), u_d*(E + p)]
      * @param direction Direction index (0=x, 1=y, 2=z)
-     * @param gamma Specific heat ratio
      */
     static void computeFlux(
         const amr::containers::static_vector<double, NVAR>& cons,
+        const amr::containers::static_vector<double, NVAR>& prim,
         amr::containers::static_vector<double, NVAR>&       flux,
-        int                                                 direction,
-        double                                              gamma
+        int                                                 direction
     )
     {
-        amr::containers::static_vector<double, NVAR> prim;
-        conservativeToPrimitive(cons, prim, gamma);
-
         double rho   = prim[0];
         double p     = prim[DIM + 1];
         double u_dir = prim[1 + direction]; // velocity in flux direction
@@ -127,18 +124,16 @@ public:
 
     /**
      * @brief Calculate speed of sound
-     * @param cons Conservative variables
+     * @param prim Primitive variables (precalculated)
      * @param gamma Specific heat ratio
      * @return Sound speed a = sqrt(gamma * p / rho)
      */
     static double computeSoundSpeed(
-        const amr::containers::static_vector<double, NVAR>& cons,
+        const amr::containers::static_vector<double, NVAR>& prim,
         double                                              gamma
     )
 
     {
-        amr::containers::static_vector<double, NVAR> prim;
-        conservativeToPrimitive(cons, prim, gamma);
         // TODO: Theses accesses should be std::get<Rho>(prim) and std::get<P>(prim)
         const double rho = prim[0];
         const double p   = prim[DIM + 1];
@@ -162,21 +157,19 @@ public:
         double                                              gamma
     )
     {
-        // Compute physical fluxes for left and right states
-        amr::containers::static_vector<double, NVAR> fluxL, fluxR;
-        computeFlux(UL, fluxL, direction, gamma);
-        computeFlux(UR, fluxR, direction, gamma);
-
-        // TODO: The full conservative to primitive conversion is done but only
-        // one value is used. Please **FIX, twice**
-        // Convert to primitive for wave speed calculation
+        // Calculate Primitive variables
         amr::containers::static_vector<double, NVAR> primL, primR;
         conservativeToPrimitive(UL, primL, gamma);
         conservativeToPrimitive(UR, primR, gamma);
 
+        // Compute physical fluxes for left and right states
+        amr::containers::static_vector<double, NVAR> fluxL, fluxR;
+        computeFlux(UL, primL, fluxL, direction);
+        computeFlux(UR, primR, fluxR, direction);
+
         // Sound speeds
-        const double aL = computeSoundSpeed(UL, gamma);
-        const double aR = computeSoundSpeed(UR, gamma);
+        const double aL = computeSoundSpeed(primL, gamma);
+        const double aR = computeSoundSpeed(primR, gamma);
 
         // Velocity in the flux direction
         const double uL = primL[1 + direction];
@@ -241,7 +234,7 @@ public:
         conservativeToPrimitive(cons, prim, gamma);
 
         double u_dir = prim[1 + direction]; // Velocity in the chosen direction
-        double a     = computeSoundSpeed(cons, gamma);
+        double a     = computeSoundSpeed(prim, gamma);
 
         return std::abs(u_dir) + a;
     }
