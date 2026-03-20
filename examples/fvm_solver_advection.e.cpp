@@ -15,7 +15,6 @@
 #include "solver/physics_system.hpp"
 #include <cmath>
 #include <iostream>
-#include <unordered_map>
 
 int main()
 {
@@ -64,82 +63,63 @@ int main()
     };
 
     // --- 5. AMR Criterion (Refine where scalar > 0.1) ---
-    [[maybe_unused]] auto amrCriterion = [&](const patch_index_t& idx)
+    struct advection_amr_criterion
     {
-        auto   patch   = solver.get_tree().template get_patch<amr::cell::Scalar>(idx);
-        auto&  data    = patch.data();
-        double max_val = 0;
-        for (auto v : data)
-        {
-            max_val = std::max(max_val, v);
-        }
+        tree_t& tree;
 
-        if (max_val > 0.1 && idx.level() < 5) return tree_t::refine_status_t::Refine;
-        if (max_val < 0.05 && idx.level() > 1) return tree_t::refine_status_t::Coarsen;
-        return tree_t::refine_status_t::Stable;
-    };
+        double s_refine_threshold  = 0.1;
+        double s_coarsen_threshold = 0.05;
+        int    s_max_level         = 5;
+        int    s_min_level         = 1;
+
+        auto operator()(const patch_index_t& idx) const -> tree_t::refine_status_t
+        {
+            auto   patch   = tree.template get_patch<amr::cell::Scalar>(idx);
+            auto&  data    = patch.data();
+            double max_val = 0;
+            for (auto v : data)
+            {
+                max_val = std::max(max_val, v);
+            }
+
+            if (max_val > s_refine_threshold && idx.level() < s_max_level)
+                return tree_t::refine_status_t::Refine;
+            if (max_val < s_coarsen_threshold && idx.level() > s_min_level)
+                return tree_t::refine_status_t::Coarsen;
+            return tree_t::refine_status_t::Stable;
+        }
 
 #ifdef AMR_ENABLE_CUDA_AMR
-    auto applyAmrCriterionGpu = [&]()
-    {
-        constexpr double REFINE_THRESHOLD  = 0.1;
-        constexpr double COARSEN_THRESHOLD = 0.05;
-        constexpr int    MAX_LEVEL         = 5;
-        constexpr int    MIN_LEVEL         = 1;
-
-        std::vector<int>            patch_levels(solver.get_tree().size());
-        std::vector<std::int8_t>    raw_decisions(solver.get_tree().size());
-        std::vector<patch_index_t>  patch_ids(solver.get_tree().size());
-
-        for (std::size_t patch_linear_idx = 0; patch_linear_idx < solver.get_tree().size();
-             ++patch_linear_idx)
+        auto fill_refine_flags(tree_t& target_tree) const -> void
         {
-            const auto patch_id = solver.get_tree().get_node_index_at(patch_linear_idx);
-            patch_ids[patch_linear_idx] = patch_id;
-            patch_levels[patch_linear_idx] = static_cast<int>(patch_id.level());
-        }
+            target_tree.build_patch_levels_on_device();
 
-        const auto* scalar_device_buffer = reinterpret_cast<const double*>(
-            solver.get_tree().template get_device_buffer<amr::cell::Scalar>()
-        );
-
-        amr::cuda::compute_scalar_patch_amr_decisions_from_device(
-            scalar_device_buffer,
-            patch_levels.data(),
-            patch_levels.size(),
-            amr::cuda::scalar_patch_amr_launch_config{
-                .num_patches       = solver.get_tree().size(),
-                .cells_per_patch   = patch_layout_t::flat_size(),
-                .refine_threshold  = REFINE_THRESHOLD,
-                .coarsen_threshold = COARSEN_THRESHOLD,
-                .min_level         = MIN_LEVEL,
-                .max_level         = MAX_LEVEL,
-            },
-            raw_decisions.data(),
-            raw_decisions.size()
-        );
-
-        std::unordered_map<patch_index_t, tree_t::refine_status_t> decision_map;
-        decision_map.reserve(raw_decisions.size());
-        for (std::size_t i = 0; i < raw_decisions.size(); ++i)
-        {
-            decision_map.emplace(
-                patch_ids[i], static_cast<tree_t::refine_status_t>(raw_decisions[i])
+            const auto* scalar_device_buffer = reinterpret_cast<const double*>(
+                target_tree.template get_device_buffer<amr::cell::Scalar>()
             );
-        }
 
-        solver.get_tree().reconstruct_tree(
-            [&decision_map](const patch_index_t& pid) -> tree_t::refine_status_t
-            {
-                if (const auto it = decision_map.find(pid); it != decision_map.end())
-                {
-                    return it->second;
-                }
-                return tree_t::refine_status_t::Stable;
-            }
-        );
-    };
+            amr::cuda::compute_scalar_patch_amr_decisions_from_device(
+                scalar_device_buffer,
+                target_tree.get_device_patch_level_buffer(),
+                target_tree.size(),
+                amr::cuda::scalar_patch_amr_launch_config{
+                    .num_patches       = target_tree.size(),
+                    .cells_per_patch   = patch_layout_t::flat_size(),
+                    .refine_threshold  = s_refine_threshold,
+                    .coarsen_threshold = s_coarsen_threshold,
+                    .min_level         = s_min_level,
+                    .max_level         = s_max_level,
+                },
+                reinterpret_cast<std::int8_t*>(target_tree.get_device_refine_status_buffer()),
+                target_tree.size()
+            );
+
+            target_tree.sync_refine_status_from_device();
+        }
 #endif
+    };
+
+    const auto amrCriterion = advection_amr_criterion{ solver.get_tree() };
 
     // --- 6. Initialization & Execution ---
     std::cout << "Initializing Advection Test...\n";
@@ -170,11 +150,7 @@ int main()
 
         if (step % 5 == 0)
         {
-#ifdef AMR_ENABLE_CUDA_AMR
-            applyAmrCriterionGpu();
-#else
             solver.get_tree().reconstruct_tree(amrCriterion);
-#endif
             solver.get_tree().halo_exchange_update();
 #ifdef AMR_ENABLE_CUDA_AMR
             solver.get_tree().sync_current_to_device();

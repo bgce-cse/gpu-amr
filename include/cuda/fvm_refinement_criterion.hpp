@@ -17,22 +17,12 @@ struct scalar_patch_amr_launch_config
     int         max_level;
 };
 
-auto compute_scalar_patch_amr_decisions(
-    const double*                     packed_patch_data,
-    std::size_t                       packed_value_count,
-    const int*                        patch_levels,
-    std::size_t                       level_count,
-    const scalar_patch_amr_launch_config& config,
-    std::int8_t*                      decisions,
-    std::size_t                       decision_count
-) -> void;
-
 auto compute_scalar_patch_amr_decisions_from_device(
     const double*                        device_patch_data,
-    const int*                           patch_levels,
+    const int*                           device_patch_levels,
     std::size_t                          level_count,
     const scalar_patch_amr_launch_config& config,
-    std::int8_t*                         decisions,
+    std::int8_t*                         device_decisions,
     std::size_t                          decision_count
 ) -> void;
 

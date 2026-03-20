@@ -161,6 +161,7 @@ public:
 
     using linear_index_map_t         = pointer_t<patch_index_t>;
     using linear_index_array_t       = pointer_t<linear_index_t>;
+    using patch_level_array_t        = pointer_t<int>;
     using flat_refine_status_array_t = pointer_t<refine_status_t>;
     using index_map_t                = std::unordered_map<patch_index_t, linear_index_t>;
     using neighbor_buffer_t          = pointer_t<patch_neighbors_t>;
@@ -256,6 +257,14 @@ public:
             (pointer_t<refine_status_t>)std::malloc(size * sizeof(refine_status_t));
         m_neighbors =
             (pointer_t<patch_neighbors_t>)std::malloc(size * sizeof(patch_neighbors_t));
+#ifdef AMR_ENABLE_CUDA_AMR
+        m_patch_level_buffer = (pointer_t<int>)std::malloc(size * sizeof(int));
+        m_device_patch_level_buffer =
+            static_cast<pointer_t<int>>(amr::cuda::device_malloc(size * sizeof(int)));
+        m_device_refine_status_buffer = static_cast<pointer_t<refine_status_t>>(
+            amr::cuda::device_malloc(size * sizeof(refine_status_t))
+        );
+#endif
 
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
         patch_neighbors_t root_neighbors;
@@ -279,6 +288,9 @@ public:
         std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_next_buffers);
         std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_data_buffers);
 #ifdef AMR_ENABLE_CUDA_AMR
+        std::free(m_patch_level_buffer);
+        amr::cuda::device_free(static_cast<void*>(m_device_patch_level_buffer));
+        amr::cuda::device_free(static_cast<void*>(m_device_refine_status_buffer));
         std::apply(
             [](auto&... b) { ((void)amr::cuda::device_free(static_cast<void*>(b)), ...); },
             m_device_next_buffers
@@ -433,6 +445,56 @@ public:
     {
         sync_current_from_device();
         sync_next_from_device();
+    }
+
+    [[nodiscard]]
+    auto get_device_refine_status_buffer() noexcept -> refine_status_t*
+    {
+        return m_device_refine_status_buffer;
+    }
+
+    [[nodiscard]]
+    auto get_device_refine_status_buffer() const noexcept -> refine_status_t const*
+    {
+        return m_device_refine_status_buffer;
+    }
+
+    [[nodiscard]]
+    auto get_device_patch_level_buffer() noexcept -> int*
+    {
+        return m_device_patch_level_buffer;
+    }
+
+    [[nodiscard]]
+    auto get_device_patch_level_buffer() const noexcept -> int const*
+    {
+        return m_device_patch_level_buffer;
+    }
+
+    auto sync_refine_status_from_device() -> void
+    {
+        amr::cuda::copy_device_to_host(
+            static_cast<void*>(m_refine_status_buffer),
+            static_cast<void const*>(m_device_refine_status_buffer),
+            m_size * sizeof(refine_status_t)
+        );
+    }
+
+    //to be renamed to sync patch level to device (when we implement the next comment)
+    auto build_patch_levels_on_device() -> void
+    {
+        //we shuold maintian this buffer during tree opertions, for a cleanr design. fine for prototyping now
+        //maintiangin this buffer, makes the floowing loop obsolete...
+        for (linear_index_t i = 0; i != m_size; ++i)
+        {
+            m_patch_level_buffer[i] = static_cast<int>(patch_index_t::level(m_linear_index_map[i]));
+        }
+
+        amr::cuda::copy_host_to_device(
+            static_cast<void*>(m_device_patch_level_buffer),
+            static_cast<void const*>(m_patch_level_buffer),
+            m_size * sizeof(int)
+        );
     }
 #endif
 
@@ -638,13 +700,20 @@ public:
     }
 
     template <typename Fn>
-    auto update_refine_flags(Fn&& fn) noexcept(
-        noexcept(fn(std::declval<linear_index_t&>()))
-    )
+    auto update_refine_flags(Fn&& fn)
     {
-        for (linear_index_t i = 0; i != m_size; ++i)
+        if constexpr (requires(std::remove_reference_t<Fn> const& criterion, ndtree& tree) {
+                          criterion.fill_refine_flags(tree);
+                      })
         {
-            m_refine_status_buffer[i] = fn(m_linear_index_map[i]);
+            std::as_const(fn).fill_refine_flags(*this);
+        }
+        else
+        {
+            for (linear_index_t i = 0; i != m_size; ++i)
+            {
+                m_refine_status_buffer[i] = fn(m_linear_index_map[i]);
+            }
         }
     }
 
@@ -988,9 +1057,7 @@ public:
 
 public:
     template <typename Fn>
-    auto reconstruct_tree(Fn&& fn) noexcept(noexcept(fn(std::declval<linear_index_t&>())))
-        -> void
-
+    auto reconstruct_tree(Fn&& fn) -> void
     {
         update_refine_flags(fn);
         apply_refine_coarsen();
@@ -1802,6 +1869,9 @@ private:
 #ifdef AMR_ENABLE_CUDA_AMR
     deconstructed_buffers_t    m_device_data_buffers{};
     deconstructed_buffers_t    m_device_next_buffers{};
+    patch_level_array_t        m_patch_level_buffer{};
+    patch_level_array_t        m_device_patch_level_buffer{};
+    flat_refine_status_array_t m_device_refine_status_buffer{};
 #endif
     linear_index_map_t         m_linear_index_map;
     linear_index_array_t       m_reorder_buffer;
