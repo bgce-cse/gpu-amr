@@ -33,6 +33,7 @@
 #include <unordered_map>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #ifndef NDEBUG
 #    define AMR_NDTREE_CHECKBOUNDS
@@ -77,6 +78,7 @@ private:
     static constexpr size_type s_1d_fanout  = patch_index_t::fanout();
     static constexpr size_type s_nd_fanout  = patch_index_t::nd_fanout();
     static constexpr size_type s_rank       = patch_layout_t::rank();
+    static constexpr size_type s_halo_direction_count = patch_direction_t::elements();
 
     static_assert(s_1d_fanout > 1);
     static_assert(s_nd_fanout > 1);
@@ -131,6 +133,45 @@ public:
     template <typename Map_Type>
     static constexpr bool s_cuda_scalar_halo_map =
         std::is_same_v<typename Map_Type::type, double>;
+
+    using halo_metadata_t = amr::cuda::halo_direction_metadata;
+
+    static consteval auto make_halo_exchange_static_config()
+        -> amr::cuda::halo_exchange_launch_config
+    {
+        amr::cuda::halo_exchange_launch_config config{
+            .num_patches     = 0,
+            .patch_flat_size = patch_layout_t::flat_size(),
+            .rank            = s_rank,
+            .halo_width      = s_halo_width,
+            .fanout_1d       = s_1d_fanout,
+        };
+
+        for (std::size_t d = 0; d != s_rank; ++d)
+        {
+            config.padded_sizes[d]   = patch_layout_t::padded_layout_t::sizes()[d];
+            config.padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
+            config.data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
+        }
+        for (std::size_t dim = 0; dim != s_rank; ++dim)
+        {
+            auto halo_cells = s_halo_width;
+            for (std::size_t d = 0; d != s_rank; ++d)
+            {
+                if (d != dim)
+                {
+                    halo_cells *= config.data_sizes[d];
+                }
+            }
+            config.halo_cells_per_dim[dim] = halo_cells;
+            config.halo_work_items_per_patch += 2 * halo_cells;
+        }
+
+        return config;
+    }
+
+    static constexpr auto s_halo_exchange_static_config =
+        make_halo_exchange_static_config();
 
     template <std::size_t... I>
     static consteval auto cuda_scalar_halo_compatible_impl(std::index_sequence<I...>) -> bool
@@ -264,6 +305,12 @@ public:
         m_device_refine_status_buffer = static_cast<pointer_t<refine_status_t>>(
             amr::cuda::device_malloc(size * sizeof(refine_status_t))
         );
+        m_halo_exchange_metadata.resize(size * patch_direction_t::elements());
+        m_device_halo_exchange_metadata = static_cast<halo_metadata_t*>(
+            amr::cuda::device_malloc(
+                size * patch_direction_t::elements() * sizeof(halo_metadata_t)
+            )
+        );
 #endif
 
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
@@ -291,6 +338,7 @@ public:
         std::free(m_patch_level_buffer);
         amr::cuda::device_free(static_cast<void*>(m_device_patch_level_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_refine_status_buffer));
+        amr::cuda::device_free(static_cast<void*>(m_device_halo_exchange_metadata));
         std::apply(
             [](auto&... b) { ((void)amr::cuda::device_free(static_cast<void*>(b)), ...); },
             m_device_next_buffers
@@ -1410,17 +1458,21 @@ public:
 
 #ifdef AMR_ENABLE_CUDA_AMR
 private:
-    auto build_halo_exchange_metadata() const -> std::vector<amr::cuda::halo_direction_metadata>
+    [[nodiscard]]
+    auto halo_exchange_metadata_count() const noexcept -> std::size_t
     {
-        using metadata_t = amr::cuda::halo_direction_metadata;
-        std::vector<metadata_t> metadata(m_size * patch_direction_t::elements());
+        return m_size * s_halo_direction_count;
+    }
 
+    auto rebuild_halo_exchange_metadata() -> void
+    {
         for (linear_index_t idx = 0; idx != m_size; ++idx)
         {
             for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
                  d.advance())
             {
-                auto& out = metadata[idx * patch_direction_t::elements() + d.index()];
+                auto& out =
+                    m_halo_exchange_metadata[idx * patch_direction_t::elements() + d.index()];
                 const auto neighbor = neighbor_linear_index(get_neighbor_at(idx, d));
                 std::visit(
                     [&out](auto const& n)
@@ -1466,14 +1518,19 @@ private:
                 );
             }
         }
+    }
 
-        return metadata;
+    auto sync_halo_exchange_metadata_to_device() const -> void
+    {
+        amr::cuda::copy_host_to_device(
+            static_cast<void*>(m_device_halo_exchange_metadata),
+            static_cast<void const*>(m_halo_exchange_metadata.data()),
+            halo_exchange_metadata_count() * sizeof(halo_metadata_t)
+        );
     }
 
     template <concepts::MapType Map_Type>
-    auto halo_exchange_update_device_map(
-        std::vector<amr::cuda::halo_direction_metadata> const& metadata
-    ) -> void
+    auto halo_exchange_update_device_map() -> void
     {
         using patch_value_t = patch_t<Map_Type>;
         static_assert(
@@ -1483,42 +1540,26 @@ private:
 
         auto* device_patch_data =
             reinterpret_cast<double*>(get_device_buffer<Map_Type>());
-
-        std::array<std::size_t, 3> padded_sizes{ 1, 1, 1 };
-        std::array<std::size_t, 3> padded_strides{ 1, 1, 1 };
-        std::array<std::size_t, 3> data_sizes{ 1, 1, 1 };
-        for (std::size_t d = 0; d != s_rank; ++d)
-        {
-            padded_sizes[d] = patch_layout_t::padded_layout_t::sizes()[d];
-            padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
-            data_sizes[d] = patch_layout_t::data_layout_t::sizes()[d];
-        }
+        auto config = s_halo_exchange_static_config;
+        config.num_patches = m_size;
 
         amr::cuda::halo_exchange_scalar_patches_inplace(
             device_patch_data,
-            metadata.data(),
-            metadata.size(),
-            amr::cuda::halo_exchange_launch_config{
-                .num_patches     = m_size,
-                .patch_flat_size = patch_layout_t::flat_size(),
-                .rank            = s_rank,
-                .halo_width      = s_halo_width,
-                .fanout_1d       = s_1d_fanout,
-                .padded_sizes    = padded_sizes,
-                .padded_strides  = padded_strides,
-                .data_sizes      = data_sizes,
-            }
+            m_device_halo_exchange_metadata,
+            halo_exchange_metadata_count(),
+            config
         );
     }
 
     auto halo_exchange_update_device() -> void
     {
         sync_current_to_device();
-        const auto metadata = build_halo_exchange_metadata();
-        [&metadata, this]<std::size_t... I>(std::index_sequence<I...>)
+        rebuild_halo_exchange_metadata();
+        sync_halo_exchange_metadata_to_device();
+        [this]<std::size_t... I>(std::index_sequence<I...>)
         {
             (halo_exchange_update_device_map<
-                 std::tuple_element_t<I, deconstructed_raw_map_types_t>>(metadata),
+                 std::tuple_element_t<I, deconstructed_raw_map_types_t>>(),
              ...);
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_raw_map_types_t>>{});
         sync_current_from_device();
@@ -1872,6 +1913,8 @@ private:
     patch_level_array_t        m_patch_level_buffer{};
     patch_level_array_t        m_device_patch_level_buffer{};
     flat_refine_status_array_t m_device_refine_status_buffer{};
+    std::vector<halo_metadata_t> m_halo_exchange_metadata{};
+    halo_metadata_t*             m_device_halo_exchange_metadata{};
 #endif
     linear_index_map_t         m_linear_index_map;
     linear_index_array_t       m_reorder_buffer;

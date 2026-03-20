@@ -35,11 +35,13 @@ struct halo_exchange_launch_config
     std::array<std::size_t, 3> padded_sizes   = { 1, 1, 1 };
     std::array<std::size_t, 3> padded_strides = { 1, 1, 1 };
     std::array<std::size_t, 3> data_sizes     = { 1, 1, 1 };
+    std::array<std::size_t, 3> halo_cells_per_dim = { 1, 1, 1 };
+    std::size_t halo_work_items_per_patch = 0;
 };
 
 auto halo_exchange_scalar_patches_inplace(
     double*                            device_patch_data,
-    const halo_direction_metadata*     host_neighbor_metadata,
+    const halo_direction_metadata*     device_neighbor_metadata,
     std::size_t                        metadata_count,
     const halo_exchange_launch_config& config
 ) -> void;
