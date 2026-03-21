@@ -11,6 +11,8 @@ namespace amr::cuda
 namespace
 {
 
+#define AMR_DEVICE_FORCEINLINE __device__ __forceinline__
+
 auto throw_if_cuda_error(cudaError_t status, const char* context) -> void
 {
     if (status == cudaSuccess)
@@ -27,23 +29,21 @@ struct device_intergrid_transfer_launch_config
 {
     std::size_t patch_flat_size;
     std::size_t data_flat_size;
-    std::size_t rank;
     std::size_t halo_width;
-    std::size_t fanout_1d;
     std::size_t padded_strides[3];
     std::size_t data_sizes[3];
     std::size_t data_strides[3];
 };
 
-__device__ auto linear_to_coords(
+template <std::size_t Rank>
+AMR_DEVICE_FORCEINLINE auto linear_to_coords(
     std::size_t        linear_idx,
     const std::size_t* strides,
     const std::size_t* sizes,
-    std::size_t        rank,
     std::size_t*       coords
 ) -> void
 {
-    for (std::size_t d = 0; d != rank; ++d)
+    for (std::size_t d = 0; d != Rank; ++d)
     {
         coords[d] = linear_idx / strides[d];
         linear_idx %= strides[d];
@@ -54,21 +54,22 @@ __device__ auto linear_to_coords(
     }
 }
 
-__device__ auto coords_to_linear(
+template <std::size_t Rank>
+AMR_DEVICE_FORCEINLINE auto coords_to_linear(
     const std::size_t* coords,
-    const std::size_t* strides,
-    std::size_t        rank
+    const std::size_t* strides
 ) -> std::size_t
 {
     std::size_t linear = 0;
-    for (std::size_t d = 0; d != rank; ++d)
+    for (std::size_t d = 0; d != Rank; ++d)
     {
         linear += coords[d] * strides[d];
     }
     return linear;
 }
 
-__device__ auto fill_transfer_mapping(
+template <std::size_t Rank>
+AMR_DEVICE_FORCEINLINE auto fill_transfer_mapping(
     std::size_t        interior_linear_idx,
     const device_intergrid_transfer_launch_config& config,
     std::size_t*       fine_patch_idx,
@@ -80,34 +81,30 @@ __device__ auto fill_transfer_mapping(
     std::size_t padded_coords[3]    = { 0, 0, 0 };
     std::size_t base_fine_coords[3] = { 0, 0, 0 };
 
-    linear_to_coords(
+    linear_to_coords<Rank>(
         interior_linear_idx,
         config.data_strides,
         config.data_sizes,
-        config.rank,
         coarse_coords
     );
 
     *fine_patch_idx = 0;
-    for (std::size_t d = 0; d != config.rank; ++d)
+    for (std::size_t d = 0; d != Rank; ++d)
     {
         padded_coords[d] = coarse_coords[d] + config.halo_width;
 
-        const auto section_size = config.data_sizes[d] / config.fanout_1d;
+        const auto section_size = config.data_sizes[d] / 2;
         const auto child_coord  = coarse_coords[d] / section_size;
-        *fine_patch_idx = (*fine_patch_idx * config.fanout_1d) + child_coord;
+        *fine_patch_idx = (*fine_patch_idx * 2) + child_coord;
 
         base_fine_coords[d] =
-            (coarse_coords[d] % section_size) * config.fanout_1d + config.halo_width;
+            (coarse_coords[d] % section_size) * 2 + config.halo_width;
     }
 
     *coarse_linear_idx =
-        coords_to_linear(padded_coords, config.padded_strides, config.rank);
+        coords_to_linear<Rank>(padded_coords, config.padded_strides);
 
-    const auto fanout = config.fanout_1d;
-    const auto num_fine_values =
-        config.rank == 1 ? fanout
-                         : (config.rank == 2 ? fanout * fanout : fanout * fanout * fanout);
+    constexpr auto num_fine_values = std::size_t{ 1 } << Rank;
 
     for (std::size_t n = 0; n != num_fine_values; ++n)
     {
@@ -117,18 +114,18 @@ __device__ auto fill_transfer_mapping(
         };
 
         std::size_t stride = num_fine_values;
-        for (std::size_t d = 0; d != config.rank; ++d)
+        for (std::size_t d = 0; d != Rank; ++d)
         {
-            stride /= fanout;
+            stride /= 2;
             fine_coords[d] += rem / stride;
             rem %= stride;
         }
 
-        fine_linear_indices[n] =
-            coords_to_linear(fine_coords, config.padded_strides, config.rank);
+        fine_linear_indices[n] = coords_to_linear<Rank>(fine_coords, config.padded_strides);
     }
 }
 
+template <std::size_t Rank>
 __global__ void interpolate_scalar_patches_kernel(
     double*                                    device_patch_data,
     const intergrid_transfer_task_metadata*    tasks,
@@ -151,7 +148,7 @@ __global__ void interpolate_scalar_patches_kernel(
     std::size_t child_patch_offset = 0;
     std::size_t coarse_linear_idx  = 0;
     std::size_t fine_linear_indices[8] = { 0 };
-    fill_transfer_mapping(
+    fill_transfer_mapping<Rank>(
         interior_linear_idx,
         config,
         &child_patch_offset,
@@ -166,10 +163,7 @@ __global__ void interpolate_scalar_patches_kernel(
                                 config.patch_flat_size;
     const auto value = device_patch_data[src_patch_base + coarse_linear_idx];
 
-    const auto fanout = config.fanout_1d;
-    const auto num_fine_values =
-        config.rank == 1 ? fanout
-                         : (config.rank == 2 ? fanout * fanout : fanout * fanout * fanout);
+    constexpr auto num_fine_values = std::size_t{ 1 } << Rank;
 
     for (std::size_t n = 0; n != num_fine_values; ++n)
     {
@@ -177,6 +171,7 @@ __global__ void interpolate_scalar_patches_kernel(
     }
 }
 
+template <std::size_t Rank>
 __global__ void restrict_scalar_patches_kernel(
     double*                                    device_patch_data,
     const intergrid_transfer_task_metadata*    tasks,
@@ -199,7 +194,7 @@ __global__ void restrict_scalar_patches_kernel(
     std::size_t child_patch_offset = 0;
     std::size_t coarse_linear_idx  = 0;
     std::size_t fine_linear_indices[8] = { 0 };
-    fill_transfer_mapping(
+    fill_transfer_mapping<Rank>(
         interior_linear_idx,
         config,
         &child_patch_offset,
@@ -213,10 +208,7 @@ __global__ void restrict_scalar_patches_kernel(
     const auto dst_patch_base =
         static_cast<std::size_t>(task.destination_patch) * config.patch_flat_size;
 
-    const auto fanout = config.fanout_1d;
-    const auto num_fine_values =
-        config.rank == 1 ? fanout
-                         : (config.rank == 2 ? fanout * fanout : fanout * fanout * fanout);
+    constexpr auto num_fine_values = std::size_t{ 1 } << Rank;
 
     double sum = 0.0;
     for (std::size_t n = 0; n != num_fine_values; ++n)
@@ -229,12 +221,10 @@ __global__ void restrict_scalar_patches_kernel(
 }
 
 auto prepare_transfer_launch(
-    const intergrid_transfer_task_metadata* host_tasks,
-    std::size_t                             task_count,
-    const intergrid_transfer_launch_config& config,
-    intergrid_transfer_task_metadata**      device_tasks,
+    std::size_t                              task_count,
+    const intergrid_transfer_launch_config&  config,
     device_intergrid_transfer_launch_config* device_config,
-    unsigned int*                           blocks
+    unsigned int*                            blocks
 ) -> void
 {
     if (task_count == 0)
@@ -242,56 +232,28 @@ auto prepare_transfer_launch(
         return;
     }
 
-    throw_if_cuda_error(
-        cudaMalloc(
-            reinterpret_cast<void**>(device_tasks),
-            task_count * sizeof(intergrid_transfer_task_metadata)
-        ),
-        "cudaMalloc(device intergrid tasks)"
-    );
-
-    try
+    device_config->patch_flat_size = config.patch_flat_size;
+    device_config->data_flat_size  = config.data_flat_size;
+    device_config->halo_width      = config.halo_width;
+    for (std::size_t d = 0; d != 3; ++d)
     {
-        throw_if_cuda_error(
-            cudaMemcpy(
-                *device_tasks,
-                host_tasks,
-                task_count * sizeof(intergrid_transfer_task_metadata),
-                cudaMemcpyHostToDevice
-            ),
-            "cudaMemcpy(host_to_device intergrid tasks)"
-        );
-
-        device_config->patch_flat_size = config.patch_flat_size;
-        device_config->data_flat_size  = config.data_flat_size;
-        device_config->rank            = config.rank;
-        device_config->halo_width      = config.halo_width;
-        device_config->fanout_1d       = config.fanout_1d;
-        for (std::size_t d = 0; d != 3; ++d)
-        {
-            device_config->padded_strides[d] = config.padded_strides[d];
-            device_config->data_sizes[d]     = config.data_sizes[d];
-            device_config->data_strides[d]   = config.data_strides[d];
-        }
-
-        constexpr unsigned int threads_per_block = 256;
-        const auto total_work = task_count * config.data_flat_size;
-        *blocks =
-            static_cast<unsigned int>((total_work + threads_per_block - 1) /
-                                      threads_per_block);
+        device_config->padded_strides[d] = config.padded_strides[d];
+        device_config->data_sizes[d]     = config.data_sizes[d];
+        device_config->data_strides[d]   = config.data_strides[d];
     }
-    catch (...)
-    {
-        cudaFree(*device_tasks);
-        throw;
-    }
+
+    constexpr unsigned int threads_per_block = 256;
+    const auto total_work = task_count * config.data_flat_size;
+    *blocks =
+        static_cast<unsigned int>((total_work + threads_per_block - 1) / threads_per_block);
 }
 
 } // namespace
 
+template <std::size_t Rank>
 auto interpolate_scalar_patches_inplace(
     double*                                 device_patch_data,
-    const intergrid_transfer_task_metadata* host_tasks,
+    const intergrid_transfer_task_metadata* device_tasks,
     std::size_t                             task_count,
     const intergrid_transfer_launch_config& config
 ) -> void
@@ -301,47 +263,31 @@ auto interpolate_scalar_patches_inplace(
         return;
     }
 
-    intergrid_transfer_task_metadata*      device_tasks = nullptr;
     device_intergrid_transfer_launch_config device_config{};
     unsigned int                           blocks = 0;
 
-    try
-    {
-        prepare_transfer_launch(
-            host_tasks,
-            task_count,
-            config,
-            &device_tasks,
-            &device_config,
-            &blocks
-        );
+    static_assert(Rank >= 1 && Rank <= 3);
+    prepare_transfer_launch(task_count, config, &device_config, &blocks);
 
-        constexpr unsigned int threads_per_block = 256;
-        interpolate_scalar_patches_kernel<<<blocks, threads_per_block>>>(
-            device_patch_data,
-            device_tasks,
-            task_count,
-            device_config
-        );
+    constexpr unsigned int threads_per_block = 256;
+    interpolate_scalar_patches_kernel<Rank><<<blocks, threads_per_block>>>(
+        device_patch_data,
+        device_tasks,
+        task_count,
+        device_config
+    );
 
-        throw_if_cuda_error(cudaGetLastError(), "interpolate_scalar_patches_kernel launch");
-        throw_if_cuda_error(
-            cudaDeviceSynchronize(),
-            "interpolate_scalar_patches_kernel synchronize"
-        );
-    }
-    catch (...)
-    {
-        cudaFree(device_tasks);
-        throw;
-    }
-
-    cudaFree(device_tasks);
+    throw_if_cuda_error(cudaGetLastError(), "interpolate_scalar_patches_kernel launch");
+    throw_if_cuda_error(
+        cudaDeviceSynchronize(),
+        "interpolate_scalar_patches_kernel synchronize"
+    );
 }
 
+template <std::size_t Rank>
 auto restrict_scalar_patches_inplace(
     double*                                 device_patch_data,
-    const intergrid_transfer_task_metadata* host_tasks,
+    const intergrid_transfer_task_metadata* device_tasks,
     std::size_t                             task_count,
     const intergrid_transfer_launch_config& config
 ) -> void
@@ -351,42 +297,69 @@ auto restrict_scalar_patches_inplace(
         return;
     }
 
-    intergrid_transfer_task_metadata*      device_tasks = nullptr;
     device_intergrid_transfer_launch_config device_config{};
     unsigned int                           blocks = 0;
 
-    try
-    {
-        prepare_transfer_launch(
-            host_tasks,
-            task_count,
-            config,
-            &device_tasks,
-            &device_config,
-            &blocks
-        );
+    static_assert(Rank >= 1 && Rank <= 3);
+    prepare_transfer_launch(task_count, config, &device_config, &blocks);
 
-        constexpr unsigned int threads_per_block = 256;
-        restrict_scalar_patches_kernel<<<blocks, threads_per_block>>>(
-            device_patch_data,
-            device_tasks,
-            task_count,
-            device_config
-        );
+    constexpr unsigned int threads_per_block = 256;
+    restrict_scalar_patches_kernel<Rank><<<blocks, threads_per_block>>>(
+        device_patch_data,
+        device_tasks,
+        task_count,
+        device_config
+    );
 
-        throw_if_cuda_error(cudaGetLastError(), "restrict_scalar_patches_kernel launch");
-        throw_if_cuda_error(
-            cudaDeviceSynchronize(),
-            "restrict_scalar_patches_kernel synchronize"
-        );
-    }
-    catch (...)
-    {
-        cudaFree(device_tasks);
-        throw;
-    }
-
-    cudaFree(device_tasks);
+    throw_if_cuda_error(cudaGetLastError(), "restrict_scalar_patches_kernel launch");
+    throw_if_cuda_error(
+        cudaDeviceSynchronize(),
+        "restrict_scalar_patches_kernel synchronize"
+    );
 }
 
+template auto interpolate_scalar_patches_inplace<1>(
+    double*,
+    const intergrid_transfer_task_metadata*,
+    std::size_t,
+    const intergrid_transfer_launch_config&
+) -> void;
+
+template auto interpolate_scalar_patches_inplace<2>(
+    double*,
+    const intergrid_transfer_task_metadata*,
+    std::size_t,
+    const intergrid_transfer_launch_config&
+) -> void;
+
+template auto interpolate_scalar_patches_inplace<3>(
+    double*,
+    const intergrid_transfer_task_metadata*,
+    std::size_t,
+    const intergrid_transfer_launch_config&
+) -> void;
+
+template auto restrict_scalar_patches_inplace<1>(
+    double*,
+    const intergrid_transfer_task_metadata*,
+    std::size_t,
+    const intergrid_transfer_launch_config&
+) -> void;
+
+template auto restrict_scalar_patches_inplace<2>(
+    double*,
+    const intergrid_transfer_task_metadata*,
+    std::size_t,
+    const intergrid_transfer_launch_config&
+) -> void;
+
+template auto restrict_scalar_patches_inplace<3>(
+    double*,
+    const intergrid_transfer_task_metadata*,
+    std::size_t,
+    const intergrid_transfer_launch_config&
+) -> void;
+
 } // namespace amr::cuda
+
+#undef AMR_DEVICE_FORCEINLINE

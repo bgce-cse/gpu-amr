@@ -215,9 +215,10 @@ AMR_DEVICE_FORCEINLINE auto process_halo_task(
         for (std::size_t d = 0; d != Rank; ++d)
         {
             const auto cells_per_block = config.data_sizes[d] / config.fanout_1d;
+            const auto fine_mapped_idx = from_coords[d] - config.halo_width;
             from_coords[d] = config.halo_width +
                              static_cast<std::size_t>(meta.quadrant[d]) * cells_per_block +
-                             (from_coords[d] - config.halo_width) / config.fanout_1d;
+                             fine_mapped_idx / config.fanout_1d;
         }
 
         const auto from_linear = coords_to_linear<Rank>(from_coords, config.padded_strides);

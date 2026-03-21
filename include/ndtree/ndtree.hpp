@@ -189,6 +189,28 @@ public:
     static constexpr bool s_cuda_scalar_halo_compatible = s_cuda_scalar_patch_compatible;
 
     using device_transfer_task_t = amr::cuda::intergrid_transfer_task_metadata;
+
+    static consteval auto make_intergrid_transfer_static_config()
+        -> amr::cuda::intergrid_transfer_launch_config
+    {
+        amr::cuda::intergrid_transfer_launch_config config{
+            .patch_flat_size = patch_layout_t::flat_size(),
+            .data_flat_size  = patch_layout_t::data_layout_t::flat_size(),
+            .halo_width      = s_halo_width,
+        };
+
+        for (std::size_t d = 0; d != s_rank; ++d)
+        {
+            config.padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
+            config.data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
+            config.data_strides[d]   = patch_layout_t::data_layout_t::strides()[d];
+        }
+
+        return config;
+    }
+
+    static constexpr auto s_intergrid_transfer_static_config =
+        make_intergrid_transfer_static_config();
 #endif
 
 public:
@@ -311,6 +333,11 @@ public:
                 size * patch_direction_t::elements() * sizeof(halo_metadata_t)
             )
         );
+        m_device_transfer_task_capacity = static_cast<std::size_t>(size);
+        m_device_transfer_tasks =
+            static_cast<device_transfer_task_t*>(amr::cuda::device_malloc(
+                m_device_transfer_task_capacity * sizeof(device_transfer_task_t)
+            ));
 #endif
 
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
@@ -339,6 +366,7 @@ public:
         amr::cuda::device_free(static_cast<void*>(m_device_patch_level_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_refine_status_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_halo_exchange_metadata));
+        amr::cuda::device_free(static_cast<void*>(m_device_transfer_tasks));
         std::apply(
             [](auto&... b) { ((void)amr::cuda::device_free(static_cast<void*>(b)), ...); },
             m_device_next_buffers
@@ -1566,29 +1594,37 @@ private:
     }
 
     [[nodiscard]]
-    auto make_intergrid_transfer_launch_config() const
+    static constexpr auto make_intergrid_transfer_launch_config() noexcept
         -> amr::cuda::intergrid_transfer_launch_config
     {
-        std::array<std::size_t, 3> padded_strides{ 1, 1, 1 };
-        std::array<std::size_t, 3> data_sizes{ 1, 1, 1 };
-        std::array<std::size_t, 3> data_strides{ 1, 1, 1 };
-        for (std::size_t d = 0; d != s_rank; ++d)
+        return s_intergrid_transfer_static_config;
+    }
+
+    auto sync_transfer_tasks_to_device(
+        std::vector<device_transfer_task_t> const& transfer_tasks
+    ) -> void
+    {
+        if (transfer_tasks.empty())
         {
-            padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
-            data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
-            data_strides[d]   = patch_layout_t::data_layout_t::strides()[d];
+            return;
         }
 
-        return amr::cuda::intergrid_transfer_launch_config{
-            .patch_flat_size = patch_layout_t::flat_size(),
-            .data_flat_size  = patch_layout_t::data_layout_t::flat_size(),
-            .rank            = s_rank,
-            .halo_width      = s_halo_width,
-            .fanout_1d       = s_1d_fanout,
-            .padded_strides  = padded_strides,
-            .data_sizes      = data_sizes,
-            .data_strides    = data_strides,
-        };
+        if (transfer_tasks.size() > m_device_transfer_task_capacity) // this should never happen actually 
+        {
+            amr::cuda::device_free(static_cast<void*>(m_device_transfer_tasks));
+            m_device_transfer_task_capacity = transfer_tasks.size();
+            m_device_transfer_tasks = static_cast<device_transfer_task_t*>(
+                amr::cuda::device_malloc(
+                    m_device_transfer_task_capacity * sizeof(device_transfer_task_t)
+                )
+            );
+        }
+
+        amr::cuda::copy_host_to_device(
+            static_cast<void*>(m_device_transfer_tasks),
+            static_cast<void const*>(transfer_tasks.data()),
+            transfer_tasks.size() * sizeof(device_transfer_task_t)
+        );
     }
 
     template <concepts::MapType Map_Type>
@@ -1605,9 +1641,9 @@ private:
 
         auto* device_patch_data =
             reinterpret_cast<double*>(get_device_buffer<Map_Type>());
-        amr::cuda::interpolate_scalar_patches_inplace(
+        amr::cuda::interpolate_scalar_patches_inplace<s_rank>(
             device_patch_data,
-            transfer_tasks.data(),
+            m_device_transfer_tasks,
             transfer_tasks.size(),
             config
         );
@@ -1627,9 +1663,9 @@ private:
 
         auto* device_patch_data =
             reinterpret_cast<double*>(get_device_buffer<Map_Type>());
-        amr::cuda::restrict_scalar_patches_inplace(
+        amr::cuda::restrict_scalar_patches_inplace<s_rank>(
             device_patch_data,
-            transfer_tasks.data(),
+            m_device_transfer_tasks,
             transfer_tasks.size(),
             config
         );
@@ -1644,6 +1680,7 @@ private:
             return;
         }
 
+        sync_transfer_tasks_to_device(transfer_tasks);
         const auto config = make_intergrid_transfer_launch_config();
         [&transfer_tasks, &config, this]<std::size_t... I>(std::index_sequence<I...>)
         {
@@ -1664,6 +1701,7 @@ private:
             return;
         }
 
+        sync_transfer_tasks_to_device(transfer_tasks);
         const auto config = make_intergrid_transfer_launch_config();
         [&transfer_tasks, &config, this]<std::size_t... I>(std::index_sequence<I...>)
         {
@@ -1915,6 +1953,8 @@ private:
     flat_refine_status_array_t m_device_refine_status_buffer{};
     std::vector<halo_metadata_t> m_halo_exchange_metadata{};
     halo_metadata_t*             m_device_halo_exchange_metadata{};
+    device_transfer_task_t*      m_device_transfer_tasks{};
+    std::size_t                  m_device_transfer_task_capacity{};
 #endif
     linear_index_map_t         m_linear_index_map;
     linear_index_array_t       m_reorder_buffer;
