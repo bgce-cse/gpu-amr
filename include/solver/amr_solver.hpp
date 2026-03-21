@@ -155,17 +155,32 @@ public:
                         const auto linear_idx = padded_layout_t::linear_index(idxs);
                         amr::containers::static_vector<arithmetic_t, NVAR> total_update{};
 
+                        // --- Fetch the CENTER cell exactly once into registers ---
+                        amr::containers::static_vector<arithmetic_t, NVAR> U_center;
+                        auto fetch_center = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                            ((U_center[Is] = std::get<Is>(in_patches)[linear_idx]), ...);
+                        };
+                        fetch_center(std::make_index_sequence<NVAR>{});
+
                         for (int d = 0; d < DIM; ++d)
                         {
                             const auto stride = (d == 0) ? 1 : (d == 1 ? stride_y : stride_z);
+                            
+                            // Fetch the specific neighbors into registers
+                            amr::containers::static_vector<arithmetic_t, NVAR> U_L, U_R;
+                            auto fetch_neighbors = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                                ((U_L[Is] = std::get<Is>(in_patches)[linear_idx - stride]), ...);
+                                ((U_R[Is] = std::get<Is>(in_patches)[linear_idx + stride]), ...);
+                            };
+                            fetch_neighbors(std::make_index_sequence<NVAR>{});
+
                             // TODO: Remove out paramters if possible
                             // TODO: Evaluate merging both calls into one since they share
                             // input params
                             amr::containers::static_vector<arithmetic_t, NVAR> fL, fR;
                             
-                            // Read safely from the current time step (in_patches)
-                            EquationT::rusanovFluxSoA(in_patches, linear_idx - stride, linear_idx, fL, d, m_gamma);
-                            EquationT::rusanovFluxSoA(in_patches, linear_idx, linear_idx + stride, fR, d, m_gamma);
+                            EquationT::rusanovFlux(U_L, U_center, fL, d, m_gamma);
+                            EquationT::rusanovFlux(U_center, U_R, fR, d, m_gamma);
 
                             arithmetic_t dt_over_dx = dt / c_size[d];
 
@@ -229,7 +244,7 @@ public:
                         for (int d = 0; d < DIM; ++d)
                         {
                             const arithmetic_t speed =
-                                EquationT::getMaxSpeedSoA(patches, linear_idx, d, m_gamma);
+                                EquationT::getMaxSpeed(patches, linear_idx, d, m_gamma);
                             // TODO: This magic number should at least have a name
                             // TODO: Is this value special in any way?
                             if (speed > 1e-12)
