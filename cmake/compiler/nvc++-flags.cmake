@@ -37,7 +37,7 @@ set(AMR_DEBUG_FLAGS
 )
 
 set(AMR_RELEASE_FLAGS
-    -stdpar=gpu
+    # -stdpar=gpu
 	-march=native
 	-mavx
 	-O3

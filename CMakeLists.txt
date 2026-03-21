@@ -1,11 +1,13 @@
 cmake_minimum_required(VERSION 3.25)
-project(gpu_amr VERSION 0.1 LANGUAGES CXX)
+project(gpu_amr VERSION 0.1 LANGUAGES CXX CUDA)
 
 # ----------------------------
 # Global settings
 # ----------------------------
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 17)
+
 
 if(NOT CMAKE_CONFIGURATION_TYPES)
     if(NOT CMAKE_BUILD_TYPE)
