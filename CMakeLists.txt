@@ -39,8 +39,8 @@ find_package(TBB REQUIRED)
 # ----------------------------
 # Logger
 # ----------------------------
-set(ENABLE_SPDLOG ON CACHE BOOL "Enable spdlog")
-set_property(CACHE ENABLE_SPDLOG PROPERTY VALUE ON OFF)
+option(ENABLE_SPDLOG "Enable spdlog" ON)
+set_property(CACHE ENABLE_SPDLOG PROPERTY STRINGS ON OFF)
 
 add_library(utility_logging
     src/utility/logging.cpp
