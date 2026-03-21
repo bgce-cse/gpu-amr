@@ -152,14 +152,14 @@ enum struct log_level
 #        include <spdlog/common.h>
 #        include <spdlog/spdlog.h>
 #    else
-#        include <iostream>
 #        include <format>
+#        include <iostream>
 #    endif
 
 namespace utility::logging
 {
 
-#ifdef ENABLE_SPDLOG
+#    ifdef ENABLE_SPDLOG
 namespace detail
 {
 
@@ -174,9 +174,6 @@ inline std::string_view format_to_buffer(fmt::string_view fmt, fmt::format_args 
 }
 
 } // namespace detail
-#endif
-
-#    ifdef ENABLE_SPDLOG
 
 class default_logger
 {
@@ -216,13 +213,9 @@ struct default_logger
     template <typename... Args>
     static void log(log_level, std::string_view fmt, Args&&... args)
     {
-        // Optional: filter log levels
-        // if (sev < some_level) return;
-
         std::cout << std::vformat(fmt, std::make_format_args(args...)) << '\n';
     }
 
-    // Catch plain strings
     static void log(log_level, std::string_view msg)
     {
         std::cout << msg << '\n';
