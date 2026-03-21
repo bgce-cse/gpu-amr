@@ -12,6 +12,11 @@
             "toolchainFile": "cmake/toolchain/clang.cmake"
         },
         {
+            "name": "nvcc-base",
+            "generator": "Unix Makefiles",
+            "toolchainFile": "cmake/toolchain/nvcc.cmake"
+        },
+        {
             "name": "gcc-asan",
             "inherits": "gcc-base",
             "binaryDir": "build/gcc-asan",
@@ -82,6 +87,42 @@
                 "EXECUTION": "SEQ",
                 "ENABLE_SANITIZERS": "OFF"
             }
+        },
+        {
+            "name": "nvcc-debug",
+            "inherits": "nvcc-base",
+            "binaryDir": "build/nvcc-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "LOG_LEVEL": "DEBUG",
+                "CONTRACTS": "ON",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "OFF"
+            }
+        },
+        {
+            "name": "nvcc-relwdebinfo",
+            "inherits": "nvcc-base",
+            "binaryDir": "build/nvcc-relwdebinfo",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "LOG_LEVEL": "INFO",
+                "CONTRACTS": "ON",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "OFF"
+            }
+        },
+        {
+            "name": "nvcc-release",
+            "inherits": "nvcc-base",
+            "binaryDir": "build/nvcc-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "LOG_LEVEL": "PROGRESS",
+                "CONTRACTS": "OFF",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "OFF"
+            }
         }
     ],
 
@@ -121,6 +162,21 @@
             "name": "clang-release",
             "inherits": "build-base",
             "configurePreset": "clang-release"
+        },
+        {
+            "name": "nvcc-debug",
+            "inherits": "build-base",
+            "configurePreset": "nvcc-debug"
+        },
+        {
+            "name": "nvcc-relwdebinfo",
+            "inherits": "build-base",
+            "configurePreset": "nvcc-relwdebinfo"
+        },
+        {
+            "name": "nvcc-release",
+            "inherits": "build-base",
+            "configurePreset": "nvcc-release"
         }
     ]
 }

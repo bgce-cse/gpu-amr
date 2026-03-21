@@ -1,8 +1,8 @@
 #pragma once
 
+#include "config/generated_config.hpp"
 #include "containers/container_algorithms.hpp"
 #include "containers/static_vector.hpp"
-#include "config/generated_config.hpp"
 #include "globals/global_config.hpp"
 #include "globals/globals.hpp"
 #include <tuple>
@@ -27,7 +27,7 @@ struct Surface
     // -----------------------------------------------------------------
     //  Cached compile-time data
     // -----------------------------------------------------------------
-    using global_config                 = global_t::GlobalConfig;
+    using global_config                 = typename global_t::GlobalConfig;
     static constexpr auto& weights_vec  = global_config::quad_weights;
     static constexpr auto& surface_mass = global_config::surface_mass;
     static constexpr auto& kernels      = global_config::face_kernels;
@@ -66,8 +66,14 @@ struct Surface
         [[maybe_unused]] int sign
     )
     {
-        auto dofs_face = tensor_ops::template contract<Direction>(dofs, kernels[sign]);
-        auto flux_face = tensor_ops::template contract<Direction>(flux, kernels[sign]);
+        auto dofs_face =
+            amr::containers::algorithms::tensor::template contract<Direction>(
+                dofs, kernels[sign]
+            );
+        auto flux_face =
+            amr::containers::algorithms::tensor::template contract<Direction>(
+                flux, kernels[sign]
+            );
         return std::make_pair(dofs_face, flux_face);
     }
 

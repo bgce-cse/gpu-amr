@@ -1,11 +1,11 @@
 #ifndef AMR_GLOBAL_CONFIG_HPP
 #define AMR_GLOBAL_CONFIG_HPP
 
+#include "config/generated_config.hpp"
 #include "coordinates.hpp"
 #include "dg_helpers/basis/basis.hpp"
 #include "dg_helpers/equations/equations.hpp"
 #include "dg_helpers/time_integration/time_integration.hpp"
-#include "config/generated_config.hpp"
 #include "globals.hpp"
 #include "kernels.hpp"
 #include "quadrature.hpp"
