@@ -182,7 +182,7 @@ constexpr auto halo_apply_section_impl(
                 );
             },
             // Finer impl
-            [&tree, &p_i, &n_idx, &args...](
+            [&tree, &p_i, &n_idx, &idx, &args...](
                 typename n_linear_idx_varant_t::finer const& neighbor
             )
             {
@@ -214,9 +214,9 @@ constexpr auto halo_apply_section_impl(
                 );
             },
             // Coarser impl
-            [&tree,
-             &p_i,
-             &args...](typename n_linear_idx_varant_t::coarser const& neighbor)
+            [&tree, &p_i, &idx, &args...](
+                typename n_linear_idx_varant_t::coarser const& neighbor
+            )
             {
                 const auto& p_n =
                     std::forward<decltype(tree)>(tree).template get_patch<T>(neighbor.id);
