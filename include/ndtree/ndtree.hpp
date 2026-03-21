@@ -144,7 +144,7 @@ public:
         constexpr auto operator==(U) const noexcept -> bool
         {
             return std::is_same_v<current_buffer_t, U>;
-        };
+        }
     };
 
     static constexpr current_buffer_t current_buffer{};
@@ -155,7 +155,7 @@ public:
         constexpr auto operator==(U) const noexcept -> bool
         {
             return std::is_same_v<next_buffer_t, U>;
-        };
+        }
     };
 
     static constexpr next_buffer_t next_buffer{};
