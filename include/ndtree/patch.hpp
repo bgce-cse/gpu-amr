@@ -77,16 +77,18 @@ public:
     }
 
     [[nodiscard]]
-    constexpr auto operator[](padded_multi_index_t const& multi_idx) const noexcept
+    constexpr auto
+        operator[](std::ranges::contiguous_range auto const& idxs) const noexcept
         -> const_reference
     {
-        return m_data[std::forward<decltype(multi_idx)>(multi_idx)];
+        return m_data[idxs];
     }
 
     [[nodiscard]]
-    constexpr auto operator[](padded_multi_index_t const& multi_idx) noexcept -> reference
+    constexpr auto operator[](std::ranges::contiguous_range auto const& idxs) noexcept
+        -> reference
     {
-        return const_cast<reference>(std::as_const(*this).operator[](multi_idx));
+        return const_cast<reference>(std::as_const(*this).operator[](idxs));
     }
 
     [[nodiscard]]
