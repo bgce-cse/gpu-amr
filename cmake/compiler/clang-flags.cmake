@@ -81,8 +81,7 @@ set(AMR_SANITIZERS
 )
 
 if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64|ARM64")
-    list(APPEND AMR_SANITIZERS 	-fsanitize=leak)
+    list(APPEND AMR_SANITIZERS -fsanitize=leak)
 endif()
 
-set(CONSTEXPR_LIMIT_FLAGS
-)
+set(CONSTEXPR_LIMIT_FLAGS)

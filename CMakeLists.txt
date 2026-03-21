@@ -37,34 +37,40 @@ set(OUTPUT_DIR_BENCHMARKS ${CMAKE_BINARY_DIR}/bin/benchmarks)
 find_package(TBB REQUIRED)
 
 # ----------------------------
-# Logging
+# Logger
 # ----------------------------
-if(NOT TARGET spdlog)
-    # Stand-alone build
-    find_package(spdlog REQUIRED)
-endif()
+option(ENABLE_SPDLOG "Enable spdlog" ON)
+set_property(CACHE ENABLE_SPDLOG PROPERTY STRINGS ON OFF)
 
 add_library(utility_logging
     src/utility/logging.cpp
 )
 
 target_include_directories(utility_logging
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(utility_logging
-    PUBLIC spdlog::spdlog
-)
+if (ENABLE_SPDLOG)
+    if(NOT TARGET spdlog)
+        # Stand-alone build
+        find_package(spdlog REQUIRED)
+    endif()
 
-target_compile_definitions(utility_logging PUBLIC
-    # SPDLOG_USE_STD_FORMAT
-    LOGGING_BUILD_TYPE="$<CONFIG>"
-    LOGGING_EXECUTION="${EXECUTION}"
-    LOGGING_GIT_HASH="${GIT_HASH}"
-    LOGGING_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
-    LOGGING_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
-)
+    target_compile_definitions(utility_logging PUBLIC ENABLE_SPDLOG=1)
+
+    target_link_libraries(utility_logging
+        PUBLIC spdlog::spdlog
+    )
+
+    target_compile_definitions(utility_logging PUBLIC
+        # SPDLOG_USE_STD_FORMAT
+        LOGGING_BUILD_TYPE="$<CONFIG>"
+        LOGGING_EXECUTION="${EXECUTION}"
+        LOGGING_GIT_HASH="${GIT_HASH}"
+        LOGGING_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
+        LOGGING_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
+    )
+endif()
 
 # ----------------------------
 # Logging
@@ -79,7 +85,7 @@ set_property(CACHE LOG_LEVEL PROPERTY STRINGS
 # ----------------------------
 set(CONTRACTS ON CACHE BOOL "Enable contracts")
 
-set_property(CACHE CONTRACTS PROPERTY VALUE ON OFF)
+set_property(CACHE CONTRACTS PROPERTY STRINGS ON OFF)
 
 # ----------------------------
 # Options
@@ -92,6 +98,7 @@ include(cmake/amr_compiler_options.cmake)
 message(STATUS "----------------------------")
 message(STATUS "gpu_amr configuration summary:")
 message(STATUS "  Build type       : ${CMAKE_BUILD_TYPE}")
+message(STATUS "  Contracts        : ${CONTRACTS}")
 message(STATUS "  Execution policy : ${EXECUTION}")
 message(STATUS "  Log level        : ${LOG_LEVEL}")
 message(STATUS "  Sanitizers       : ${ENABLE_SANITIZERS}")
@@ -147,17 +154,20 @@ add_library(amr_tests INTERFACE)
 
 target_compile_definitions(amr_examples INTERFACE
     $<$<BOOL:${CONTRACTS}>:AMR_ENABLE_CONTRACTS=1>
+    $<$<BOOL:${ENABLE_SPDLOG}>:ENABLE_SPDLOG=1>
     AMR_LOG_LEVEL=${LOG_LEVEL}
     AMR_EXECUTION=${EXECUTION}
 )
 
 target_compile_definitions(amr_benchmarks INTERFACE
+    $<$<BOOL:${ENABLE_SPDLOG}>:ENABLE_SPDLOG=1>
     AMR_LOG_LEVEL=OFF
     AMR_EXECUTION=${EXECUTION}
 )
 
 target_compile_definitions(amr_tests INTERFACE
     $<$<BOOL:${CONTRACTS}>:AMR_ENABLE_CONTRACTS=1>
+    $<$<BOOL:${ENABLE_SPDLOG}>:ENABLE_SPDLOG=1>
     AMR_LOG_LEVEL=OFF
     AMR_EXECUTION=${EXECUTION}
 )

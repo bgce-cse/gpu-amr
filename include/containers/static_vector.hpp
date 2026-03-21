@@ -114,16 +114,14 @@ public:
     [[nodiscard]]
     constexpr auto operator[](size_type const idx) const noexcept -> const_reference
     {
-#ifdef AMR_CONTAINERS_CHECKBOUNDS
-        assert_in_bounds(idx);
-#endif
+        CONTRACTS_CHECK_INDEX(idx, elements());
         return data_[idx];
     }
 
     [[nodiscard]]
     constexpr auto operator[](size_type const idx) noexcept -> reference
     {
-        return const_cast<T&>(std::as_const(*this).operator[](idx));
+        return const_cast<reference>(std::as_const(*this).operator[](idx));
     }
 
     [[nodiscard]]
@@ -197,13 +195,6 @@ public:
     constexpr auto back() noexcept -> reference
     {
         return data_.back();
-    }
-#endif
-
-#ifdef AMR_CONTAINERS_CHECKBOUNDS
-    constexpr auto assert_in_bounds(size_type const idx) const noexcept -> void
-    {
-        CONTRACTS_CHECK_INDEX(idx, elements());
     }
 #endif
 

@@ -30,7 +30,7 @@ struct GlobalConfigPolicy
     static constexpr std::size_t PatchSize = 4;
     static constexpr std::size_t HaloWidth = 1;
     static constexpr unsigned int MaxDepth = 6;
-    static constexpr EquationType equation = EquationType::Euler;
+    static constexpr EquationType equation = EquationType::Advection;
     static constexpr TimeIntegratorType integrator = TimeIntegratorType::SSPRK2;
 };
 

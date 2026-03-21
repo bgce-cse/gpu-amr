@@ -57,80 +57,6 @@ constexpr auto is_halo_cell(typename Layout::index_t linear_index) noexcept -> b
     return false;
 }
 
-template <concepts::PatchLayout Patch_Layout, std::integral auto Fanout>
-[[nodiscard, deprecated]]
-constexpr auto fragmentation_patch_maps() noexcept
-    -> containers::utils::types::tensor::hypercube_t<
-        containers::static_tensor<
-            typename Patch_Layout::index_t,
-            typename Patch_Layout::padded_layout_t>,
-        Fanout,
-        Patch_Layout::rank()>
-{
-    using patch_layout_t  = Patch_Layout;
-    constexpr auto fanout = static_cast<typename patch_layout_t::index_t>(Fanout);
-
-    using layout_t = typename patch_layout_t::padded_layout_t;
-    using index_t  = typename patch_layout_t::index_t;
-    using tensor_t = typename containers::static_tensor<index_t, layout_t>;
-    using patch_shape_t =
-        containers::utils::types::tensor::hypercube_t<tensor_t, fanout, tensor_t::rank()>;
-    patch_shape_t to{};
-
-    constexpr index_t halo_width = patch_layout_t::halo_width();
-    constexpr auto&   strides    = layout_t::strides();
-    constexpr auto&   data_shape = patch_layout_t::data_layout_t::sizes();
-
-    auto idx = typename tensor_t::multi_index_t{};
-    do
-    {
-        const auto linear_idx = layout_t::linear_index(idx);
-        const auto is_halo    = is_halo_cell<patch_layout_t>(linear_idx);
-        const auto        offset     = is_halo
-            ? [&idx]()
-            {
-                index_t ret{};
-                for(auto i = index_t{}; i != layout_t::rank(); ++i)
-                {
-                    const auto inc = (idx[i] - halo_width + data_shape[i])
-                                   % data_shape[i] + halo_width;
-                    ret += inc * strides[i];
-                }
-                return ret;
-            }()
-            : std::transform_reduce(
-                std::cbegin(idx),
-                std::cend(idx),
-                std::cbegin(strides),
-                index_t{},
-                std::plus{},
-                [](auto const i, auto const s)
-                {
-                    CONTRACTS_CHECK(i >= halo_width);
-                    return ((i - halo_width) / fanout) * s;
-                }
-            );
-        auto out_patch_idx = typename patch_shape_t::multi_index_t{};
-        do
-        {
-            const auto linear_out_idx      = patch_shape_t::linear_index(out_patch_idx);
-            const auto base                = is_halo ? index_t{} : [&out_patch_idx]()
-            {
-                index_t ret{};
-                for (index_t i = 0; i != layout_t::rank(); ++i)
-                {
-                    CONTRACTS_CHECK(data_shape[i] % fanout == 0);
-                    ret += (out_patch_idx[i] * (data_shape[i] / fanout) + halo_width) *
-                           strides[i];
-                }
-                return ret;
-            }();
-            to[linear_out_idx][linear_idx] = offset + base;
-        } while (out_patch_idx.increment());
-    } while (idx.increment());
-    return to;
-}
-
 namespace detail
 {
 
@@ -152,7 +78,7 @@ constexpr auto halo_apply_section_impl(
     using patch_layout_t        = typename tree_t::patch_layout_t;
     auto& p_i = std::forward<decltype(tree)>(tree).template get_patch<T>(idx);
 
-    DEFAULT_SOURCE_LOG_TRACE("{} halo exchange in direction {}", n_idx.repr(), D.repr());
+    DEFAULT_SOURCE_LOG_DEBUG("{} halo exchange in direction {}", n_idx.repr(), D.repr());
     std::visit(
         utils::overloads{
             // None impl
@@ -294,11 +220,8 @@ static constexpr auto hypercube_offset(typename Patch_Layout::index_t idx) noexc
     amr::containers::manipulators::shaped_for<loop_control_t>(
         [](auto& out, index_t out_idx, auto& oi, auto const& idxs)
         {
-            // std::cout << "lidx: " << oi << ", out_idx: " << out_idx << '\n';
             for (index_t i = 0; i != dim; ++i)
             {
-                // std::cout << i << " -> idxs[i]: " << idxs[i]
-                //           << ", stride[-i]: " << strides[dim - 1 - i] << '\n';
                 out_idx += idxs[i] * strides[i];
             }
             out[oi++] = out_idx;
@@ -418,50 +341,44 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
+            DEFAULT_SOURCE_LOG_DEBUG("Idxs:\t{}", idxs);
+
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
-            index_t patch_linear_idx = 0;
-            index_t stride           = 1;
-            auto    base_fine_idxs   = idxs;
-
-            for (index_t d = 0; d < s_rank; ++d)
+            index_t fine_patch_idx = 0;
+            index_t stride         = 1;
+            auto    base_fine_idxs = idxs;
+            base_fine_idxs[dim] = positive
+                                      ? (base_fine_idxs[dim] - index_t{ s_sizes[dim] })
+                                      : (base_fine_idxs[dim] + index_t{ s_sizes[dim] });
+            for (index_t d = 0; d != s_rank; ++d)
             {
-                const auto section_size = s_sizes[d] / s_1d_fanout;
-
-                // Negative direction: halo is at low end, read high end of fine neighbor
-                // → add Positive direction: halo is at high end, read low end of fine
-                // neighbor → subtract
-                const index_t shifted = (d == dim)
-                                            ? (positive ? idxs[d] - index_t{ s_sizes[d] }
-                                                        : idxs[d] + index_t{ s_sizes[d] })
-                                            : idxs[d];
-
-                const auto data_coord = shifted - s_halo_width;
-                const auto wrapped =
-                    (data_coord % index_t{ s_sizes[d] } + index_t{ s_sizes[d] }) %
-                    index_t{ s_sizes[d] };
-
-                const auto section_idx   = wrapped / section_size;
-                const auto intra_section = wrapped % section_size;
-
+                base_fine_idxs[d] =
+                    ((base_fine_idxs[d] - s_halo_width) * s_1d_fanout) % s_sizes[dim] +
+                    s_halo_width;
                 if (d != dim)
                 {
-                    patch_linear_idx += section_idx * stride;
+                    const auto section_size = s_sizes[d] / s_1d_fanout;
+                    const auto section_idx  = (idxs[d] - s_halo_width) / section_size;
+                    fine_patch_idx += section_idx * stride;
                     stride *= s_1d_fanout;
                 }
-
-                base_fine_idxs[d] = s_halo_width + intra_section * s_1d_fanout;
             }
 
-            auto& fine_patch = neighbor_patches[patch_linear_idx].get();
+            DEFAULT_SOURCE_LOG_DEBUG("Fine patch idx:\t{}", fine_patch_idx);
 
-            const auto base_linear_idx =
+            const auto base_fine_idx =
                 patch_layout_t::padded_layout_t::linear_index(base_fine_idxs);
-            const auto fine_linear_idxs =
-                detail::hypercube_offset<patch_layout_t, 2>(base_linear_idx);
-            const auto to_idx = patch_layout_t::padded_layout_t::linear_index(idxs);
+            DEFAULT_SOURCE_LOG_DEBUG("Base fine idxs:\t{}", base_fine_idxs);
+            DEFAULT_SOURCE_LOG_DEBUG("Fine fine idx:\t{}", base_fine_idx);
 
+            const auto fine_linear_idxs =
+                detail::hypercube_offset<patch_layout_t, 2>(base_fine_idx);
+            const auto to_idx = patch_layout_t::padded_layout_t::linear_index(idxs);
+            DEFAULT_SOURCE_LOG_DEBUG("Fine patch idxs:\t{}", fine_linear_idxs);
+
+            auto& fine_patch = neighbor_patches[fine_patch_idx].get();
             intergrid_operator_t::restriction(
                 current_patch, to_idx, fine_patch, fine_linear_idxs
             );
@@ -487,36 +404,22 @@ struct halo_exchange_impl_t
                 (!positive && (contact_quadrant[dim] == s_1d_fanout - index_t{ 1 }))
             );
 
-            // Reconstruct per-axis indices from the linear index using padded strides
-            static constexpr auto& padded_strides =
-                patch_layout_t::padded_layout_t::strides();
-            std::array<index_t, s_rank> nd_idxs{};
-            {
-                auto remaining = patch_layout_t::padded_layout_t::linear_index(idxs);
-                for (auto i = index_t{}; i != s_rank; ++i)
-                {
-                    nd_idxs[i] = remaining / padded_strides[i];
-                    remaining %= padded_strides[i];
-                }
-            }
-
-            std::array<index_t, s_rank> from_idxs{};
+            auto from_idxs = idxs;
+            from_idxs[dim] = positive ? (from_idxs[dim] - index_t{ s_sizes[dim] })
+                                      : (from_idxs[dim] + index_t{ s_sizes[dim] });
             std::array<index_t, s_rank> child_coords{};
             for (auto i = index_t{}; i != s_rank; ++i)
             {
                 CONTRACTS_CHECK_INDEX(contact_quadrant[i], s_1d_fanout);
                 CONTRACTS_CHECK(
-                    i == dim ? ((!positive && (nd_idxs[i] < s_halo_width)) ||
-                                (positive && (nd_idxs[i] >= s_halo_width + s_sizes[i])))
-                             : ((nd_idxs[i] >= s_halo_width) &&
-                                (nd_idxs[i] < s_halo_width + s_sizes[i]))
+                    i == dim ? ((!positive && (idxs[i] < s_halo_width)) ||
+                                (positive && (idxs[i] >= s_halo_width + s_sizes[i])))
+                             : ((idxs[i] >= s_halo_width) &&
+                                (idxs[i] < s_halo_width + s_sizes[i]))
                 );
 
                 const auto cells_per_block = (s_sizes[i] / s_1d_fanout);
-                const auto fine_mapped_idx =
-                    (i == dim) ? (positive ? nd_idxs[i] - s_sizes[i] - s_halo_width
-                                           : nd_idxs[i] + s_sizes[i] - s_halo_width)
-                               : nd_idxs[i] - s_halo_width;
+                const auto fine_mapped_idx = from_idxs[i] - s_halo_width;
                 from_idxs[i] = s_halo_width + (contact_quadrant[i] * cells_per_block) +
                                fine_mapped_idx / s_1d_fanout;
                 CONTRACTS_CHECK_INDEX(from_idxs[i] - s_halo_width, s_sizes[i]);

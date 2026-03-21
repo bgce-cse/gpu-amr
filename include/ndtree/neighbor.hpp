@@ -228,7 +228,7 @@ public:
         static constexpr auto repr_width   = 2;
         static constexpr auto repr_strings = []()
         {
-            constexpr auto dim_names = std::array{ 'x', 'y', 'z' };
+            constexpr auto dim_names = std::array{ '0', '1', '2' };
             auto           buffer    = std::array<char, s_elements * repr_width>{};
             for (auto i = size_type{}; i != s_elements; ++i)
             {
@@ -451,9 +451,9 @@ public:
                     {
                         return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                     }
-                    else if constexpr (std::is_same_v<
-                                           T,
-                                           typename neighbor_variant_t::same>)
+                    else if constexpr (
+                        std::is_same_v<T, typename neighbor_variant_t::same>
+                    )
                     {
                         return neighbor_variant_t{ typename neighbor_variant_t::coarser(
                             neighbor.id,
@@ -462,9 +462,9 @@ public:
                             )
                         ) };
                     }
-                    else if constexpr (std::is_same_v<
-                                           T,
-                                           typename neighbor_variant_t::finer>)
+                    else if constexpr (
+                        std::is_same_v<T, typename neighbor_variant_t::finer>
+                    )
                     {
                         const auto fine_index = compute_fine_boundary_linear_index(
                             child_multiindex, d.dimension()
@@ -473,9 +473,9 @@ public:
                         return neighbor_variant_t{ typename neighbor_variant_t::same{
                             fine_neighbor_id } };
                     }
-                    else if constexpr (std::is_same_v<
-                                           T,
-                                           typename neighbor_variant_t::coarser>)
+                    else if constexpr (
+                        std::is_same_v<T, typename neighbor_variant_t::coarser>
+                    )
                     {
                         return neighbor_variant_t{ typename neighbor_variant_t::none{} };
                     }
@@ -527,9 +527,11 @@ public:
                             [&](auto&& child_nb)
                             {
                                 using child_t = std::decay_t<decltype(child_nb)>;
-                                if constexpr (std::is_same_v<
-                                                  child_t,
-                                                  typename neighbor_variant_t::same>)
+                                if constexpr (
+                                    std::is_same_v<
+                                        child_t,
+                                        typename neighbor_variant_t::same>
+                                )
                                 {
                                     fine_neighbor_ids[i] = child_nb.id;
                                 }
@@ -540,8 +542,9 @@ public:
                     return neighbor_variant_t{ typename neighbor_variant_t::finer{
                         fine_neighbor_ids } };
                 }
-                else if constexpr (std::
-                                       is_same_v<T, typename neighbor_variant_t::coarser>)
+                else if constexpr (
+                    std::is_same_v<T, typename neighbor_variant_t::coarser>
+                )
                 {
                     // Child has coarser neighbor -> parent has same-level neighbor
                     return neighbor_variant_t{ typename neighbor_variant_t::same{
