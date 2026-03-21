@@ -105,7 +105,7 @@ struct DefaultAMRPolicy
         index_t const                 from_idx
     ) noexcept -> void
     {
-        for (std::size_t i = 0; i < static_cast<std::size_t>(N); ++i)
+        for (index_t i{}; i != index_t{ N }; ++i)
         {
             interpolation(to, to_idxs[i], i, from, from_idx);
         }
@@ -202,7 +202,7 @@ struct DefaultAMRPolicy
         using value_type = typename std::remove_cvref_t<decltype(from)>::value_type;
         amr::containers::static_vector<value_type, N> children;
 
-        for (std::size_t i = 0; i < static_cast<std::size_t>(N); ++i)
+        for (index_t i{}; i != index_t{ N }; ++i)
         {
             children[i] = from[from_idxs[i]];
         }
