@@ -144,20 +144,22 @@ enum struct log_level
 // Avoid includes and definitions if logging is off
 #if DEFAULT_SOURCE_LOG_LEVEL < UTILITY_DEFAULT_LOG_LEVEL_OFF
 
-#    include <fmt/core.h>
-#    include <fmt/format.h>
 #    include <string_view>
 #    ifdef ENABLE_SPDLOG
+#        include <fmt/core.h>
+#        include <fmt/format.h>
 #        include <fmt/ranges.h>
 #        include <spdlog/common.h>
 #        include <spdlog/spdlog.h>
 #    else
 #        include <iostream>
+#        include <format>
 #    endif
 
 namespace utility::logging
 {
 
+#ifdef ENABLE_SPDLOG
 namespace detail
 {
 
@@ -172,6 +174,7 @@ inline std::string_view format_to_buffer(fmt::string_view fmt, fmt::format_args 
 }
 
 } // namespace detail
+#endif
 
 #    ifdef ENABLE_SPDLOG
 
@@ -211,10 +214,17 @@ public:
 struct default_logger
 {
     template <typename... Args>
-    static auto log(log_level, fmt::format_string<Args...> fmt, Args const&... args)
-        -> void
+    static void log(log_level, std::string_view fmt, Args&&... args)
     {
-        const auto msg = detail::format_to_buffer(fmt, fmt::make_format_args(args...));
+        // Optional: filter log levels
+        // if (sev < some_level) return;
+
+        std::cout << std::vformat(fmt, std::make_format_args(args...)) << '\n';
+    }
+
+    // Catch plain strings
+    static void log(log_level, std::string_view msg)
+    {
         std::cout << msg << '\n';
     }
 };

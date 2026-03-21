@@ -23,38 +23,6 @@ public:
             amr::cell::E3D>>;
 
     /**
-     * @brief Convert conservative to primitive variables
-     * @param cons Conservative variables [rho, rho*u, rho*v, (rho*w), E]
-     * @param prim Output primitive variables [rho, u, v, (w), p]
-     * @param gamma Specific heat ratio
-     */
-    static void conservativeToPrimitive(
-        const amr::containers::static_vector<double, NVAR>& cons,
-        amr::containers::static_vector<double, NVAR>&       prim,
-        double                                              gamma
-    )
-    {
-        const double rho = cons[0];
-
-        // Density (rho)
-        prim[0] = rho;
-
-        // Velocities (u)
-        double vel_squared = 0.0;
-        for (int dim = 0; dim < DIM; dim++)
-        {
-            prim[1 + dim] = cons[1 + dim] / rho;
-            vel_squared += prim[1 + dim] * prim[1 + dim];
-        }
-
-        // Pressure (p)
-        const double E = cons[DIM + 1];
-        prim[DIM + 1] =
-            (gamma - 1.0) *
-            (E - 0.5 * rho * vel_squared); // ((gamma-1) * (E - 0.5*rho*|u|^2))
-    }
-
-    /**
      * @brief Convert primitive to conservative variables
      * @param prim Primitive variables [rho, u, v, (w), p]
      * @param cons Output conservative variables [rho, rho*u, rho*v, (rho*w), E]
@@ -87,67 +55,8 @@ public:
     }
 
     /**
-     * @brief Compute flux in a given direction
-     * @param cons Conservative variables
-     * @param flux Output flux vector
-     * Flux in direction d:
-     * F_d = [rho*u_d, rho*u_d*u_x + p*delta_dx, rho*u_d*u_y + p*delta_dy,
-     *        (rho*u_d*u_z + p*delta_dz), u_d*(E + p)]
-     * @param direction Direction index (0=x, 1=y, 2=z)
-     * @param gamma Specific heat ratio
-     */
-    static void computeFlux(
-        const amr::containers::static_vector<double, NVAR>& cons,
-        amr::containers::static_vector<double, NVAR>&       flux,
-        int                                                 direction,
-        double                                              gamma
-    )
-    {
-        amr::containers::static_vector<double, NVAR> prim;
-        conservativeToPrimitive(cons, prim, gamma);
-
-        double rho   = prim[0];
-        double p     = prim[DIM + 1];
-        double u_dir = prim[1 + direction]; // velocity in flux direction
-
-        // Mass flux (rho * u)
-        flux[0] = rho * u_dir;
-
-        // Momentum flux (rho*u*v, if direction rho*u^2 + p)
-        for (int dim = 0; dim < DIM; dim++)
-        {
-            flux[1 + dim] = rho * u_dir * prim[1 + dim]; // (rho*u*v)
-        }
-        flux[1 + direction] += p; // Pressure term only in flux direction (p)
-        // (rho*u_d*u_i + p*delta_di)
-
-        // Energy flux (u * (E + p))
-        flux[DIM + 1] = u_dir * (cons[DIM + 1] + p);
-    }
-
-    /**
-     * @brief Calculate speed of sound
-     * @param cons Conservative variables
-     * @param gamma Specific heat ratio
-     * @return Sound speed a = sqrt(gamma * p / rho)
-     */
-    static double computeSoundSpeed(
-        const amr::containers::static_vector<double, NVAR>& cons,
-        double                                              gamma
-    )
-
-    {
-        amr::containers::static_vector<double, NVAR> prim;
-        conservativeToPrimitive(cons, prim, gamma);
-        // TODO: Theses accesses should be std::get<Rho>(prim) and std::get<P>(prim)
-        const double rho = prim[0];
-        const double p   = prim[DIM + 1];
-        return std::sqrt(gamma * p / rho);
-    }
-
-    /**
      * @brief Rusanov (Local Lax-Friedrichs) Riemann solver - solves Riemann problem at
-     * cell interfaces
+     * cell interfaces - high performance flattened version
      * @param UL Left state (conservative)
      * @param UR Right state (conservative)
      * @param flux Output numerical flux
@@ -162,61 +71,87 @@ public:
         double                                              gamma
     )
     {
-        // Compute physical fluxes for left and right states
-        amr::containers::static_vector<double, NVAR> fluxL, fluxR;
-        computeFlux(UL, fluxL, direction, gamma);
-        computeFlux(UR, fluxR, direction, gamma);
+        // --- Left State (Calculate completely in registers) ---
+        const double inv_rho_L = 1.0 / UL[0];
+        double K_L = 0.0;                     // Kinetic energy term
+        for (int d = 0; d < DIM; ++d) K_L += UL[1 + d] * UL[1 + d];
+        K_L *= 0.5 * inv_rho_L;
+        
+        const double p_L     = (gamma - 1.0) * (UL[DIM + 1] - K_L);
+        const double a_L     = std::sqrt(gamma * p_L * inv_rho_L);
+        const double u_dir_L = UL[1 + direction] * inv_rho_L;
 
-        // TODO: The full conservative to primitive conversion is done but only
-        // one value is used. Please **FIX, twice**
-        // Convert to primitive for wave speed calculation
-        amr::containers::static_vector<double, NVAR> primL, primR;
-        conservativeToPrimitive(UL, primL, gamma);
-        conservativeToPrimitive(UR, primR, gamma);
+        // --- Right State (Calculate completely in registers) ---
+        const double inv_rho_R = 1.0 / UR[0]; 
+        double K_R = 0.0;                     
+        for (int d = 0; d < DIM; ++d) K_R += UR[1 + d] * UR[1 + d];
+        K_R *= 0.5 * inv_rho_R;
+        
+        const double p_R     = (gamma - 1.0) * (UR[DIM + 1] - K_R);
+        const double a_R     = std::sqrt(gamma * p_R * inv_rho_R);
+        const double u_dir_R = UR[1 + direction] * inv_rho_R;
 
-        // Sound speeds
-        const double aL = computeSoundSpeed(UL, gamma);
-        const double aR = computeSoundSpeed(UR, gamma);
+        // --- Maximum Wave Speed ---
+        const double smax = std::max(std::abs(u_dir_L) + a_L, std::abs(u_dir_R) + a_R);
 
-        // Velocity in the flux direction
-        const double uL = primL[1 + direction];
-        const double uR = primR[1 + direction];
+        // --- Flux Calculation ---
+        // Mass Flux
+        flux[0] = 0.5 * (UL[1 + direction] + UR[1 + direction] - smax * (UR[0] - UL[0]));
 
-        // Maximum wave speed: smax = max(|u_L| + a_L, |u_R| + a_R)
-        const double smax = std::max(std::abs(uL) + aL, std::abs(uR) + aR);
-
-        // Rusanov flux: F* = 0.5*(FL + FR) - 0.5*smax*(UR - UL)
-        for (int k = 0; k < NVAR; k++)
+        // Momentum Fluxes
+        for (int d = 0; d < DIM; ++d)
         {
-            // TODO: Can the two multiplications by 0.5 be changed by just one?
-            // Solution seems to change slighlty so I cannot do it immediately
-            // This also means that the compiler is issuing both, meaning that
-            // merging them would save one multiplication
-            flux[k] = 0.5 * (fluxL[k] + fluxR[k]) - 0.5 * smax * (UR[k] - UL[k]);
+            // Note: UL[1+d] * u_dir_L is mathematically identical to rho * u * v
+            double fL_mom = UL[1 + d] * u_dir_L; 
+            double fR_mom = UR[1 + d] * u_dir_R;
+            
+            // Add pressure to the flux direction
+            if (d == direction) 
+            {
+                fL_mom += p_L;
+                fR_mom += p_R;
+            }
+            flux[1 + d] = 0.5 * (fL_mom + fR_mom - smax * (UR[1 + d] - UL[1 + d]));
         }
+
+        // Energy Flux
+        const double fL_E = u_dir_L * (UL[DIM + 1] + p_L);
+        const double fR_E = u_dir_R * (UR[DIM + 1] + p_R);
+        flux[DIM + 1] = 0.5 * (fL_E + fR_E - smax * (UR[DIM + 1] - UL[DIM + 1]));
     }
 
     /**
-     * @brief Get the maximum wave speed for the CFL condition
-     * @param cons Conservative variables
-     * @param direction Direction index
-     * @param gamma Specific heat ratio
+     * @brief Get the maximum wave speed for the CFL condition - high performance flattened version
+     * Reads directly from a tuple of patch arrays into local registers.
      * @return Max speed |u| + a
      */
+    template <typename PatchTuple>
     static double getMaxSpeed(
-        const amr::containers::static_vector<double, NVAR>& cons,
-        int                                                 direction,
-        double                                              gamma
-    )
+        const PatchTuple& patches, 
+        std::size_t idx, 
+        int direction, 
+        double gamma
+    ) 
     {
-        amr::containers::static_vector<double, NVAR> prim;
-        conservativeToPrimitive(cons, prim, gamma);
+        // Read directly from global memory into fast thread-local registers
+        amr::containers::static_vector<double, NVAR> cons;
+        auto fetch_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            ((cons[Is] = std::get<Is>(patches)[idx]), ...);
+        };
+        fetch_state(std::make_index_sequence<NVAR>{});
 
-        double u_dir = prim[1 + direction]; // Velocity in the chosen direction
-        double a     = computeSoundSpeed(cons, gamma);
+        const double inv_rho = 1.0 / cons[0];
+        double K = 0.0;
+        for (int d = 0; d < DIM; ++d) K += cons[1 + d] * cons[1 + d];
+        K *= 0.5 * inv_rho;
+
+        const double p     = (gamma - 1.0) * (cons[DIM + 1] - K);
+        const double a     = std::sqrt(gamma * p * inv_rho);
+        const double u_dir = cons[1 + direction] * inv_rho;
 
         return std::abs(u_dir) + a;
     }
+
 
     /**
      * @brief Get number of variables

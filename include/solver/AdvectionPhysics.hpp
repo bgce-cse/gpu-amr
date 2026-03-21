@@ -30,24 +30,6 @@ public:
         cons[0] = prim[0];
     }
 
-    static void conservativeToPrimitive(
-        const amr::containers::static_vector<double, NVAR>& cons,
-        amr::containers::static_vector<double, NVAR>&       prim,
-        [[maybe_unused]] double                             gamma
-    )
-    {
-        prim[0] = cons[0];
-    }
-
-    static void computeFlux(
-        const amr::containers::static_vector<double, NVAR>& cons,
-        amr::containers::static_vector<double, NVAR>&       flux,
-        int                                                 direction
-    )
-    {
-        flux[0] = cons[0] * Velocity[direction];
-    }
-
     /**
      * @brief Rusanov (Local Lax-Friedrichs) Numerical Flux
      * Used to resolve the state at the interface between two cells.
@@ -73,16 +55,19 @@ public:
     }
 
     /**
-     * @brief Returns the maximum characteristic speed in a given direction.
+     * @brief Max Speed for CFL condition
+     * Returns the maximum characteristic speed in a given direction.
      * Used by amr_solver::compute_time_step to satisfy the CFL condition.
      */
+    template <typename PatchTuple>
     static double getMaxSpeed(
-        [[maybe_unused]] const amr::containers::static_vector<double, NVAR>& U,
-        int                                                                  direction,
-        [[maybe_unused]] double                                              gamma
-    )
+        [[maybe_unused]] const PatchTuple& patches, 
+        [[maybe_unused]] std::size_t idx, 
+        int direction, 
+        [[maybe_unused]] double gamma
+    ) 
     {
-        // The speed is independent of the state U in linear advection
+        // The speed is independent of the state in linear advection.
         return std::abs(Velocity[direction]);
     }
 

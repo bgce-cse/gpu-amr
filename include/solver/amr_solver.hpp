@@ -53,42 +53,6 @@ public:
         return m_tree;
     }
 
-    /**
-     * @brief Helper to gather the full conservative state from a specific cell
-     */
-    auto
-        get_full_state(const linear_index_t patch_idx, const std::size_t linear_idx) const
-    {
-        // Static loop over the FieldTags defined in the Equation policy
-        auto fill_state = [&]<std::size_t... Is>(std::index_sequence<Is...>)
-        {
-            amr::containers::static_vector<arithmetic_t, NVAR> state;
-            ((state[Is] = m_tree.template get_patch<
-                          typename std::tuple_element<Is, typename EquationT::FieldTags>::
-                              type>(patch_idx)[linear_idx]),
-             ...);
-            return state;
-        };
-        return fill_state(std::make_index_sequence<NVAR>{});
-    }
-
-    template <auto Buffer>
-    void set_full_state(
-        const linear_index_t                                      patch_idx,
-        const std::size_t                                         linear_idx,
-        const amr::containers::static_vector<arithmetic_t, NVAR>& state
-    )
-    {
-        auto write_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) -> void
-        {
-            ((m_tree.template get_out_patch<
-                  typename std::tuple_element<Is, typename EquationT::FieldTags>::type,
-                  Buffer>(patch_idx)[linear_idx] = state[Is]),
-             ...);
-        };
-        write_state(std::make_index_sequence<NVAR>{});
-    }
-
     arithmetic_t get_gamma() const noexcept
     {
         return m_gamma;
@@ -105,24 +69,36 @@ public:
         {
             const auto patch_id = m_tree.get_node_index_at(p_idx);
             const auto c_size   = GeometryT::cell_sizes(patch_id);
-
+            // Fetch the tuple of SoA patch references
+            auto fetch_patches = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                return std::forward_as_tuple(
+                    m_tree.template get_patch<
+                        typename std::tuple_element<Is, typename EquationT::FieldTags>::type
+                    >(p_idx)...
+                );
+            };
+            auto patches = fetch_patches(std::make_index_sequence<NVAR>{});
             amr::containers::manipulators::shaped_for<
                 typename patch_layout_t::interior_iteration_control_t>(
-                [this, p_idx, patch_id, &c_size](auto&& fn, auto const& idxs)
+                [this, patch_id, &c_size, &patches](auto&& fn, auto const& idxs)
                 {
                     const auto linear_idx = padded_layout_t::linear_index(idxs);
+        
                     // Dimension-agnostic coordinate fetch
                     const auto cell_origin = GeometryT::cell_coord(patch_id, linear_idx);
                     std::array<arithmetic_t, DIM> coords;
                     for (int d = 0; d < DIM; ++d)
                         coords[d] = cell_origin[d] + 0.5 * c_size[d];
-
                     // IC -> Primitive -> Conservative
                     const auto prim = std::invoke(std::forward<decltype(fn)>(fn), coords);
                     amr::containers::static_vector<arithmetic_t, NVAR> cons;
                     EquationT::primitiveToConservative(prim, cons, m_gamma);
-
-                    set_full_state<tree_t::current_buffer>(p_idx, linear_idx, cons);
+                    // Write directly to the SoA arrays
+                    auto write_state = [&]<std::size_t... Is>(std::index_sequence<Is...>) -> void
+                    {
+                        ((std::get<Is>(patches)[linear_idx] = cons[Is]), ...);
+                    };
+                    write_state(std::make_index_sequence<NVAR>{});
                 },
                 std::forward<decltype(init_func)>(init_func)
             );
@@ -131,11 +107,8 @@ public:
 
     auto time_step(const arithmetic_t dt) -> void
     {
-        static constexpr auto patch_data_size = data_layout_t::flat_size();
-        // Stride for moving "up" or "down" in the patch (Y-direction)
         static constexpr auto stride_y =
             patch_layout_t::padded_layout_t::shape_t::sizes()[DIM - 1];
-        // Stride for Z (only used if DIM=3)
         // TODO: Maybe use the stride accessors layout types provide
         static constexpr auto stride_z =
             (DIM == 3) ? patch_layout_t::padded_layout_t::shape_t::sizes()[1] * stride_y
@@ -151,60 +124,78 @@ public:
                 const auto patch_id = m_tree.get_node_index_at(p_idx);
                 const auto c_size   = GeometryT::cell_sizes(patch_id);
 
-                std::array<
-                    amr::containers::static_vector<arithmetic_t, NVAR>,
-                    patch_data_size>
-                    update_buffer{};
+                // Fetch READ patches (Current state at time t)
+                auto fetch_in_patches = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                    return std::forward_as_tuple(
+                        m_tree.template get_patch<
+                            typename std::tuple_element<Is, typename EquationT::FieldTags>::type
+                        >(p_idx)...
+                    );
+                };
+                auto in_patches = fetch_in_patches(std::make_index_sequence<NVAR>{});
 
-                int buffer_idx = 0;
+                // Fetch WRITE patches (Next state at time t + dt)
+                auto fetch_out_patches = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                    return std::forward_as_tuple(
+                        m_tree.template get_out_patch<
+                            typename std::tuple_element<Is, typename EquationT::FieldTags>::type,
+                            tree_t::next_buffer
+                        >(p_idx)...
+                    );
+                };
+                auto out_patches = fetch_out_patches(std::make_index_sequence<NVAR>{});
+
+                // --- Calculate and Write Directly ---
                 amr::containers::manipulators::shaped_for<
                     typename patch_layout_t::interior_iteration_control_t>(
-                    [this, p_idx, dt, &c_size](
-                        auto& out_buffer, auto& out_i, auto const& idxs
+                    [this, dt, &c_size, &in_patches, &out_patches](
+                        auto const& idxs
                     )
                     {
                         const auto linear_idx = padded_layout_t::linear_index(idxs);
-                        const auto U_cell     = get_full_state(p_idx, linear_idx);
-                        out_buffer[out_i]     = U_cell;
+                        amr::containers::static_vector<arithmetic_t, NVAR> total_update{};
 
-                        // Generic loop over dimensions (X, Y, Z)
+                        // --- Fetch the CENTER cell exactly once into registers ---
+                        amr::containers::static_vector<arithmetic_t, NVAR> U_center;
+                        auto fetch_center = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                            ((U_center[Is] = std::get<Is>(in_patches)[linear_idx]), ...);
+                        };
+                        fetch_center(std::make_index_sequence<NVAR>{});
+
                         for (int d = 0; d < DIM; ++d)
                         {
-                            const auto stride =
-                                (d == 0) ? 1 : (d == 1 ? stride_y : stride_z);
-
-                            const auto U_L = get_full_state(p_idx, linear_idx - stride);
-                            const auto U_R = get_full_state(p_idx, linear_idx + stride);
+                            const auto stride = (d == 0) ? 1 : (d == 1 ? stride_y : stride_z);
+                            
+                            // Fetch the specific neighbors into registers
+                            amr::containers::static_vector<arithmetic_t, NVAR> U_L, U_R;
+                            auto fetch_neighbors = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                                ((U_L[Is] = std::get<Is>(in_patches)[linear_idx - stride]), ...);
+                                ((U_R[Is] = std::get<Is>(in_patches)[linear_idx + stride]), ...);
+                            };
+                            fetch_neighbors(std::make_index_sequence<NVAR>{});
 
                             // TODO: Remove out paramters if possible
                             // TODO: Evaluate merging both calls into one since they share
                             // input params
                             amr::containers::static_vector<arithmetic_t, NVAR> fL, fR;
-                            EquationT::rusanovFlux(U_L, U_cell, fL, d, m_gamma);
-                            EquationT::rusanovFlux(U_cell, U_R, fR, d, m_gamma);
+                            
+                            EquationT::rusanovFlux(U_L, U_center, fL, d, m_gamma);
+                            EquationT::rusanovFlux(U_center, U_R, fR, d, m_gamma);
+
+                            arithmetic_t dt_over_dx = dt / c_size[d];
 
                             for (int k = 0; k < NVAR; ++k)
                             {
-                                out_buffer[out_i][k] -=
-                                    (dt / c_size[d]) * (fR[k] - fL[k]);
+                                total_update[k] -= dt_over_dx * (fR[k] - fL[k]);
                             }
                         }
-                        out_i++;
-                    },
-                    update_buffer,
-                    buffer_idx
-                );
-                buffer_idx = 0;
-                amr::containers::manipulators::shaped_for<
-                    typename patch_layout_t::interior_iteration_control_t>(
-                    [this, p_idx, &update_buffer](auto& out_i, auto const& idxs)
-                    {
-                        const auto linear_idx = padded_layout_t::linear_index(idxs);
-                        set_full_state<tree_t::next_buffer>(
-                            p_idx, linear_idx, update_buffer[out_i++]
-                        );
-                    },
-                    buffer_idx
+
+                        // Write directly to its final destination (out_patches)
+                        auto apply_update = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                            ((std::get<Is>(out_patches)[linear_idx] = std::get<Is>(in_patches)[linear_idx] + total_update[Is]), ...);
+                        };
+                        apply_update(std::make_index_sequence<NVAR>{});
+                    }
                 );
             }
         );
@@ -214,6 +205,7 @@ public:
 
     auto compute_time_step() const -> arithmetic_t
     {
+        // Global minimum time step, safely updated across threads
         // TODO: We could have a tighter upper bound here.
         //       maybe there is some other theoretical limit we can use instead
         std::atomic<arithmetic_t> dt{ std::numeric_limits<arithmetic_t>::max() };
@@ -229,14 +221,22 @@ public:
                 const auto patch_id = m_tree.get_node_index_at(p_idx);
                 const auto c_size   = GeometryT::cell_sizes(patch_id);
 
+                // Fetch the SoA patch tuple for this specific patch
+                auto fetch_patches = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                    return std::forward_as_tuple(
+                        m_tree.template get_patch<
+                            typename std::tuple_element<Is, typename EquationT::FieldTags>::type
+                        >(p_idx)...
+                    );
+                };
+                auto patches = fetch_patches(std::make_index_sequence<NVAR>{});
+                // Iterate over the cells
                 amr::containers::manipulators::shaped_for<
                     typename patch_layout_t::interior_iteration_control_t>(
-                    [this, p_idx, &c_size](arithmetic_t& out_dt, auto const& idxs)
+                    [this, &c_size, &patches](arithmetic_t& out_dt, auto const& idxs)
                     {
                         const auto linear_idx = padded_layout_t::linear_index(idxs);
-                        const auto U          = get_full_state(p_idx, linear_idx);
-
-                        // Ask Equation for max wave speed in each direction
+                        // Ask Equation for max wave speed directly from the SoA tuple
                         // TODO: The level of abstraction here is incorrect in my
                         // opiniton. Iterating over the dimensions and calling it
                         // direction (in getMaxSpeed) is heavily missleading.
@@ -244,7 +244,7 @@ public:
                         for (int d = 0; d < DIM; ++d)
                         {
                             const arithmetic_t speed =
-                                EquationT::getMaxSpeed(U, d, m_gamma);
+                                EquationT::getMaxSpeed(patches, linear_idx, d, m_gamma);
                             // TODO: This magic number should at least have a name
                             // TODO: Is this value special in any way?
                             if (speed > 1e-12)
