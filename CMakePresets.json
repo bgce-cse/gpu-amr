@@ -54,7 +54,7 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "LOG_LEVEL": "PROGRESS",
-                "CONTRACTS": "ON",
+                "CONTRACTS": "OFF",
                 "EXECUTION": "SEQ",
                 "ENABLE_SANITIZERS": "OFF"
             }

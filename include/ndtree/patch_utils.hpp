@@ -475,9 +475,6 @@ struct halo_exchange_impl_t
             [[maybe_unused]] auto&&... args
         ) noexcept -> void
         {
-            DEFAULT_SOURCE_LOG_DEBUG("Idxs:\t{}", idxs);
-            DEFAULT_SOURCE_LOG_DEBUG("Contact quadrant:\t{}", contact_quadrant);
-
             const auto dim      = direction.dimension();
             const auto positive = direction.is_positive();
 
@@ -489,6 +486,7 @@ struct halo_exchange_impl_t
             auto from_idxs = idxs;
             from_idxs[dim] = positive ? (from_idxs[dim] - index_t{ s_sizes[dim] })
                                       : (from_idxs[dim] + index_t{ s_sizes[dim] });
+            std::array<index_t, s_rank> child_coords{};
             for (auto i = index_t{}; i != s_rank; ++i)
             {
                 CONTRACTS_CHECK_INDEX(contact_quadrant[i], s_1d_fanout);
@@ -500,20 +498,21 @@ struct halo_exchange_impl_t
                 );
 
                 const auto cells_per_block = (s_sizes[i] / s_1d_fanout);
+                const auto fine_mapped_idx = from_idxs[i] - s_halo_width;
                 from_idxs[i] = s_halo_width + (contact_quadrant[i] * cells_per_block) +
-                               (from_idxs[i] - s_halo_width) / s_1d_fanout;
+                               fine_mapped_idx / s_1d_fanout;
                 CONTRACTS_CHECK_INDEX(from_idxs[i] - s_halo_width, s_sizes[i]);
-            }
-            DEFAULT_SOURCE_LOG_DEBUG("From idxs:\t{}", from_idxs);
 
-            const auto child_offset =
-                projection_hypercube_t::linear_index(contact_quadrant);
-            DEFAULT_SOURCE_LOG_DEBUG("Child offset:\t{}", child_offset);
-            const auto to_idx = patch_layout_t::padded_layout_t::linear_index(idxs);
-            DEFAULT_SOURCE_LOG_DEBUG("To idx:\t{}", to_idx);
+                child_coords[i] =
+                    (i == dim) ? (positive ? index_t{} : s_1d_fanout - index_t{ 1 })
+                               : static_cast<index_t>(fine_mapped_idx % s_1d_fanout);
+            }
+
+            const auto child_offset = projection_hypercube_t::linear_index(child_coords);
+            const auto to_idx       = patch_layout_t::padded_layout_t::linear_index(idxs);
             const auto from_idx =
                 patch_layout_t::padded_layout_t::linear_index(from_idxs);
-            DEFAULT_SOURCE_LOG_DEBUG("From idx:\t{}", from_idx);
+
             intergrid_operator_t::interpolation(
                 self_patch, to_idx, child_offset, other_patch, from_idx
             );

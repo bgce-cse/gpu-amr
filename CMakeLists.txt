@@ -85,7 +85,7 @@ set_property(CACHE LOG_LEVEL PROPERTY STRINGS
 # ----------------------------
 set(CONTRACTS ON CACHE BOOL "Enable contracts")
 
-set_property(CACHE CONTRACTS PROPERTY VALUE ON OFF)
+set_property(CACHE CONTRACTS PROPERTY STRINGS ON OFF)
 
 # ----------------------------
 # Options
@@ -98,6 +98,7 @@ include(cmake/amr_compiler_options.cmake)
 message(STATUS "----------------------------")
 message(STATUS "gpu_amr configuration summary:")
 message(STATUS "  Build type       : ${CMAKE_BUILD_TYPE}")
+message(STATUS "  Contracts        : ${CONTRACTS}")
 message(STATUS "  Execution policy : ${EXECUTION}")
 message(STATUS "  Log level        : ${LOG_LEVEL}")
 message(STATUS "  Sanitizers       : ${ENABLE_SANITIZERS}")

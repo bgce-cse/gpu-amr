@@ -121,7 +121,7 @@ public:
     [[nodiscard]]
     constexpr auto operator[](size_type const idx) noexcept -> reference
     {
-        return const_cast<T&>(std::as_const(*this).operator[](idx));
+        return const_cast<reference>(std::as_const(*this).operator[](idx));
     }
 
     [[nodiscard]]

@@ -58,9 +58,12 @@ set(AMR_DEBUG_FLAGS
 	-fno-inline
 	-fno-default-inline
 	-march=native
-	-mavx
 	-O0
 )
+
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64|ARM64")
+    list(APPEND AMR_DEBUG_FLAGS -mavx)
+endif()
 
 set(AMR_RELEASE_FLAGS
 	-fno-math-errno
@@ -68,18 +71,24 @@ set(AMR_RELEASE_FLAGS
 	-fno-trapping-math
 	-fstrength-reduce
 	-march=native
-	-mavx
 	-O3
 )
+
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64|ARM64")
+    list(APPEND AMR_RELEASE_FLAGS -mavx)
+endif()
 
 set(AMR_RELWITHDEBINFO_FLAGS
 	-fno-math-errno
 	-fno-trapping-math
 	-fstrength-reduce
 	-march=native
-	-mavx
 	-O2
 )
+
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64|ARM64")
+    list(APPEND AMR_RELWITHDEBINFO_FLAGS -mavx)
+endif()
 
 set(AMR_SANITIZERS
 	-fsanitize=address

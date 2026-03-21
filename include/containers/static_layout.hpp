@@ -94,7 +94,7 @@ public:
                 const index_t vidxs[rank()]{ static_cast<index_t>(idxs)... };
                 for (rank_t i{}; i != rank(); ++i)
                 {
-                    if (vidxs[i] != s_sizes[i]) return false;
+                    if (vidxs[i] >= s_sizes[i]) return false;
                 }
                 return true;
             }()
