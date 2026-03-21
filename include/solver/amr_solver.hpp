@@ -257,9 +257,7 @@ public:
                 );
                 auto current = dt.load();
                 while (local_dt < current && !dt.compare_exchange_weak(current, local_dt))
-                {
-                    break;
-                }
+                    ;
             }
         );
         return m_cfl * dt;
