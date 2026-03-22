@@ -17,7 +17,7 @@ solver:
 
 # Equation and scenario selection
 equation:
-  equation: advection               # Options: "advection", "euler"
+  equation: euler               # Options: "advection", "euler"
   scenario: gaussian_wave           # Scenario selection
 
 # Output configuration
