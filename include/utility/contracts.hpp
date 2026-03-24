@@ -27,7 +27,11 @@ constexpr auto contract_fail(const char* file, int line) -> void
 {
     if (std::is_constant_evaluated())
     {
-        std::unreachable();
+        #if defined(__CUDACC__) || __cplusplus < 202302L
+            __builtin_unreachable();
+        #else
+            std::unreachable();
+        #endif
     }
     else
     {

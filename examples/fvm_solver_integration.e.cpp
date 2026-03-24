@@ -66,7 +66,7 @@ int main()
 
     // Instantiate the AMR solver.
     amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(
-        1000000, 1.4, 0.3
+        10000, 1.4, 0.3
     ); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
@@ -180,14 +180,24 @@ int main()
     std::cout << "Initializing solver..." << std::endl;
     for (int i = 0; i < inital_refinement; i++)
     {
-        solver.get_tree().reconstruct_tree(refineAll);
+        solver.get_tree().reconstruct_tree(refineAll); // modifies cpu
+#ifdef AMR_ENABLE_CUDA_AMR
+        solver.get_tree().sync_current_to_device();    // Send to GPU before halo exchange
+#endif
         solver.get_tree().halo_exchange_update();
+#ifdef AMR_ENABLE_CUDA_AMR
+        solver.get_tree().sync_current_from_device();  // Bring back to CPU
+#endif
     }
 
-    solver.initialize(acousticPulseIC);
-    solver.get_tree().halo_exchange_update();
+    solver.initialize(acousticPulseIC); // Modifies CPU
 #ifdef AMR_ENABLE_CUDA_AMR
-    solver.get_tree().sync_current_to_device();
+    solver.get_tree().sync_current_to_device();        // Send to GPU before halo exchange
+    solver.get_tree().build_patch_levels_on_device();
+#endif
+    solver.get_tree().halo_exchange_update();          // GPU runs halo exchange
+#ifdef AMR_ENABLE_CUDA_AMR
+    solver.get_tree().sync_current_from_device();      // Bring back to CPU for the VTK printer
 #endif
 
     // Print initial state
@@ -196,10 +206,8 @@ int main()
     // Main Simulation Loop
     double t    = 0.0;
     int    step = 1;
-    [[maybe_unused]]
-    double next_print_time = print_frequency;
-    [[maybe_unused]]
-    int output_counter = 1;
+    [[maybe_unused]] double next_print_time = print_frequency;
+    [[maybe_unused]] int output_counter = 1;
 
     std::cout << "\nStarting AMR simulation...\n";
 
@@ -212,19 +220,23 @@ int main()
 
         DEFAULT_SOURCE_LOG_PROGRESS("Step: {},\tt: {:.5f},\tdt: {:.5f} ", step, t, dt);
 
-        solver.time_step(dt);
+        solver.time_step(dt); // GPU does all the work
         cell_update_count +=
             solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
 #ifdef AMR_ENABLE_CUDA_AMR
-        solver.get_tree().sync_current_to_device();
+        solver.get_tree().sync_current_from_device(); // Sync fresh GPU data back for compute_dt
 #endif
 
         if (step % 5 == 0)
         {
-            solver.get_tree().reconstruct_tree(acousticWaveCriterion);
-            solver.get_tree().halo_exchange_update();
+            solver.get_tree().reconstruct_tree(acousticWaveCriterion); // Modifies CPU
 #ifdef AMR_ENABLE_CUDA_AMR
-            solver.get_tree().sync_current_to_device();
+            solver.get_tree().sync_current_to_device(); // Send to GPU before halo exchange
+            solver.get_tree().build_patch_levels_on_device();
+#endif
+            solver.get_tree().halo_exchange_update();   // GPU runs halo exchange
+#ifdef AMR_ENABLE_CUDA_AMR
+            solver.get_tree().sync_current_from_device(); // Sync back to CPU
 #endif
         }
 
