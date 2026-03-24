@@ -35,6 +35,13 @@ namespace amr::cuda
         const time_step_launch_config& config
     ) -> void;
 
+    template <typename EquationT, int DIM>
+    auto launch_compute_dt_kernel(
+        std::array<const double*, EquationT::NVAR> device_in_patches,
+        const int* device_patch_levels,
+        const time_step_launch_config& config
+    ) -> double;
+
 } // namespace amr::cuda
 
 #endif // AMR_INCLUDED_CUDA_FVM_TIME_STEP

@@ -3,6 +3,7 @@
 #include "solver/AdvectionPhysics.hpp"
 #include <cuda_runtime.h>
 #include <array>
+#include <cfloat>
 
 namespace amr::cuda {
 
@@ -21,6 +22,18 @@ __device__ __forceinline__ std::size_t get_padded_linear_idx(
         padded_idx += (coord + config.halo_width) * config.padded_strides[d];
     }
     return padded_idx;
+}
+
+// Custom atomic minimum for double precision
+__device__ __forceinline__ double atomicMinDouble(double* address, double val) {
+    unsigned long long int* address_as_ull = (unsigned long long int*)address;
+    unsigned long long int old = *address_as_ull, assumed;
+    do {
+        assumed = old;
+        if (__longlong_as_double(assumed) <= val) break;
+        old = atomicCAS(address_as_ull, assumed, __double_as_longlong(val));
+    } while (assumed != old);
+    return __longlong_as_double(old);
 }
 
 template <typename EquationT, int DIM>
@@ -109,6 +122,77 @@ auto launch_time_step_kernel(
     cudaDeviceSynchronize();
 }
 
+template <typename EquationT, int DIM>
+__global__ void compute_dt_kernel(
+    std::array<const double*, EquationT::NVAR> in_patches, 
+    const int* patch_levels,
+    time_step_launch_config config,
+    double* global_dt)
+{
+    const std::size_t global_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const std::size_t total_work_items = config.num_patches * config.data_flat_size;
+    
+    double local_dt = DBL_MAX;
+
+    if (global_idx < total_work_items) {
+        const std::size_t p_idx        = global_idx / config.data_flat_size;
+        const std::size_t interior_idx = global_idx % config.data_flat_size;
+        const std::size_t local_padded_idx = get_padded_linear_idx<DIM>(interior_idx, config);
+        const std::size_t memory_idx       = (p_idx * config.patch_flat_size) + local_padded_idx;
+
+        int level = patch_levels[p_idx];
+
+        for (int d = 0; d < DIM; ++d) {
+            // Re-using the memory_idx to fetch directly from the SoA arrays
+            double speed = EquationT::getMaxSpeed(in_patches, memory_idx, d, config.gamma);
+            if (speed > 1e-12) {
+                double c_size = config.root_c_size[d] / static_cast<double>(1 << level);
+                local_dt = min(local_dt, c_size / speed);
+            }
+        }
+    }
+
+    // Warp-level reduction (32 threads collaborate to find the minimum)
+    unsigned int mask = 0xffffffff;
+    for (int offset = 16; offset > 0; offset /= 2) {
+        local_dt = min(local_dt, __shfl_down_sync(mask, local_dt, offset));
+    }
+
+    // Only the first thread in each warp writes to global memory
+    if (threadIdx.x % 32 == 0 && local_dt < DBL_MAX) {
+        atomicMinDouble(global_dt, local_dt);
+    }
+}
+
+template <typename EquationT, int DIM>
+auto launch_compute_dt_kernel(
+    std::array<const double*, EquationT::NVAR> device_in_patches, 
+    const int* device_patch_levels,
+    const time_step_launch_config& config) -> double
+{
+    if (config.num_patches == 0) return DBL_MAX;
+
+    // Allocate a single double on the GPU to hold the result
+    double* d_dt;
+    cudaMalloc(&d_dt, sizeof(double));
+    double h_dt = DBL_MAX;
+    cudaMemcpy(d_dt, &h_dt, sizeof(double), cudaMemcpyHostToDevice);
+
+    const std::size_t total_work_items = config.num_patches * config.data_flat_size;
+    constexpr unsigned int threads_per_block = 256;
+    const unsigned int blocks = (total_work_items + threads_per_block - 1) / threads_per_block;
+
+    compute_dt_kernel<EquationT, DIM><<<blocks, threads_per_block>>>(
+        device_in_patches, device_patch_levels, config, d_dt
+    );
+    
+    // Bring the minimum dt back to the CPU
+    cudaMemcpy(&h_dt, d_dt, sizeof(double), cudaMemcpyDeviceToHost);
+    cudaFree(d_dt);
+
+    return h_dt;
+}
+
 // Explicit instantiation for the exact signatures
 template auto launch_time_step_kernel<EulerPhysics<2>, 2>(
     std::array<double*, 4>, std::array<double*, 4>, const int*, const time_step_launch_config&
@@ -125,5 +209,22 @@ template auto launch_time_step_kernel<AdvectionPhysics<2>, 2>(
 template auto launch_time_step_kernel<AdvectionPhysics<3>, 3>(
     std::array<double*, 1>, std::array<double*, 1>, const int*, const time_step_launch_config&
 ) -> void;
+
+
+template auto launch_compute_dt_kernel<EulerPhysics<2>, 2>(
+    std::array<const double*, 4>, const int*, const time_step_launch_config&
+) -> double;
+
+template auto launch_compute_dt_kernel<EulerPhysics<3>, 3>(
+    std::array<const double*, 5>, const int*, const time_step_launch_config&
+) -> double;
+
+template auto launch_compute_dt_kernel<AdvectionPhysics<2>, 2>(
+    std::array<const double*, 1>, const int*, const time_step_launch_config&
+) -> double;
+
+template auto launch_compute_dt_kernel<AdvectionPhysics<3>, 3>(
+    std::array<const double*, 1>, const int*, const time_step_launch_config&
+) -> double;
 
 } // namespace amr::cuda

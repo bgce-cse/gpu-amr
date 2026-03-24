@@ -146,28 +146,27 @@ int main()
 
         solver.time_step(dt);
 
-#ifdef AMR_ENABLE_CUDA_AMR
-        solver.get_tree().sync_current_from_device();
-#endif
-
         t += dt;
         step++;
 
         if (step % 5 == 0)
         {
+#ifdef AMR_ENABLE_CUDA_AMR
+            solver.get_tree().sync_current_from_device();
+#endif
             solver.get_tree().reconstruct_tree(amrCriterion);
             #ifdef AMR_ENABLE_CUDA_AMR
-            solver.get_tree().sync_current_to_device();       // Send new tree to GPU
-            solver.get_tree().build_patch_levels_on_device(); // Send new AMR levels
+            solver.get_tree().sync_current_to_device();
+            solver.get_tree().build_patch_levels_on_device();
 #endif
-            solver.get_tree().halo_exchange_update();         // GPU exchanges boundaries
-#ifdef AMR_ENABLE_CUDA_AMR
-            solver.get_tree().sync_current_from_device();     // Bring back to CPU
-#endif
+            solver.get_tree().halo_exchange_update();
         }
 
         if (step % 20 == 0)
         {
+#ifdef AMR_ENABLE_CUDA_AMR
+            solver.get_tree().sync_current_from_device();
+#endif
             printer.print(solver.get_tree(), "_step_" + std::to_string(step) + ".vtk");
             std::cout << "T: " << t << " | Patches: " << solver.get_tree().size() << "\n";
         }

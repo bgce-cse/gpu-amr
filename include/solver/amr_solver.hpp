@@ -265,6 +265,41 @@ public:
 
     auto compute_time_step() const -> arithmetic_t
     {
+#ifdef AMR_ENABLE_CUDA_AMR
+        auto get_device_ptrs = [&]<std::size_t... Is>(std::index_sequence<Is...>, auto buffer_tag) {
+            return std::array<const double*, NVAR>{
+                reinterpret_cast<const double*>(m_tree.template get_device_buffer<
+                    typename std::tuple_element<Is, typename EquationT::FieldTags>::type, 
+                    decltype(buffer_tag)::value
+                >())...
+            };
+        };
+        
+        std::array<const double*, NVAR> in_ptrs = 
+            get_device_ptrs(std::make_index_sequence<NVAR>{}, BufferTag<tree_t::current_buffer>{});
+
+        amr::cuda::time_step_launch_config config{};
+        config.num_patches     = m_tree.size();
+        config.patch_flat_size = patch_layout_t::flat_size();
+        config.data_flat_size  = patch_layout_t::data_layout_t::flat_size();
+        config.halo_width      = patch_layout_t::halo_width();
+        config.gamma           = m_gamma;
+
+        const auto root_size = GeometryT::cell_sizes(patch_index_t::root());
+        config.root_c_size = {0.0, 0.0, 0.0};
+        for (int d = 0; d < DIM; ++d) config.root_c_size[d] = root_size[d];
+
+        for (int d = 0; d < DIM; ++d) {
+            config.data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
+            config.data_strides[d]   = patch_layout_t::data_layout_t::strides()[d];
+            config.padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
+        }
+
+        double dt = amr::cuda::launch_compute_dt_kernel<EquationT, DIM>(
+            in_ptrs, m_tree.get_device_patch_level_buffer(), config
+        );
+        return m_cfl * dt;
+#else
         // Global minimum time step, safely updated across threads
         // TODO: We could have a tighter upper bound here.
         //       maybe there is some other theoretical limit we can use instead
@@ -321,6 +356,7 @@ public:
             }
         );
         return m_cfl * dt;
+#endif
     }
 };
 
