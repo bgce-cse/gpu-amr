@@ -53,7 +53,7 @@ find_package(TBB REQUIRED)
 # ----------------------------
 # Logger
 # ----------------------------
-option(ENABLE_SPDLOG "Enable spdlog" ON)
+option(ENABLE_SPDLOG "Enable spdlog" OFF)
 set_property(CACHE ENABLE_SPDLOG PROPERTY STRINGS ON OFF)
 
 add_library(utility_logging
