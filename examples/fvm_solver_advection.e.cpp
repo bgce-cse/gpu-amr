@@ -92,6 +92,7 @@ int main()
 #ifdef AMR_ENABLE_CUDA_AMR
         auto fill_refine_flags(tree_t& target_tree) const -> void
         {
+            target_tree.sync_current_to_device();
             target_tree.build_patch_levels_on_device();
 
             const auto* scalar_device_buffer = reinterpret_cast<const double*>(
@@ -124,9 +125,13 @@ int main()
     // --- 6. Initialization & Execution ---
     std::cout << "Initializing Advection Test...\n";
     solver.initialize(gaussianIC);
-    solver.get_tree().halo_exchange_update();
 #ifdef AMR_ENABLE_CUDA_AMR
     solver.get_tree().sync_current_to_device();
+    solver.get_tree().build_patch_levels_on_device();
+#endif
+    solver.get_tree().halo_exchange_update();
+#ifdef AMR_ENABLE_CUDA_AMR
+    solver.get_tree().sync_current_from_device();
 #endif
 
     double t     = 0.0;
@@ -140,25 +145,28 @@ int main()
         std::cout << "Step " << step << ", t=" << t << ", dt=" << dt << std::endl;
 
         solver.time_step(dt);
-// #ifdef AMR_ENABLE_CUDA_AMR
-//         solver.get_tree().sync_current_to_device();
-// #endif
-        solver.get_tree().halo_exchange_update();
 
         t += dt;
         step++;
 
         if (step % 5 == 0)
         {
-            solver.get_tree().reconstruct_tree(amrCriterion);
-            solver.get_tree().halo_exchange_update();
 #ifdef AMR_ENABLE_CUDA_AMR
-            solver.get_tree().sync_current_to_device();
+            solver.get_tree().sync_current_from_device();
 #endif
+            solver.get_tree().reconstruct_tree(amrCriterion);
+            #ifdef AMR_ENABLE_CUDA_AMR
+            solver.get_tree().sync_current_to_device();
+            solver.get_tree().build_patch_levels_on_device();
+#endif
+            solver.get_tree().halo_exchange_update();
         }
 
         if (step % 20 == 0)
         {
+#ifdef AMR_ENABLE_CUDA_AMR
+            solver.get_tree().sync_current_from_device();
+#endif
             printer.print(solver.get_tree(), "_step_" + std::to_string(step) + ".vtk");
             std::cout << "T: " << t << " | Patches: " << solver.get_tree().size() << "\n";
         }

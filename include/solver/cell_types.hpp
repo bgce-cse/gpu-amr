@@ -162,7 +162,7 @@ struct EulerCell2D
     deconstructed_types_map_t m_data;
 };
 
-auto operator<<(std::ostream& os, EulerCell2D const& c) -> std::ostream&
+inline auto operator<<(std::ostream& os, EulerCell2D const& c) -> std::ostream&
 {
     return os << "Rho: " << std::get<Rho>(c.data_tuple()).value
               << ", Rhou: " << std::get<Rhou>(c.data_tuple()).value
@@ -206,7 +206,7 @@ struct EulerCell3D
     deconstructed_types_map_t m_data;
 };
 
-auto operator<<(std::ostream& os, EulerCell3D const& c) -> std::ostream&
+inline auto operator<<(std::ostream& os, EulerCell3D const& c) -> std::ostream&
 {
     return os << "Rho: " << std::get<Rho>(c.data_tuple()).value
               << ", Rhou: " << std::get<Rhou>(c.data_tuple()).value

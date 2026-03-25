@@ -7,6 +7,9 @@
 #include "containers/container_manipulations.hpp"
 #include "ndtree/ndtree.hpp"
 #include "physics_system.hpp"
+#ifdef AMR_ENABLE_CUDA_AMR
+#include "cuda/fvm_time_step.hpp"
+#endif
 #include <algorithm>
 #include <execution>
 #include <limits>
@@ -105,8 +108,64 @@ public:
         }
     }
 
+    template <auto B> struct BufferTag { static constexpr auto value = B; };
+
     auto time_step(const arithmetic_t dt) -> void
     {
+#ifdef AMR_ENABLE_CUDA_AMR
+        // Helper to fetch all NVAR device pointers into a std::array
+        auto get_device_ptrs = [&]<std::size_t... Is>(std::index_sequence<Is...>, auto buffer_tag) {
+            return std::array<double*, NVAR>{
+                reinterpret_cast<double*>(m_tree.template get_device_buffer<
+                    typename std::tuple_element<Is, typename EquationT::FieldTags>::type, 
+                    decltype(buffer_tag)::value
+                >())...
+            };
+        };
+        
+        std::array<double*, NVAR> in_ptrs = 
+            get_device_ptrs(std::make_index_sequence<NVAR>{}, BufferTag<tree_t::current_buffer>{});
+            
+        std::array<double*, NVAR> out_ptrs = 
+            get_device_ptrs(std::make_index_sequence<NVAR>{}, BufferTag<tree_t::next_buffer>{});
+
+        // Setup the launch configuration
+        amr::cuda::time_step_launch_config config{};
+        config.num_patches     = m_tree.size();
+        config.patch_flat_size = patch_layout_t::flat_size();
+        config.data_flat_size  = patch_layout_t::data_layout_t::flat_size(); // Interior cells only
+        config.halo_width      = patch_layout_t::halo_width();               // Halo padding
+        config.dt              = dt;
+        config.gamma           = m_gamma;
+        
+        // Root cell sizes for AMR dx calculations
+        const auto root_size = GeometryT::cell_sizes(patch_index_t::root());
+        config.root_c_size = {0.0, 0.0, 0.0};
+        for (int d = 0; d < DIM; ++d) {
+            config.root_c_size[d] = root_size[d];
+        }
+
+        config.stride_y = patch_layout_t::padded_layout_t::shape_t::sizes()[DIM - 1];
+        config.stride_z = (DIM == 3) ? patch_layout_t::padded_layout_t::shape_t::sizes()[1] * config.stride_y : 0;
+
+        // Fill layout arrays so the GPU can map interior 1D indices to padded 1D memory indices
+        for (int d = 0; d < DIM; ++d) {
+            config.data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
+            config.data_strides[d]   = patch_layout_t::data_layout_t::strides()[d];
+            config.padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
+        }
+
+        // Launch the CUDA Kernel
+        amr::cuda::launch_time_step_kernel<EquationT, DIM>(
+            in_ptrs, 
+            out_ptrs, 
+            m_tree.get_device_patch_level_buffer(),
+            config
+        );
+
+        m_tree.swap_buffers();
+        m_tree.halo_exchange_update();
+#else
         static constexpr auto stride_y =
             patch_layout_t::padded_layout_t::shape_t::sizes()[DIM - 1];
         // TODO: Maybe use the stride accessors layout types provide
@@ -201,10 +260,46 @@ public:
         );
         m_tree.swap_buffers();
         m_tree.halo_exchange_update();
+#endif
     }
 
     auto compute_time_step() const -> arithmetic_t
     {
+#ifdef AMR_ENABLE_CUDA_AMR
+        auto get_device_ptrs = [&]<std::size_t... Is>(std::index_sequence<Is...>, auto buffer_tag) {
+            return std::array<const double*, NVAR>{
+                reinterpret_cast<const double*>(m_tree.template get_device_buffer<
+                    typename std::tuple_element<Is, typename EquationT::FieldTags>::type, 
+                    decltype(buffer_tag)::value
+                >())...
+            };
+        };
+        
+        std::array<const double*, NVAR> in_ptrs = 
+            get_device_ptrs(std::make_index_sequence<NVAR>{}, BufferTag<tree_t::current_buffer>{});
+
+        amr::cuda::time_step_launch_config config{};
+        config.num_patches     = m_tree.size();
+        config.patch_flat_size = patch_layout_t::flat_size();
+        config.data_flat_size  = patch_layout_t::data_layout_t::flat_size();
+        config.halo_width      = patch_layout_t::halo_width();
+        config.gamma           = m_gamma;
+
+        const auto root_size = GeometryT::cell_sizes(patch_index_t::root());
+        config.root_c_size = {0.0, 0.0, 0.0};
+        for (int d = 0; d < DIM; ++d) config.root_c_size[d] = root_size[d];
+
+        for (int d = 0; d < DIM; ++d) {
+            config.data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
+            config.data_strides[d]   = patch_layout_t::data_layout_t::strides()[d];
+            config.padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
+        }
+
+        double dt = amr::cuda::launch_compute_dt_kernel<EquationT, DIM>(
+            in_ptrs, m_tree.get_device_patch_level_buffer(), config
+        );
+        return m_cfl * dt;
+#else
         // Global minimum time step, safely updated across threads
         // TODO: We could have a tighter upper bound here.
         //       maybe there is some other theoretical limit we can use instead
@@ -261,6 +356,7 @@ public:
             }
         );
         return m_cfl * dt;
+#endif
     }
 };
 

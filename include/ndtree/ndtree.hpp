@@ -1626,7 +1626,7 @@ private:
 
     auto halo_exchange_update_device() -> void
     {
-        sync_current_to_device();
+        // sync_current_to_device();
         rebuild_halo_exchange_metadata();
         sync_halo_exchange_metadata_to_device();
         [this]<std::size_t... I>(std::index_sequence<I...>)
@@ -1635,7 +1635,7 @@ private:
                  std::tuple_element_t<I, deconstructed_raw_map_types_t>>(),
              ...);
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_raw_map_types_t>>{});
-        sync_current_from_device();
+        // sync_current_from_device();
     }
 
     auto sync_transfer_tasks_to_device(

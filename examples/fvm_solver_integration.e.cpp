@@ -57,16 +57,14 @@ int main()
     amr::ndt::print::vtk_print<physics_t> printer("euler_print");
 
     double tmax = 400; // Example tmax, adjust as needed
-    [[maybe_unused]]
-    double print_frequency = 5.0; // Print every 10 seconds
-    [[maybe_unused]]
-    const std::string output_prefix = "solver_integration_test_refine";
+    [[maybe_unused]] double print_frequency = 5.0; 
+    [[maybe_unused]] const std::string output_prefix = "solver_integration_test_refine";
 
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
     amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(
-        1000000, 1.4, 0.3
+        10000, 1.4, 0.3
     ); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
@@ -146,8 +144,7 @@ int main()
     constexpr double RHO_BG    = 0.5;
     constexpr double P_BG      = 1.0;
     constexpr double AMPLITUDE = 10.0;
-    constexpr double PULSE_WIDTH_SQ =
-        0.01 * physics_x * physics_y; // sigma^2 in physical units
+    constexpr double PULSE_WIDTH_SQ = 0.01 * physics_x * physics_y;
     constexpr double CENTER_X = 0.5 * physics_x;
     constexpr double CENTER_Y = 0.5 * physics_y;
 
@@ -172,7 +169,7 @@ int main()
         prim[0] = RHO_BG + (perturbation * 0.2); // Density (rho)
         prim[1] = 0.0;                           // X-velocity (u)
         prim[2] = 0.0;                           // Y-velocity (v)
-        prim[3] = P_BG + perturbation;           // Pressure (p)
+        prim[3] = P_BG + perturbation;           // Pressure (p)          
 
         return prim;
     };
@@ -181,13 +178,23 @@ int main()
     for (int i = 0; i < inital_refinement; i++)
     {
         solver.get_tree().reconstruct_tree(refineAll);
+#ifdef AMR_ENABLE_CUDA_AMR
+        solver.get_tree().sync_current_to_device();
+#endif
         solver.get_tree().halo_exchange_update();
+#ifdef AMR_ENABLE_CUDA_AMR
+        solver.get_tree().sync_current_from_device();
+#endif
     }
 
     solver.initialize(acousticPulseIC);
-    solver.get_tree().halo_exchange_update();
 #ifdef AMR_ENABLE_CUDA_AMR
     solver.get_tree().sync_current_to_device();
+    solver.get_tree().build_patch_levels_on_device();
+#endif
+    solver.get_tree().halo_exchange_update();
+#ifdef AMR_ENABLE_CUDA_AMR
+    solver.get_tree().sync_current_from_device();
 #endif
 
     // Print initial state
@@ -196,10 +203,8 @@ int main()
     // Main Simulation Loop
     double t    = 0.0;
     int    step = 1;
-    [[maybe_unused]]
-    double next_print_time = print_frequency;
-    [[maybe_unused]]
-    int output_counter = 1;
+    [[maybe_unused]] double next_print_time = print_frequency;
+    [[maybe_unused]] int output_counter = 1;
 
     std::cout << "\nStarting AMR simulation...\n";
 
@@ -215,12 +220,12 @@ int main()
         solver.time_step(dt);
         cell_update_count +=
             solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
-#ifdef AMR_ENABLE_CUDA_AMR
-        solver.get_tree().sync_current_to_device();
-#endif
 
         if (step % 5 == 0)
         {
+#ifdef AMR_ENABLE_CUDA_AMR
+            solver.get_tree().sync_current_from_device();
+#endif
             solver.get_tree().reconstruct_tree(acousticWaveCriterion);
             solver.get_tree().halo_exchange_update();
         }
@@ -230,6 +235,12 @@ int main()
         // Print only when we've passed the next print time
         if (t >= next_print_time)
         {
+#ifdef AMR_ENABLE_CUDA_AMR
+            // Pull the latest data back to the CPU just so the VTK printer can read it
+            if (step % 5 != 0) { 
+                solver.get_tree().sync_current_from_device();
+            }
+#endif
             std::string file_extension =
                 "_iteration_" + std::to_string(output_counter) + ".vtk";
             printer.print(solver.get_tree(), file_extension);

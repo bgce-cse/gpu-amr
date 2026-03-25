@@ -145,6 +145,7 @@ if(ENABLE_CUDA_AMR)
         src/cuda/intergrid_transfer.cu
         src/cuda/permutation.cu
         src/cuda/fvm_refinement_criterion.cu
+        src/cuda/fvm_time_step.cu
     )
 
     target_include_directories(gpu_amr_cuda
@@ -160,6 +161,10 @@ if(ENABLE_CUDA_AMR)
         CUDA_STANDARD_REQUIRED ON
         CUDA_SEPARABLE_COMPILATION ON
         POSITION_INDEPENDENT_CODE ON
+    )
+
+    target_compile_options(gpu_amr_cuda PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
     )
 
     target_link_libraries(gpu_amr
