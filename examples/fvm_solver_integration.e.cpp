@@ -110,7 +110,6 @@ int main()
 #ifdef AMR_ENABLE_CUDA_AMR
         auto fill_refine_flags(tree_t& target_tree) const -> void
         {
-            target_tree.sync_current_to_device();
             target_tree.build_patch_levels_on_device();
 
             const auto* rho_device_buffer = reinterpret_cast<const double*>(
@@ -223,9 +222,6 @@ int main()
 
         if (step % 5 == 0)
         {
-#ifdef AMR_ENABLE_CUDA_AMR
-            solver.get_tree().sync_current_from_device();
-#endif
             solver.get_tree().reconstruct_tree(acousticWaveCriterion);
             solver.get_tree().halo_exchange_update();
         }
@@ -236,10 +232,9 @@ int main()
         if (t >= next_print_time)
         {
 #ifdef AMR_ENABLE_CUDA_AMR
-            // Pull the latest data back to the CPU just so the VTK printer can read it
-            if (step % 5 != 0) { 
-                solver.get_tree().sync_current_from_device();
-            }
+            
+            solver.get_tree().sync_current_from_device();
+            
 #endif
             std::string file_extension =
                 "_iteration_" + std::to_string(output_counter) + ".vtk";

@@ -114,7 +114,6 @@ int main()
 #ifdef AMR_ENABLE_CUDA_AMR
         auto fill_refine_flags(tree_t& target_tree) const -> void
         {
-            target_tree.sync_current_to_device();
             target_tree.build_patch_levels_on_device();
 
             const auto* rho_device_buffer = reinterpret_cast<const double*>(
@@ -198,14 +197,6 @@ int main()
     solver.get_tree().build_patch_levels_on_device();
 #endif
     solver.get_tree().halo_exchange_update();
-#ifdef AMR_ENABLE_CUDA_AMR
-    solver.get_tree().sync_current_from_device();
-#endif
-
-// Print initial state
-#if VTK_PRINT
-    printer.print(solver.get_tree(), "_iteration_0.vtk");
-#endif
 
     // Main Simulation Loop
     double t    = 0.0;
@@ -223,45 +214,17 @@ int main()
     while (t < tmax)
     {
         const double dt = solver.compute_time_step();
-
-        DEFAULT_SOURCE_LOG_PROGRESS("Step: {},\tt: {:.5f},\tdt: {:.5f} ", step, t, dt);
-
         solver.time_step(dt);
         cell_update_count +=
             solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
 
         if (step % 5 == 0)
         {
-#ifdef AMR_ENABLE_CUDA_AMR
-            solver.get_tree().sync_current_from_device();
-#endif
             solver.get_tree().reconstruct_tree(acousticWaveCriterion);
-#ifdef AMR_ENABLE_CUDA_AMR
-            solver.get_tree().sync_current_to_device();
-            solver.get_tree().build_patch_levels_on_device();
-#endif
             solver.get_tree().halo_exchange_update();
         }
 
         t += dt;
-
-#if VTK_PRINT
-        // Print only when we've passed the next print time
-        if (t >= next_print_time)
-        {
-#ifdef AMR_ENABLE_CUDA_AMR
-            if (step % 5 != 0) {
-                solver.get_tree().sync_current_from_device();
-            }
-#endif
-            std::string file_extension =
-                "_iteration_" + std::to_string(output_counter) + ".vtk";
-            printer.print(solver.get_tree(), file_extension);
-            next_print_time += print_frequency;
-            output_counter++;
-        }
-#endif
-
         step++;
     }
     const auto                          end      = std::chrono::steady_clock::now();

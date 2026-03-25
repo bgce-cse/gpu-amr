@@ -1184,27 +1184,10 @@ public:
         update_refine_flags(fn);
         apply_refine_coarsen();
         balancing();
-#ifdef AMR_ENABLE_CUDA_AMR
-        bool use_device_patch_transfers = false;
-        if constexpr (s_cuda_scalar_patch_compatible)
-        {
-            use_device_patch_transfers = !m_to_refine.empty() || !m_to_coarsen.empty();
-            if (use_device_patch_transfers)
-            {
-                sync_current_to_device();
-            }
-        }
-#endif
         fragment();
         recombine();
 #ifdef AMR_ENABLE_CUDA_AMR
-        if constexpr (s_cuda_scalar_patch_compatible)
-        {
-            if (use_device_patch_transfers)
-            {
-                sync_current_from_device();
-            }
-        }
+        build_patch_levels_on_device();
 #endif
     }
 

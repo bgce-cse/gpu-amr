@@ -92,7 +92,6 @@ int main()
 #ifdef AMR_ENABLE_CUDA_AMR
         auto fill_refine_flags(tree_t& target_tree) const -> void
         {
-            target_tree.sync_current_to_device();
             target_tree.build_patch_levels_on_device();
 
             const auto* scalar_device_buffer = reinterpret_cast<const double*>(
@@ -130,9 +129,6 @@ int main()
     solver.get_tree().build_patch_levels_on_device();
 #endif
     solver.get_tree().halo_exchange_update();
-#ifdef AMR_ENABLE_CUDA_AMR
-    solver.get_tree().sync_current_from_device();
-#endif
 
     double t     = 0.0;
     double t_max = 3.0;
@@ -151,14 +147,7 @@ int main()
 
         if (step % 5 == 0)
         {
-#ifdef AMR_ENABLE_CUDA_AMR
-            solver.get_tree().sync_current_from_device();
-#endif
             solver.get_tree().reconstruct_tree(amrCriterion);
-            #ifdef AMR_ENABLE_CUDA_AMR
-            solver.get_tree().sync_current_to_device();
-            solver.get_tree().build_patch_levels_on_device();
-#endif
             solver.get_tree().halo_exchange_update();
         }
 
