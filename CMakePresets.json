@@ -56,7 +56,26 @@
                 "LOG_LEVEL": "PROGRESS",
                 "CONTRACTS": "OFF",
                 "EXECUTION": "SEQ",
-                "ENABLE_SANITIZERS": "OFF"
+                "ENABLE_SANITIZERS": "OFF",
+                "ENABLE_SPDLOG": "OFF"
+            }
+        },
+        {
+            "name": "gcc-cuda-release",
+            "inherits": "gcc-base",
+            "binaryDir": "build/gcc-cuda-stable",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "LOG_LEVEL": "INFO",
+                "CONTRACTS": "ON",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "OFF",
+                "ENABLE_CUDA_AMR": "ON",
+                "ENABLE_SPDLOG": "OFF",
+                "BUILD_TESTING": "OFF",
+                "BUILD_BENCHMARKS": "OFF",
+                "CMAKE_CUDA_COMPILER": "/usr/bin/nvcc",
+                "CUDAToolkit_ROOT": "/usr/local/cuda-12"
             }
         },
         {
@@ -111,6 +130,11 @@
             "name": "gcc-release",
             "inherits": "build-base",
             "configurePreset": "gcc-release"
+        },
+        {
+            "name": "gcc-cuda-release",
+            "inherits": "build-base",
+            "configurePreset": "gcc-cuda-release"
         },
         {
             "name": "clang-debug",

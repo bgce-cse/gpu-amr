@@ -30,6 +30,7 @@ struct device_halo_exchange_launch_config
 {
     std::size_t num_patches;
     std::size_t patch_flat_size;
+    std::size_t components_per_cell;
     std::size_t rank;
     std::size_t halo_width;
     std::size_t fanout_1d;
@@ -141,18 +142,24 @@ AMR_DEVICE_FORCEINLINE auto process_halo_task(
 
     std::size_t coords[3] = { 0, 0, 0 };
     halo_task_to_coords<Rank, DirectionIndex>(halo_cell_idx, config, coords);
-    const auto linear_idx = coords_to_linear<Rank>(coords, config.padded_strides);
+    const auto linear_idx =
+        coords_to_linear<Rank>(coords, config.padded_strides) * config.components_per_cell;
 
     if (meta.relation == halo_neighbor_relation::same)
     {
         std::size_t from_coords[3] = { coords[0], coords[1], coords[2] };
         from_coords[dim] = positive ? (from_coords[dim] - config.data_sizes[dim])
                                     : (from_coords[dim] + config.data_sizes[dim]);
-        const auto from_linear = coords_to_linear<Rank>(from_coords, config.padded_strides);
+        const auto from_linear =
+            coords_to_linear<Rank>(from_coords, config.padded_strides) *
+            config.components_per_cell;
         const auto* other_patch =
             device_patch_data + static_cast<std::size_t>(meta.neighbor) *
                                     config.patch_flat_size;
-        self_patch[linear_idx] = other_patch[from_linear];
+        for (std::size_t c = 0; c != config.components_per_cell; ++c)
+        {
+            self_patch[linear_idx + c] = other_patch[from_linear + c];
+        }
         return;
     }
 
@@ -198,12 +205,15 @@ AMR_DEVICE_FORCEINLINE auto process_halo_task(
             static_cast<std::size_t>(meta.finer_ids[fine_patch_idx]) *
                 config.patch_flat_size;
 
-        double sum = 0.0;
-        for (std::size_t n = 0; n != num_fine_values; ++n)
+        for (std::size_t c = 0; c != config.components_per_cell; ++c)
         {
-            sum += fine_patch[fine_linear_indices[n]];
+            double sum = 0.0;
+            for (std::size_t n = 0; n != num_fine_values; ++n)
+            {
+                sum += fine_patch[fine_linear_indices[n] * config.components_per_cell + c];
+            }
+            self_patch[linear_idx + c] = sum / static_cast<double>(num_fine_values);
         }
-        self_patch[linear_idx] = sum / static_cast<double>(num_fine_values);
         return;
     }
 
@@ -221,11 +231,16 @@ AMR_DEVICE_FORCEINLINE auto process_halo_task(
                              fine_mapped_idx / config.fanout_1d;
         }
 
-        const auto from_linear = coords_to_linear<Rank>(from_coords, config.padded_strides);
+        const auto from_linear =
+            coords_to_linear<Rank>(from_coords, config.padded_strides) *
+            config.components_per_cell;
         const auto* coarse_patch =
             device_patch_data + static_cast<std::size_t>(meta.neighbor) *
                                     config.patch_flat_size;
-        self_patch[linear_idx] = coarse_patch[from_linear];
+        for (std::size_t c = 0; c != config.components_per_cell; ++c)
+        {
+            self_patch[linear_idx + c] = coarse_patch[from_linear + c];
+        }
     }
 }
 
@@ -339,6 +354,7 @@ auto halo_exchange_scalar_patches_inplace(
     device_halo_exchange_launch_config device_config{};
     device_config.num_patches    = config.num_patches;
     device_config.patch_flat_size = config.patch_flat_size;
+    device_config.components_per_cell = config.components_per_cell;
     device_config.rank           = config.rank;
     device_config.halo_width     = config.halo_width;
     device_config.fanout_1d      = config.fanout_1d;

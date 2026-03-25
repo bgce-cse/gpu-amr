@@ -18,6 +18,7 @@ struct intergrid_transfer_launch_config
 {
     std::size_t patch_flat_size;
     std::size_t data_flat_size;
+    std::size_t components_per_cell;
     std::size_t halo_width;
     std::array<std::size_t, 3> padded_strides = { 1, 1, 1 };
     std::array<std::size_t, 3> data_sizes     = { 1, 1, 1 };

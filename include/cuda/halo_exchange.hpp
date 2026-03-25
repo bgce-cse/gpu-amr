@@ -29,6 +29,7 @@ struct halo_exchange_launch_config
 {
     std::size_t num_patches;
     std::size_t patch_flat_size;
+    std::size_t components_per_cell;
     std::size_t rank;
     std::size_t halo_width;
     std::size_t fanout_1d;

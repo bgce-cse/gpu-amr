@@ -45,6 +45,49 @@
 namespace amr::ndt::tree
 {
 
+namespace detail
+{
+
+template <typename T>
+struct cuda_flat_double_storage
+{
+    static constexpr bool compatible = false;
+    static constexpr std::size_t components = 0;
+};
+
+template <>
+struct cuda_flat_double_storage<double>
+{
+    static constexpr bool compatible = true;
+    static constexpr std::size_t components = 1;
+};
+
+template <typename T, std::integral auto N>
+struct cuda_flat_double_storage<containers::static_vector<T, N>>
+{
+    static constexpr bool compatible = cuda_flat_double_storage<T>::compatible;
+    static constexpr std::size_t components =
+        N * cuda_flat_double_storage<T>::components;
+};
+
+template <typename T, containers::concepts::StaticLayout Layout>
+struct cuda_flat_double_storage<containers::static_tensor<T, Layout>>
+{
+    static constexpr bool compatible = cuda_flat_double_storage<T>::compatible;
+    static constexpr std::size_t components =
+        Layout::flat_size() * cuda_flat_double_storage<T>::components;
+};
+
+template <typename T>
+inline constexpr bool cuda_flat_double_storage_v =
+    cuda_flat_double_storage<T>::compatible;
+
+template <typename T>
+inline constexpr std::size_t cuda_flat_double_components_v =
+    cuda_flat_double_storage<T>::components;
+
+} // namespace detail
+
 template <
     concepts::DeconstructibleType T,
     concepts::PatchIndex          Patch_Index,
@@ -128,23 +171,29 @@ public:
         type_traits::tuple_type_apply_t<value_t, deconstructed_patch_types_map_t>;
 
 
-    //safety check bc gpu tree version onlyworks with doubles stored in the patche rn
+    // Safety check: GPU patch-local kernels operate on flat contiguous doubles per cell.
 #ifdef AMR_ENABLE_CUDA_AMR
     template <typename Map_Type>
     static constexpr bool s_cuda_scalar_halo_map =
-        std::is_same_v<typename Map_Type::type, double>;
+        detail::cuda_flat_double_storage_v<typename Map_Type::type>;
+
+    template <typename Map_Type>
+    static constexpr std::size_t s_cuda_components_per_cell =
+        detail::cuda_flat_double_components_v<typename Map_Type::type>;
 
     using halo_metadata_t = amr::cuda::halo_direction_metadata;
 
+    template <typename Map_Type>
     static consteval auto make_halo_exchange_static_config()
         -> amr::cuda::halo_exchange_launch_config
     {
         amr::cuda::halo_exchange_launch_config config{
-            .num_patches     = 0,
-            .patch_flat_size = patch_layout_t::flat_size(),
-            .rank            = s_rank,
-            .halo_width      = s_halo_width,
-            .fanout_1d       = s_1d_fanout,
+            .num_patches         = 0,
+            .patch_flat_size     = patch_layout_t::flat_size() * s_cuda_components_per_cell<Map_Type>,
+            .components_per_cell = s_cuda_components_per_cell<Map_Type>,
+            .rank                = s_rank,
+            .halo_width          = s_halo_width,
+            .fanout_1d           = s_1d_fanout,
         };
 
         for (std::size_t d = 0; d != s_rank; ++d)
@@ -170,9 +219,6 @@ public:
         return config;
     }
 
-    static constexpr auto s_halo_exchange_static_config =
-        make_halo_exchange_static_config();
-
     template <std::size_t... I>
     static consteval auto cuda_scalar_halo_compatible_impl(std::index_sequence<I...>) -> bool
     {
@@ -190,13 +236,15 @@ public:
 
     using device_transfer_task_t = amr::cuda::intergrid_transfer_task_metadata;
 
+    template <typename Map_Type>
     static consteval auto make_intergrid_transfer_static_config()
         -> amr::cuda::intergrid_transfer_launch_config
     {
         amr::cuda::intergrid_transfer_launch_config config{
-            .patch_flat_size = patch_layout_t::flat_size(),
-            .data_flat_size  = patch_layout_t::data_layout_t::flat_size(),
-            .halo_width      = s_halo_width,
+            .patch_flat_size     = patch_layout_t::flat_size() * s_cuda_components_per_cell<Map_Type>,
+            .data_flat_size      = patch_layout_t::data_layout_t::flat_size(),
+            .components_per_cell = s_cuda_components_per_cell<Map_Type>,
+            .halo_width          = s_halo_width,
         };
 
         for (std::size_t d = 0; d != s_rank; ++d)
@@ -209,8 +257,6 @@ public:
         return config;
     }
 
-    static constexpr auto s_intergrid_transfer_static_config =
-        make_intergrid_transfer_static_config();
 #endif
 
 public:
@@ -1560,15 +1606,14 @@ private:
     template <concepts::MapType Map_Type>
     auto halo_exchange_update_device_map() -> void
     {
-        using patch_value_t = patch_t<Map_Type>;
         static_assert(
-            std::is_same_v<typename Map_Type::type, double> &&
-            sizeof(patch_value_t) == patch_layout_t::flat_size() * sizeof(double)
+            s_cuda_scalar_halo_map<Map_Type>,
+            "CUDA halo exchange requires flat contiguous double-valued cell storage"
         );
 
         auto* device_patch_data =
             reinterpret_cast<double*>(get_device_buffer<Map_Type>());
-        auto config = s_halo_exchange_static_config;
+        auto config = make_halo_exchange_static_config<Map_Type>();
         config.num_patches = m_size;
 
         amr::cuda::halo_exchange_scalar_patches_inplace(
@@ -1591,13 +1636,6 @@ private:
              ...);
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_raw_map_types_t>>{});
         sync_current_from_device();
-    }
-
-    [[nodiscard]]
-    static constexpr auto make_intergrid_transfer_launch_config() noexcept
-        -> amr::cuda::intergrid_transfer_launch_config
-    {
-        return s_intergrid_transfer_static_config;
     }
 
     auto sync_transfer_tasks_to_device(
@@ -1633,10 +1671,9 @@ private:
         amr::cuda::intergrid_transfer_launch_config const& config
     ) -> void
     {
-        using patch_value_t = patch_t<Map_Type>;
         static_assert(
-            std::is_same_v<typename Map_Type::type, double> &&
-            sizeof(patch_value_t) == patch_layout_t::flat_size() * sizeof(double)
+            s_cuda_scalar_halo_map<Map_Type>,
+            "CUDA intergrid transfer requires flat contiguous double-valued cell storage"
         );
 
         auto* device_patch_data =
@@ -1655,10 +1692,9 @@ private:
         amr::cuda::intergrid_transfer_launch_config const& config
     ) -> void
     {
-        using patch_value_t = patch_t<Map_Type>;
         static_assert(
-            std::is_same_v<typename Map_Type::type, double> &&
-            sizeof(patch_value_t) == patch_layout_t::flat_size() * sizeof(double)
+            s_cuda_scalar_halo_map<Map_Type>,
+            "CUDA intergrid transfer requires flat contiguous double-valued cell storage"
         );
 
         auto* device_patch_data =
@@ -1681,12 +1717,13 @@ private:
         }
 
         sync_transfer_tasks_to_device(transfer_tasks);
-        const auto config = make_intergrid_transfer_launch_config();
-        [&transfer_tasks, &config, this]<std::size_t... I>(std::index_sequence<I...>)
+        [&transfer_tasks, this]<std::size_t... I>(std::index_sequence<I...>)
         {
             (interpolate_patches_device_map<
                  std::tuple_element_t<I, deconstructed_raw_map_types_t>>(
-                 transfer_tasks, config
+                 transfer_tasks,
+                 make_intergrid_transfer_static_config<
+                     std::tuple_element_t<I, deconstructed_raw_map_types_t>>()
              ),
              ...);
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_raw_map_types_t>>{});
@@ -1702,12 +1739,13 @@ private:
         }
 
         sync_transfer_tasks_to_device(transfer_tasks);
-        const auto config = make_intergrid_transfer_launch_config();
-        [&transfer_tasks, &config, this]<std::size_t... I>(std::index_sequence<I...>)
+        [&transfer_tasks, this]<std::size_t... I>(std::index_sequence<I...>)
         {
             (restrict_patches_device_map<
                  std::tuple_element_t<I, deconstructed_raw_map_types_t>>(
-                 transfer_tasks, config
+                 transfer_tasks,
+                 make_intergrid_transfer_static_config<
+                     std::tuple_element_t<I, deconstructed_raw_map_types_t>>()
              ),
              ...);
         }(std::make_index_sequence<std::tuple_size_v<deconstructed_raw_map_types_t>>{});

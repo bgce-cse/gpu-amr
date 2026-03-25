@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 project(gpu_amr VERSION 0.1 LANGUAGES CXX)
 
+include(CTest)
+
 # ----------------------------
 # Global settings
 # ----------------------------
@@ -18,6 +20,8 @@ endif()
 # ----------------------------
 option(ENABLE_SANITIZERS "Enable runtime sanitizers (Debug only)" ON)
 option(ENABLE_CUDA_AMR "Build CUDA AMR kernels for patch-local tree operations" OFF)
+option(BUILD_EXAMPLES "Build example executables" ON)
+option(BUILD_BENCHMARKS "Build benchmark executables" ON)
 
 if(ENABLE_CUDA_AMR)
     enable_language(CUDA)
@@ -220,6 +224,14 @@ target_compile_definitions(amr_tests INTERFACE
 # CMake Subdirectories
 # ----------------------------
 
-add_subdirectory(examples)
-add_subdirectory(tests)
-add_subdirectory(benchmark)
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
+if(BUILD_BENCHMARKS)
+    add_subdirectory(benchmark)
+endif()

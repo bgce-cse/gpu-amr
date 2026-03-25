@@ -223,9 +223,6 @@ int main()
         {
             solver.get_tree().reconstruct_tree(acousticWaveCriterion);
             solver.get_tree().halo_exchange_update();
-#ifdef AMR_ENABLE_CUDA_AMR
-            solver.get_tree().sync_current_to_device();
-#endif
         }
 
         t += dt;

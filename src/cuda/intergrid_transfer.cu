@@ -29,6 +29,7 @@ struct device_intergrid_transfer_launch_config
 {
     std::size_t patch_flat_size;
     std::size_t data_flat_size;
+    std::size_t components_per_cell;
     std::size_t halo_width;
     std::size_t padded_strides[3];
     std::size_t data_sizes[3];
@@ -102,7 +103,8 @@ AMR_DEVICE_FORCEINLINE auto fill_transfer_mapping(
     }
 
     *coarse_linear_idx =
-        coords_to_linear<Rank>(padded_coords, config.padded_strides);
+        coords_to_linear<Rank>(padded_coords, config.padded_strides) *
+        config.components_per_cell;
 
     constexpr auto num_fine_values = std::size_t{ 1 } << Rank;
 
@@ -121,7 +123,9 @@ AMR_DEVICE_FORCEINLINE auto fill_transfer_mapping(
             rem %= stride;
         }
 
-        fine_linear_indices[n] = coords_to_linear<Rank>(fine_coords, config.padded_strides);
+        fine_linear_indices[n] =
+            coords_to_linear<Rank>(fine_coords, config.padded_strides) *
+            config.components_per_cell;
     }
 }
 
@@ -161,13 +165,14 @@ __global__ void interpolate_scalar_patches_kernel(
     const auto dst_patch_base = static_cast<std::size_t>(task.destination_patch +
                                                          static_cast<std::int32_t>(child_patch_offset)) *
                                 config.patch_flat_size;
-    const auto value = device_patch_data[src_patch_base + coarse_linear_idx];
-
     constexpr auto num_fine_values = std::size_t{ 1 } << Rank;
-
-    for (std::size_t n = 0; n != num_fine_values; ++n)
+    for (std::size_t c = 0; c != config.components_per_cell; ++c)
     {
-        device_patch_data[dst_patch_base + fine_linear_indices[n]] = value;
+        const auto value = device_patch_data[src_patch_base + coarse_linear_idx + c];
+        for (std::size_t n = 0; n != num_fine_values; ++n)
+        {
+            device_patch_data[dst_patch_base + fine_linear_indices[n] + c] = value;
+        }
     }
 }
 
@@ -210,14 +215,16 @@ __global__ void restrict_scalar_patches_kernel(
 
     constexpr auto num_fine_values = std::size_t{ 1 } << Rank;
 
-    double sum = 0.0;
-    for (std::size_t n = 0; n != num_fine_values; ++n)
+    for (std::size_t c = 0; c != config.components_per_cell; ++c)
     {
-        sum += device_patch_data[src_patch_base + fine_linear_indices[n]];
+        double sum = 0.0;
+        for (std::size_t n = 0; n != num_fine_values; ++n)
+        {
+            sum += device_patch_data[src_patch_base + fine_linear_indices[n] + c];
+        }
+        device_patch_data[dst_patch_base + coarse_linear_idx + c] =
+            sum / static_cast<double>(num_fine_values);
     }
-
-    device_patch_data[dst_patch_base + coarse_linear_idx] =
-        sum / static_cast<double>(num_fine_values);
 }
 
 auto prepare_transfer_launch(
@@ -234,6 +241,7 @@ auto prepare_transfer_launch(
 
     device_config->patch_flat_size = config.patch_flat_size;
     device_config->data_flat_size  = config.data_flat_size;
+    device_config->components_per_cell = config.components_per_cell;
     device_config->halo_width      = config.halo_width;
     for (std::size_t d = 0; d != 3; ++d)
     {
