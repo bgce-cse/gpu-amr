@@ -8,6 +8,7 @@
 #include "ndtree/ndtree.hpp"
 #include "physics_system.hpp"
 #ifdef AMR_ENABLE_CUDA_AMR
+#include "cuda/device_buffer.hpp"
 #include "cuda/fvm_time_step.hpp"
 #endif
 #include <algorithm>
@@ -40,6 +41,9 @@ private:
     TreeT              m_tree;
     arithmetic_t const m_gamma; // Specific heat ratio
     arithmetic_t const m_cfl;   // CFL number
+#ifdef AMR_ENABLE_CUDA_AMR
+    mutable arithmetic_t* m_device_dt_buffer = nullptr;
+#endif
 
 public:
     amr_solver(size_t capacity, arithmetic_t gamma_ = 1.4, arithmetic_t cfl_ = 0.1)
@@ -49,6 +53,13 @@ public:
     {
         // Dummy dimensions were removed from new EulerPhysics.hpp
         static_assert(DIM == 2 || DIM == 3, "Error: Wrong dimension");
+    }
+
+    ~amr_solver()
+    {
+#ifdef AMR_ENABLE_CUDA_AMR
+        amr::cuda::device_free(static_cast<void*>(m_device_dt_buffer));
+#endif
     }
 
     TreeT& get_tree()
@@ -266,6 +277,13 @@ public:
     auto compute_time_step() const -> arithmetic_t
     {
 #ifdef AMR_ENABLE_CUDA_AMR
+        if (m_device_dt_buffer == nullptr)
+        {
+            m_device_dt_buffer = static_cast<arithmetic_t*>(
+                amr::cuda::device_malloc(sizeof(arithmetic_t))
+            );
+        }
+
         auto get_device_ptrs = [&]<std::size_t... Is>(std::index_sequence<Is...>, auto buffer_tag) {
             return std::array<const double*, NVAR>{
                 reinterpret_cast<const double*>(m_tree.template get_device_buffer<
@@ -296,7 +314,7 @@ public:
         }
 
         double dt = amr::cuda::launch_compute_dt_kernel<EquationT, DIM>(
-            in_ptrs, m_tree.get_device_patch_level_buffer(), config
+            in_ptrs, m_tree.get_device_patch_level_buffer(), config, m_device_dt_buffer
         );
         return m_cfl * dt;
 #else

@@ -168,27 +168,24 @@ template <typename EquationT, int DIM>
 auto launch_compute_dt_kernel(
     std::array<const double*, EquationT::NVAR> device_in_patches, 
     const int* device_patch_levels,
-    const time_step_launch_config& config) -> double
+    const time_step_launch_config& config,
+    double* device_dt_buffer) -> double
 {
     if (config.num_patches == 0) return DBL_MAX;
 
-    // Allocate a single double on the GPU to hold the result
-    double* d_dt;
-    cudaMalloc(&d_dt, sizeof(double));
     double h_dt = DBL_MAX;
-    cudaMemcpy(d_dt, &h_dt, sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(device_dt_buffer, &h_dt, sizeof(double), cudaMemcpyHostToDevice);
 
     const std::size_t total_work_items = config.num_patches * config.data_flat_size;
     constexpr unsigned int threads_per_block = 256;
     const unsigned int blocks = (total_work_items + threads_per_block - 1) / threads_per_block;
 
     compute_dt_kernel<EquationT, DIM><<<blocks, threads_per_block>>>(
-        device_in_patches, device_patch_levels, config, d_dt
+        device_in_patches, device_patch_levels, config, device_dt_buffer
     );
     
     // Bring the minimum dt back to the CPU
-    cudaMemcpy(&h_dt, d_dt, sizeof(double), cudaMemcpyDeviceToHost);
-    cudaFree(d_dt);
+    cudaMemcpy(&h_dt, device_dt_buffer, sizeof(double), cudaMemcpyDeviceToHost);
 
     return h_dt;
 }
@@ -212,19 +209,19 @@ template auto launch_time_step_kernel<AdvectionPhysics<3>, 3>(
 
 
 template auto launch_compute_dt_kernel<EulerPhysics<2>, 2>(
-    std::array<const double*, 4>, const int*, const time_step_launch_config&
+    std::array<const double*, 4>, const int*, const time_step_launch_config&, double*
 ) -> double;
 
 template auto launch_compute_dt_kernel<EulerPhysics<3>, 3>(
-    std::array<const double*, 5>, const int*, const time_step_launch_config&
+    std::array<const double*, 5>, const int*, const time_step_launch_config&, double*
 ) -> double;
 
 template auto launch_compute_dt_kernel<AdvectionPhysics<2>, 2>(
-    std::array<const double*, 1>, const int*, const time_step_launch_config&
+    std::array<const double*, 1>, const int*, const time_step_launch_config&, double*
 ) -> double;
 
 template auto launch_compute_dt_kernel<AdvectionPhysics<3>, 3>(
-    std::array<const double*, 1>, const int*, const time_step_launch_config&
+    std::array<const double*, 1>, const int*, const time_step_launch_config&, double*
 ) -> double;
 
 } // namespace amr::cuda
