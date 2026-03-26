@@ -286,10 +286,6 @@ auto interpolate_scalar_patches_inplace(
     );
 
     throw_if_cuda_error(cudaGetLastError(), "interpolate_scalar_patches_kernel launch");
-    throw_if_cuda_error(
-        cudaDeviceSynchronize(),
-        "interpolate_scalar_patches_kernel synchronize"
-    );
 }
 
 template <std::size_t Rank>
@@ -320,10 +316,6 @@ auto restrict_scalar_patches_inplace(
     );
 
     throw_if_cuda_error(cudaGetLastError(), "restrict_scalar_patches_kernel launch");
-    throw_if_cuda_error(
-        cudaDeviceSynchronize(),
-        "restrict_scalar_patches_kernel synchronize"
-    );
 }
 
 template auto interpolate_scalar_patches_inplace<1>(

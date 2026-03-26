@@ -387,7 +387,6 @@ auto halo_exchange_scalar_patches_inplace(
     }
 
     throw_if_cuda_error(cudaGetLastError(), "halo_exchange_scalar_kernel launch");
-    throw_if_cuda_error(cudaDeviceSynchronize(), "halo_exchange_scalar_kernel synchronize");
 }
 
 } // namespace amr::cuda

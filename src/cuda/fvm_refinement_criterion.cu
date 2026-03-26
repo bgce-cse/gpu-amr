@@ -105,7 +105,6 @@ auto compute_scalar_patch_amr_decisions_from_device(
     );
 
     throw_if_cuda_error(cudaGetLastError(), "scalar_patch_amr_kernel launch");
-    throw_if_cuda_error(cudaDeviceSynchronize(), "scalar_patch_amr_kernel synchronize");
 }
 
 } // namespace amr::cuda

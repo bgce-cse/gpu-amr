@@ -119,7 +119,7 @@ auto launch_time_step_kernel(
         device_in_patches, device_out_patches, device_patch_levels, config
     );
     
-    cudaDeviceSynchronize();
+    cudaGetLastError();
 }
 
 template <typename EquationT, int DIM>
