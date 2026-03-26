@@ -416,6 +416,9 @@ public:
             root_neighbors[d.index()] = periodic_neighbor;
         }
         append(patch_index_t::root(), root_neighbors);
+#ifdef AMR_ENABLE_CUDA_AMR
+        refresh_halo_exchange_metadata_on_device();
+#endif
     }
 
     ~ndtree() noexcept
@@ -1227,6 +1230,7 @@ public:
         fragment();
         recombine();
 #ifdef AMR_ENABLE_CUDA_AMR
+        refresh_halo_exchange_metadata_on_device();
         build_patch_levels_on_device();
 #endif
     }
@@ -1271,6 +1275,9 @@ private:
         m_index_map[node_id]       = m_size;
         m_neighbors[m_size]        = neighbor_array;
         ++m_size;
+#ifdef AMR_ENABLE_CUDA_AMR
+        m_halo_exchange_metadata_dirty = 1;
+#endif
     }
 
     [[nodiscard]]
@@ -1643,6 +1650,18 @@ private:
         self.m_halo_exchange_metadata_copy_pending = true;
     }
 
+    auto refresh_halo_exchange_metadata_on_device() -> void
+    {
+        if (m_halo_exchange_metadata_dirty == 0)
+        {
+            return;
+        }
+
+        rebuild_halo_exchange_metadata();
+        sync_halo_exchange_metadata_to_device();
+        m_halo_exchange_metadata_dirty = 0;
+    }
+
     template <concepts::MapType Map_Type>
     auto halo_exchange_update_device_map() -> void
     {
@@ -1666,9 +1685,10 @@ private:
 
     auto halo_exchange_update_device() -> void
     {
-        // sync_current_to_device();
-        rebuild_halo_exchange_metadata();
-        sync_halo_exchange_metadata_to_device();
+        CONTRACTS_CHECK(
+            m_halo_exchange_metadata_dirty == 0 &&
+            "Halo exchange metadata must be refreshed after tree reconstruction"
+        );
         [this]<std::size_t... I>(std::index_sequence<I...>)
         {
             (halo_exchange_update_device_map<
@@ -1944,6 +1964,9 @@ private:
         std::swap(m_linear_index_map[i], m_linear_index_map[j]);
         std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
         std::swap(m_neighbors[i], m_neighbors[j]);
+#ifdef AMR_ENABLE_CUDA_AMR
+        m_halo_exchange_metadata_dirty = 1;
+#endif
 
         std::apply(
             [i, j](auto&... b) { ((void)std::swap(b[i], b[j]), ...); }, m_data_buffers
@@ -2094,6 +2117,7 @@ private:
     std::size_t                  m_patch_level_copy_pending{};
     std::size_t                  m_halo_exchange_metadata_copy_pending{};
     std::size_t                  m_transfer_task_copy_pending{};
+    std::size_t                  m_halo_exchange_metadata_dirty{ 1 };
 #endif
     linear_index_map_t         m_linear_index_map;
     linear_index_array_t       m_reorder_buffer;

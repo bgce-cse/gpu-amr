@@ -1,4 +1,5 @@
 #include "cuda/permutation.hpp"
+#include "cuda/device_buffer.hpp"
 
 #include <cuda_runtime.h>
 
@@ -26,13 +27,22 @@ auto throw_if_cuda_error(cudaError_t status, const char* context) -> void
 
 struct permutation_scratch_buffers
 {
+    std::size_t*   pinned_sources      = nullptr;
     unsigned char* temp_buffer         = nullptr;
     std::size_t    temp_capacity_bytes = 0;
     std::size_t*   device_sources      = nullptr;
     std::size_t    sources_capacity    = 0;
+    void*          sources_copy_fence  = nullptr;
+    std::size_t    copy_pending        = 0;
 
     ~permutation_scratch_buffers()
     {
+        if (copy_pending != 0)
+        {
+            amr::cuda::async_copy_fence_wait(sources_copy_fence);
+        }
+        amr::cuda::async_copy_fence_destroy(sources_copy_fence);
+        amr::cuda::host_pinned_free(static_cast<void*>(pinned_sources));
         (void)cudaFree(device_sources);
         (void)cudaFree(temp_buffer);
     }
@@ -69,7 +79,24 @@ struct permutation_scratch_buffers
             ),
             "cudaMalloc(device_sources)"
         );
+        amr::cuda::host_pinned_free(static_cast<void*>(pinned_sources));
+        pinned_sources = static_cast<std::size_t*>(
+            amr::cuda::host_pinned_malloc(required_count * sizeof(std::size_t))
+        );
+        if (sources_copy_fence == nullptr)
+        {
+            sources_copy_fence = amr::cuda::async_copy_fence_create();
+        }
         sources_capacity = required_count;
+    }
+
+    auto wait_for_pending_sources_copy() -> void
+    {
+        if (copy_pending != 0)
+        {
+            amr::cuda::async_copy_fence_wait(sources_copy_fence);
+            copy_pending = 0;
+        }
     }
 };
 
@@ -179,16 +206,20 @@ auto permute_patches_inplace_batch(
     auto  lock    = std::lock_guard<std::mutex>(permutation_scratch_mutex());
 
     scratch.ensure_sources_capacity(patch_count);
+    scratch.wait_for_pending_sources_copy();
 
-    throw_if_cuda_error(
-        cudaMemcpy(
-            scratch.device_sources,
-            host_sources,
-            patch_count * sizeof(std::size_t),
-            cudaMemcpyHostToDevice
-        ),
-        "cudaMemcpy(host_to_device sources)"
+    for (std::size_t i = 0; i < patch_count; ++i)
+    {
+        scratch.pinned_sources[i] = host_sources[i];
+    }
+
+    amr::cuda::copy_host_to_device_async(
+        static_cast<void*>(scratch.device_sources),
+        static_cast<void const*>(scratch.pinned_sources),
+        patch_count * sizeof(std::size_t)
     );
+    amr::cuda::async_copy_fence_record(scratch.sources_copy_fence);
+    scratch.copy_pending = 1;
 
     for (std::size_t i = 0; i < device_buffers.size(); ++i)
     {

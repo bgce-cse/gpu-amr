@@ -1,5 +1,7 @@
 #include "cuda/device_buffer.hpp"
+#include "cuda/profiler.hpp"
 
+#include <cuda_profiler_api.h>
 #include <cuda_runtime.h>
 
 #include <sstream>
@@ -136,6 +138,18 @@ auto async_copy_fence_wait(void* fence) -> void
         cudaEventSynchronize(static_cast<cudaEvent_t>(fence)),
         "cudaEventSynchronize"
     );
+}
+
+auto profile_capture_start() -> void
+{
+    throw_if_cuda_error(cudaDeviceSynchronize(), "cudaDeviceSynchronize before profiling");
+    throw_if_cuda_error(cudaProfilerStart(), "cudaProfilerStart");
+}
+
+auto profile_capture_stop() -> void
+{
+    throw_if_cuda_error(cudaDeviceSynchronize(), "cudaDeviceSynchronize after profiling");
+    throw_if_cuda_error(cudaProfilerStop(), "cudaProfilerStop");
 }
 
 } // namespace amr::cuda
