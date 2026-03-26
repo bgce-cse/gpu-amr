@@ -164,6 +164,14 @@ __global__ void compute_dt_kernel(
     }
 }
 
+__global__ void initialize_double_buffer_kernel(double* buffer, double value)
+{
+    if (threadIdx.x == 0 && blockIdx.x == 0)
+    {
+        *buffer = value;
+    }
+}
+
 template <typename EquationT, int DIM>
 auto launch_compute_dt_kernel(
     std::array<const double*, EquationT::NVAR> device_in_patches, 
@@ -173,8 +181,8 @@ auto launch_compute_dt_kernel(
 {
     if (config.num_patches == 0) return DBL_MAX;
 
-    double h_dt = DBL_MAX;
-    cudaMemcpy(device_dt_buffer, &h_dt, sizeof(double), cudaMemcpyHostToDevice);
+    initialize_double_buffer_kernel<<<1, 1>>>(device_dt_buffer, DBL_MAX);
+    cudaGetLastError();
 
     const std::size_t total_work_items = config.num_patches * config.data_flat_size;
     constexpr unsigned int threads_per_block = 256;
@@ -183,7 +191,9 @@ auto launch_compute_dt_kernel(
     compute_dt_kernel<EquationT, DIM><<<blocks, threads_per_block>>>(
         device_in_patches, device_patch_levels, config, device_dt_buffer
     );
+    cudaGetLastError();
     
+    double h_dt = DBL_MAX;
     // Bring the minimum dt back to the CPU
     cudaMemcpy(&h_dt, device_dt_buffer, sizeof(double), cudaMemcpyDeviceToHost);
 
