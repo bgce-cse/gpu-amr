@@ -368,9 +368,12 @@ public:
         m_neighbors =
             (pointer_t<patch_neighbors_t>)std::malloc(size * sizeof(patch_neighbors_t));
 #ifdef AMR_ENABLE_CUDA_AMR
-        m_patch_level_buffer = (pointer_t<int>)std::malloc(size * sizeof(int));
+        m_patch_level_buffer = static_cast<pointer_t<int>>(
+            amr::cuda::host_pinned_malloc(size * sizeof(int))
+        );
         m_device_patch_level_buffer =
             static_cast<pointer_t<int>>(amr::cuda::device_malloc(size * sizeof(int)));
+        m_patch_level_copy_fence = amr::cuda::async_copy_fence_create();
         m_device_refine_status_buffer = static_cast<pointer_t<refine_status_t>>(
             amr::cuda::device_malloc(size * sizeof(refine_status_t))
         );
@@ -380,11 +383,26 @@ public:
                 size * patch_direction_t::elements() * sizeof(halo_metadata_t)
             )
         );
+        m_pinned_halo_exchange_metadata_capacity =
+            size * patch_direction_t::elements();
+        m_pinned_halo_exchange_metadata = static_cast<halo_metadata_t*>(
+            amr::cuda::host_pinned_malloc(
+                m_pinned_halo_exchange_metadata_capacity * sizeof(halo_metadata_t)
+            )
+        );
+        m_halo_exchange_metadata_copy_fence = amr::cuda::async_copy_fence_create();
         m_device_transfer_task_capacity = static_cast<std::size_t>(size);
         m_device_transfer_tasks =
             static_cast<device_transfer_task_t*>(amr::cuda::device_malloc(
                 m_device_transfer_task_capacity * sizeof(device_transfer_task_t)
             ));
+        m_pinned_transfer_task_capacity = m_device_transfer_task_capacity;
+        m_pinned_transfer_tasks = static_cast<device_transfer_task_t*>(
+            amr::cuda::host_pinned_malloc(
+                m_pinned_transfer_task_capacity * sizeof(device_transfer_task_t)
+            )
+        );
+        m_transfer_task_copy_fence = amr::cuda::async_copy_fence_create();
 #endif
 
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
@@ -409,10 +427,27 @@ public:
         std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_next_buffers);
         std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_data_buffers);
 #ifdef AMR_ENABLE_CUDA_AMR
-        std::free(m_patch_level_buffer);
+        if (m_patch_level_copy_pending)
+        {
+            amr::cuda::async_copy_fence_wait(m_patch_level_copy_fence);
+        }
+        amr::cuda::async_copy_fence_destroy(m_patch_level_copy_fence);
+        amr::cuda::host_pinned_free(static_cast<void*>(m_patch_level_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_patch_level_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_refine_status_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_halo_exchange_metadata));
+        if (m_halo_exchange_metadata_copy_pending)
+        {
+            amr::cuda::async_copy_fence_wait(m_halo_exchange_metadata_copy_fence);
+        }
+        amr::cuda::async_copy_fence_destroy(m_halo_exchange_metadata_copy_fence);
+        amr::cuda::host_pinned_free(static_cast<void*>(m_pinned_halo_exchange_metadata));
+        if (m_transfer_task_copy_pending)
+        {
+            amr::cuda::async_copy_fence_wait(m_transfer_task_copy_fence);
+        }
+        amr::cuda::async_copy_fence_destroy(m_transfer_task_copy_fence);
+        amr::cuda::host_pinned_free(static_cast<void*>(m_pinned_transfer_tasks));
         amr::cuda::device_free(static_cast<void*>(m_device_transfer_tasks));
         std::apply(
             [](auto&... b) { ((void)amr::cuda::device_free(static_cast<void*>(b)), ...); },
@@ -606,6 +641,8 @@ public:
     //to be renamed to sync patch level to device (when we implement the next comment)
     auto build_patch_levels_on_device() -> void
     {
+        wait_for_pending_patch_level_copy();
+
         //we shuold maintian this buffer during tree opertions, for a cleanr design. fine for prototyping now
         //maintiangin this buffer, makes the floowing loop obsolete...
         for (linear_index_t i = 0; i != m_size; ++i)
@@ -613,11 +650,13 @@ public:
             m_patch_level_buffer[i] = static_cast<int>(patch_index_t::level(m_linear_index_map[i]));
         }
 
-        amr::cuda::copy_host_to_device(
+        amr::cuda::copy_host_to_device_async(
             static_cast<void*>(m_device_patch_level_buffer),
             static_cast<void const*>(m_patch_level_buffer),
             m_size * sizeof(int)
         );
+        amr::cuda::async_copy_fence_record(m_patch_level_copy_fence);
+        m_patch_level_copy_pending = true;
     }
 #endif
 
@@ -1580,11 +1619,28 @@ private:
 
     auto sync_halo_exchange_metadata_to_device() const -> void
     {
-        amr::cuda::copy_host_to_device(
-            static_cast<void*>(m_device_halo_exchange_metadata),
-            static_cast<void const*>(m_halo_exchange_metadata.data()),
-            halo_exchange_metadata_count() * sizeof(halo_metadata_t)
+        const auto metadata_count = halo_exchange_metadata_count();
+        if (metadata_count == 0)
+        {
+            return;
+        }
+
+        auto& self = const_cast<ndtree&>(*this);
+        self.wait_for_pending_halo_exchange_metadata_copy();
+
+        std::copy_n(
+            m_halo_exchange_metadata.data(),
+            metadata_count,
+            self.m_pinned_halo_exchange_metadata
         );
+
+        amr::cuda::copy_host_to_device_async(
+            static_cast<void*>(m_device_halo_exchange_metadata),
+            static_cast<void const*>(self.m_pinned_halo_exchange_metadata),
+            metadata_count * sizeof(halo_metadata_t)
+        );
+        amr::cuda::async_copy_fence_record(self.m_halo_exchange_metadata_copy_fence);
+        self.m_halo_exchange_metadata_copy_pending = true;
     }
 
     template <concepts::MapType Map_Type>
@@ -1642,11 +1698,32 @@ private:
             );
         }
 
-        amr::cuda::copy_host_to_device(
+        wait_for_pending_transfer_task_copy();
+
+        if (transfer_tasks.size() > m_pinned_transfer_task_capacity)
+        {
+            amr::cuda::host_pinned_free(static_cast<void*>(m_pinned_transfer_tasks));
+            m_pinned_transfer_task_capacity = transfer_tasks.size();
+            m_pinned_transfer_tasks = static_cast<device_transfer_task_t*>(
+                amr::cuda::host_pinned_malloc(
+                    m_pinned_transfer_task_capacity * sizeof(device_transfer_task_t)
+                )
+            );
+        }
+
+        std::copy_n(
+            transfer_tasks.data(),
+            transfer_tasks.size(),
+            m_pinned_transfer_tasks
+        );
+
+        amr::cuda::copy_host_to_device_async(
             static_cast<void*>(m_device_transfer_tasks),
-            static_cast<void const*>(transfer_tasks.data()),
+            static_cast<void const*>(m_pinned_transfer_tasks),
             transfer_tasks.size() * sizeof(device_transfer_task_t)
         );
+        amr::cuda::async_copy_fence_record(m_transfer_task_copy_fence);
+        m_transfer_task_copy_pending = true;
     }
 
     template <concepts::MapType Map_Type>
@@ -1825,6 +1902,33 @@ private:
 #endif
     }
 
+    auto wait_for_pending_halo_exchange_metadata_copy() -> void
+    {
+        if (m_halo_exchange_metadata_copy_pending)
+        {
+            amr::cuda::async_copy_fence_wait(m_halo_exchange_metadata_copy_fence);
+            m_halo_exchange_metadata_copy_pending = false;
+        }
+    }
+
+    auto wait_for_pending_patch_level_copy() -> void
+    {
+        if (m_patch_level_copy_pending)
+        {
+            amr::cuda::async_copy_fence_wait(m_patch_level_copy_fence);
+            m_patch_level_copy_pending = false;
+        }
+    }
+
+    auto wait_for_pending_transfer_task_copy() -> void
+    {
+        if (m_transfer_task_copy_pending)
+        {
+            amr::cuda::async_copy_fence_wait(m_transfer_task_copy_fence);
+            m_transfer_task_copy_pending = false;
+        }
+    }
+
     [[gnu::always_inline, gnu::flatten]]
     auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
         -> void
@@ -1975,11 +2079,21 @@ private:
     deconstructed_buffers_t    m_device_next_buffers{};
     patch_level_array_t        m_patch_level_buffer{};
     patch_level_array_t        m_device_patch_level_buffer{};
+    void*                      m_patch_level_copy_fence{};
     flat_refine_status_array_t m_device_refine_status_buffer{};
     std::vector<halo_metadata_t> m_halo_exchange_metadata{};
     halo_metadata_t*             m_device_halo_exchange_metadata{};
+    halo_metadata_t*             m_pinned_halo_exchange_metadata{};
+    std::size_t                  m_pinned_halo_exchange_metadata_capacity{};
+    void*                        m_halo_exchange_metadata_copy_fence{};
     device_transfer_task_t*      m_device_transfer_tasks{};
+    device_transfer_task_t*      m_pinned_transfer_tasks{};
     std::size_t                  m_device_transfer_task_capacity{};
+    std::size_t                  m_pinned_transfer_task_capacity{};
+    void*                        m_transfer_task_copy_fence{};
+    std::size_t                  m_patch_level_copy_pending{};
+    std::size_t                  m_halo_exchange_metadata_copy_pending{};
+    std::size_t                  m_transfer_task_copy_pending{};
 #endif
     linear_index_map_t         m_linear_index_map;
     linear_index_array_t       m_reorder_buffer;
