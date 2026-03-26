@@ -108,33 +108,76 @@ __global__ void permute_patches_kernel(
     dst[global_idx] = src[src_patch * patch_bytes + byte_idx];
 }
 
-} // namespace
-
-auto permute_patches_inplace(
-    void*              device_buffer,
-    std::size_t        patch_count,
-    std::size_t        patch_bytes,
-    const std::size_t* host_sources,
-    std::size_t        source_count
-) -> void
+auto validate_permutation_size(std::size_t patch_count, std::size_t source_count)
+    -> void
 {
-    if (patch_count == 0)
-    {
-        return;
-    }
-
     if (source_count != patch_count)
     {
         throw std::runtime_error("Permutation source count does not match patch count");
     }
+}
 
-    auto* device_bytes = static_cast<unsigned char*>(device_buffer);
+auto permute_patches_with_device_sources(
+    unsigned char*     device_bytes,
+    std::size_t        patch_count,
+    std::size_t        patch_bytes,
+    const std::size_t* device_sources,
+    unsigned char*     temp_buffer
+) -> void
+{
     const auto total_bytes = patch_count * patch_bytes;
+
+    constexpr unsigned int threads_per_block = 256;
+    const auto blocks =
+        static_cast<unsigned int>((total_bytes + threads_per_block - 1) /
+                                  threads_per_block);
+
+    permute_patches_kernel<<<blocks, threads_per_block>>>(
+        device_bytes,
+        temp_buffer,
+        device_sources,
+        patch_count,
+        patch_bytes
+    );
+
+    throw_if_cuda_error(cudaGetLastError(), "permute_patches_kernel launch");
+
+    throw_if_cuda_error(
+        cudaMemcpy(
+            device_bytes,
+            temp_buffer,
+            total_bytes,
+            cudaMemcpyDeviceToDevice
+        ),
+        "cudaMemcpy(device_to_device permuted patches)"
+    );
+}
+
+} // namespace
+
+auto permute_patches_inplace_batch(
+    std::span<void*>             device_buffers,
+    std::span<const std::size_t> patch_bytes,
+    std::size_t                  patch_count,
+    const std::size_t*           host_sources,
+    std::size_t                  source_count
+) -> void
+{
+    if (patch_count == 0 || device_buffers.empty())
+    {
+        return;
+    }
+
+    if (device_buffers.size() != patch_bytes.size())
+    {
+        throw std::runtime_error("Permutation buffer count does not match patch byte count");
+    }
+
+    validate_permutation_size(patch_count, source_count);
 
     auto& scratch = permutation_scratch();
     auto  lock    = std::lock_guard<std::mutex>(permutation_scratch_mutex());
 
-    scratch.ensure_temp_capacity(total_bytes);
     scratch.ensure_sources_capacity(patch_count);
 
     throw_if_cuda_error(
@@ -147,30 +190,40 @@ auto permute_patches_inplace(
         "cudaMemcpy(host_to_device sources)"
     );
 
-    constexpr unsigned int threads_per_block = 256;
-    const auto blocks =
-        static_cast<unsigned int>((total_bytes + threads_per_block - 1) /
-                                  threads_per_block);
+    for (std::size_t i = 0; i < device_buffers.size(); ++i)
+    {
+        auto* device_bytes      = static_cast<unsigned char*>(device_buffers[i]);
+        const auto total_bytes  = patch_count * patch_bytes[i];
 
-    permute_patches_kernel<<<blocks, threads_per_block>>>(
-        device_bytes,
-        scratch.temp_buffer,
-        scratch.device_sources,
-        patch_count,
-        patch_bytes
-    );
+        scratch.ensure_temp_capacity(total_bytes);
 
-    throw_if_cuda_error(cudaGetLastError(), "permute_patches_kernel launch");
-    throw_if_cuda_error(cudaDeviceSynchronize(), "permute_patches_kernel synchronize");
-
-    throw_if_cuda_error(
-        cudaMemcpy(
+        permute_patches_with_device_sources(
             device_bytes,
-            scratch.temp_buffer,
-            total_bytes,
-            cudaMemcpyDeviceToDevice
-        ),
-        "cudaMemcpy(device_to_device permuted patches)"
+            patch_count,
+            patch_bytes[i],
+            scratch.device_sources,
+            scratch.temp_buffer
+        );
+    }
+}
+
+auto permute_patches_inplace(
+    void*              device_buffer,
+    std::size_t        patch_count,
+    std::size_t        patch_bytes,
+    const std::size_t* host_sources,
+    std::size_t        source_count
+) -> void
+{
+    auto device_buffers = std::span{ &device_buffer, std::size_t{ 1 } };
+    auto patch_sizes    = std::span{ &patch_bytes, std::size_t{ 1 } };
+
+    permute_patches_inplace_batch(
+        device_buffers,
+        patch_sizes,
+        patch_count,
+        host_sources,
+        source_count
     );
 }
 

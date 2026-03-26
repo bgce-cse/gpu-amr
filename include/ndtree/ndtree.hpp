@@ -21,6 +21,7 @@
 #    include <iostream>
 #endif
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
@@ -1911,15 +1912,18 @@ private:
         std::index_sequence<I...>
     ) const -> void
     {
-        (
-            (void)amr::cuda::permute_patches_inplace(
-                static_cast<void*>(std::get<I>(device_buffers)),
-                sources.size(),
-                sizeof(std::remove_pointer_t<std::remove_reference_t<decltype(std::get<I>(device_buffers))>>),
-                sources.data(),
-                sources.size()
-            ),
-            ...
+        auto permutation_targets =
+            std::array<void*, sizeof...(I)>{ static_cast<void*>(std::get<I>(device_buffers))... };
+        auto permutation_patch_bytes = std::array<std::size_t, sizeof...(I)>{
+            sizeof(std::remove_pointer_t<std::remove_reference_t<decltype(std::get<I>(device_buffers))>>)...
+        };
+
+        (void)amr::cuda::permute_patches_inplace_batch(
+            permutation_targets,
+            permutation_patch_bytes,
+            sources.size(),
+            sources.data(),
+            sources.size()
         );
     }
 
