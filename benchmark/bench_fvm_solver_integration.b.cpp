@@ -3,6 +3,7 @@
 #include "containers/static_vector.hpp"
 #ifdef AMR_ENABLE_CUDA_AMR
 #    include "cuda/fvm_refinement_criterion.hpp"
+#    include "cuda/profiler.hpp"
 #endif
 #include "morton/morton_id.hpp"
 #include "ndtree/intergrid_operator.hpp"
@@ -209,6 +210,9 @@ int main()
     std::cout << "\nStarting AMR simulation...\n";
 
     std::size_t cell_update_count = 0;
+#ifdef AMR_ENABLE_CUDA_AMR
+    amr::cuda::profile_capture_start();
+#endif
     const auto  start             = std::chrono::steady_clock::now();
 
     while (t < tmax)
@@ -227,6 +231,9 @@ int main()
         t += dt;
         step++;
     }
+#ifdef AMR_ENABLE_CUDA_AMR
+    amr::cuda::profile_capture_stop();
+#endif
     const auto                          end      = std::chrono::steady_clock::now();
     const std::chrono::duration<double> duration = end - start;
     std::cout << "Updated cells: " << cell_update_count << '\n';
