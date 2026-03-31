@@ -3,9 +3,11 @@
 
 #ifdef AMR_ENABLE_CUDA_AMR
 #    include "cuda/device_buffer.hpp"
+#    include "cuda/fvm_refinement_criterion.hpp"
 #    include "cuda/halo_exchange.hpp"
 #    include "cuda/intergrid_transfer.hpp"
 #    include "cuda/permutation.hpp"
+#    include "cuda/profiler.hpp"
 #endif
 #include "config/definitions.hpp"
 #include "ndconcepts.hpp"
@@ -391,7 +393,8 @@ public:
             )
         );
         m_halo_exchange_metadata_copy_fence = amr::cuda::async_copy_fence_create();
-        m_device_transfer_task_capacity = static_cast<std::size_t>(size);
+        m_device_transfer_task_capacity =
+            std::max<std::size_t>(static_cast<std::size_t>(size) * 4, 4096);
         m_device_transfer_tasks =
             static_cast<device_transfer_task_t*>(amr::cuda::device_malloc(
                 m_device_transfer_task_capacity * sizeof(device_transfer_task_t)
@@ -634,6 +637,7 @@ public:
 
     auto sync_refine_status_from_device() -> void
     {
+        auto nvtx_range = amr::cuda::scoped_profile_range{ "sync_refine_status_from_device" };
         amr::cuda::copy_device_to_host(
             static_cast<void*>(m_refine_status_buffer),
             static_cast<void const*>(m_device_refine_status_buffer),
@@ -644,6 +648,7 @@ public:
     //to be renamed to sync patch level to device (when we implement the next comment)
     auto build_patch_levels_on_device() -> void
     {
+        auto nvtx_range = amr::cuda::scoped_profile_range{ "build_patch_levels_on_device" };
         wait_for_pending_patch_level_copy();
 
         //we shuold maintian this buffer during tree opertions, for a cleanr design. fine for prototyping now
@@ -1626,6 +1631,8 @@ private:
 
     auto sync_halo_exchange_metadata_to_device() const -> void
     {
+        auto nvtx_range =
+            amr::cuda::scoped_profile_range{ "sync_halo_exchange_metadata_to_device" };
         const auto metadata_count = halo_exchange_metadata_count();
         if (metadata_count == 0)
         {
@@ -1702,15 +1709,17 @@ private:
         std::vector<device_transfer_task_t> const& transfer_tasks
     ) -> void
     {
+        auto nvtx_range = amr::cuda::scoped_profile_range{ "sync_transfer_tasks_to_device" };
         if (transfer_tasks.empty())
         {
             return;
         }
 
-        if (transfer_tasks.size() > m_device_transfer_task_capacity) // this should never happen actually 
+        if (transfer_tasks.size() > m_device_transfer_task_capacity)
         {
             amr::cuda::device_free(static_cast<void*>(m_device_transfer_tasks));
-            m_device_transfer_task_capacity = transfer_tasks.size();
+            m_device_transfer_task_capacity =
+                std::max(transfer_tasks.size() * 2, std::size_t{ 4096 });
             m_device_transfer_tasks = static_cast<device_transfer_task_t*>(
                 amr::cuda::device_malloc(
                     m_device_transfer_task_capacity * sizeof(device_transfer_task_t)
@@ -1723,7 +1732,8 @@ private:
         if (transfer_tasks.size() > m_pinned_transfer_task_capacity)
         {
             amr::cuda::host_pinned_free(static_cast<void*>(m_pinned_transfer_tasks));
-            m_pinned_transfer_task_capacity = transfer_tasks.size();
+            m_pinned_transfer_task_capacity =
+                std::max(transfer_tasks.size() * 2, std::size_t{ 4096 });
             m_pinned_transfer_tasks = static_cast<device_transfer_task_t*>(
                 amr::cuda::host_pinned_malloc(
                     m_pinned_transfer_task_capacity * sizeof(device_transfer_task_t)
@@ -2040,7 +2050,9 @@ private:
     ) const -> void
     {
         auto permutation_targets =
-            std::array<void*, sizeof...(I)>{ static_cast<void*>(std::get<I>(device_buffers))... };
+            std::array<void**, sizeof...(I)>{
+                reinterpret_cast<void**>(&std::get<I>(device_buffers))...
+            };
         auto permutation_patch_bytes = std::array<std::size_t, sizeof...(I)>{
             sizeof(std::remove_pointer_t<std::remove_reference_t<decltype(std::get<I>(device_buffers))>>)...
         };
@@ -2058,6 +2070,7 @@ private:
         std::vector<linear_index_t> const& sources
     ) -> void
     {
+        auto nvtx_range = amr::cuda::scoped_profile_range{ "permute_device_current_buffers" };
         if (sources.empty())
         {
             return;

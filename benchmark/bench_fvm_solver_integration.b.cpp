@@ -135,7 +135,7 @@ int main()
                 target_tree.size()
             );
 
-            target_tree.sync_refine_index_lists_from_device();
+            target_tree.sync_refine_status_from_device();
         }
 #endif
     };

@@ -3,9 +3,11 @@
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 
 namespace amr::cuda
 {
@@ -27,13 +29,13 @@ auto throw_if_cuda_error(cudaError_t status, const char* context) -> void
 
 struct permutation_scratch_buffers
 {
-    std::size_t*   pinned_sources      = nullptr;
-    unsigned char* temp_buffer         = nullptr;
-    std::size_t    temp_capacity_bytes = 0;
-    std::size_t*   device_sources      = nullptr;
-    std::size_t    sources_capacity    = 0;
-    void*          sources_copy_fence  = nullptr;
-    std::size_t    copy_pending        = 0;
+    std::size_t*                pinned_sources       = nullptr;
+    std::vector<unsigned char*> alternate_buffers{};
+    std::vector<std::size_t>    alternate_capacities{};
+    std::size_t*                device_sources       = nullptr;
+    std::size_t                 sources_capacity     = 0;
+    void*                       sources_copy_fence   = nullptr;
+    std::size_t                 copy_pending         = 0;
 
     ~permutation_scratch_buffers()
     {
@@ -44,23 +46,45 @@ struct permutation_scratch_buffers
         amr::cuda::async_copy_fence_destroy(sources_copy_fence);
         amr::cuda::host_pinned_free(static_cast<void*>(pinned_sources));
         (void)cudaFree(device_sources);
-        (void)cudaFree(temp_buffer);
+        for (auto* buffer : alternate_buffers)
+        {
+            (void)cudaFree(buffer);
+        }
     }
 
-    auto ensure_temp_capacity(std::size_t required_bytes) -> void
+    auto ensure_alternate_buffer_count(std::size_t required_count) -> void
     {
-        if (required_bytes <= temp_capacity_bytes)
+        if (required_count <= alternate_buffers.size())
         {
             return;
         }
 
-        (void)cudaFree(temp_buffer);
-        temp_buffer = nullptr;
+        alternate_buffers.resize(required_count, nullptr);
+        alternate_capacities.resize(required_count, 0);
+    }
+
+    auto ensure_alternate_capacity(std::size_t buffer_index, std::size_t required_bytes)
+        -> void
+    {
+        ensure_alternate_buffer_count(buffer_index + 1);
+        if (required_bytes <= alternate_capacities[buffer_index])
+        {
+            return;
+        }
+
+        const auto grown_capacity =
+            std::max(required_bytes * 2, std::size_t{ 256 * 1024 });
+
+        (void)cudaFree(alternate_buffers[buffer_index]);
+        alternate_buffers[buffer_index] = nullptr;
         throw_if_cuda_error(
-            cudaMalloc(reinterpret_cast<void**>(&temp_buffer), required_bytes),
-            "cudaMalloc(temp_buffer)"
+            cudaMalloc(
+                reinterpret_cast<void**>(&alternate_buffers[buffer_index]),
+                grown_capacity
+            ),
+            "cudaMalloc(alternate_permutation_buffer)"
         );
-        temp_capacity_bytes = required_bytes;
+        alternate_capacities[buffer_index] = grown_capacity;
     }
 
     auto ensure_sources_capacity(std::size_t required_count) -> void
@@ -70,24 +94,27 @@ struct permutation_scratch_buffers
             return;
         }
 
+        const auto grown_capacity =
+            std::max(required_count * 2, std::size_t{ 4096 });
+
         (void)cudaFree(device_sources);
         device_sources = nullptr;
         throw_if_cuda_error(
             cudaMalloc(
                 reinterpret_cast<void**>(&device_sources),
-                required_count * sizeof(std::size_t)
+                grown_capacity * sizeof(std::size_t)
             ),
             "cudaMalloc(device_sources)"
         );
         amr::cuda::host_pinned_free(static_cast<void*>(pinned_sources));
         pinned_sources = static_cast<std::size_t*>(
-            amr::cuda::host_pinned_malloc(required_count * sizeof(std::size_t))
+            amr::cuda::host_pinned_malloc(grown_capacity * sizeof(std::size_t))
         );
         if (sources_copy_fence == nullptr)
         {
             sources_copy_fence = amr::cuda::async_copy_fence_create();
         }
-        sources_capacity = required_count;
+        sources_capacity = grown_capacity;
     }
 
     auto wait_for_pending_sources_copy() -> void
@@ -145,12 +172,12 @@ auto validate_permutation_size(std::size_t patch_count, std::size_t source_count
 }
 
 auto permute_patches_with_device_sources(
-    unsigned char*     device_bytes,
+    unsigned char*     source_bytes,
+    unsigned char*     destination_bytes,
     std::size_t        patch_count,
     std::size_t        patch_bytes,
-    const std::size_t* device_sources,
-    unsigned char*     temp_buffer
-) -> void
+    const std::size_t* device_sources
+) -> unsigned char*
 {
     const auto total_bytes = patch_count * patch_bytes;
 
@@ -160,42 +187,33 @@ auto permute_patches_with_device_sources(
                                   threads_per_block);
 
     permute_patches_kernel<<<blocks, threads_per_block>>>(
-        device_bytes,
-        temp_buffer,
+        source_bytes,
+        destination_bytes,
         device_sources,
         patch_count,
         patch_bytes
     );
 
     throw_if_cuda_error(cudaGetLastError(), "permute_patches_kernel launch");
-
-    throw_if_cuda_error(
-        cudaMemcpy(
-            device_bytes,
-            temp_buffer,
-            total_bytes,
-            cudaMemcpyDeviceToDevice
-        ),
-        "cudaMemcpy(device_to_device permuted patches)"
-    );
+    return source_bytes;
 }
 
 } // namespace
 
 auto permute_patches_inplace_batch(
-    std::span<void*>             device_buffers,
+    std::span<void**>            device_buffer_slots,
     std::span<const std::size_t> patch_bytes,
     std::size_t                  patch_count,
     const std::size_t*           host_sources,
     std::size_t                  source_count
 ) -> void
 {
-    if (patch_count == 0 || device_buffers.empty())
+    if (patch_count == 0 || device_buffer_slots.empty())
     {
         return;
     }
 
-    if (device_buffers.size() != patch_bytes.size())
+    if (device_buffer_slots.size() != patch_bytes.size())
     {
         throw std::runtime_error("Permutation buffer count does not match patch byte count");
     }
@@ -206,6 +224,7 @@ auto permute_patches_inplace_batch(
     auto  lock    = std::lock_guard<std::mutex>(permutation_scratch_mutex());
 
     scratch.ensure_sources_capacity(patch_count);
+    scratch.ensure_alternate_buffer_count(device_buffer_slots.size());
     scratch.wait_for_pending_sources_copy();
 
     for (std::size_t i = 0; i < patch_count; ++i)
@@ -221,41 +240,23 @@ auto permute_patches_inplace_batch(
     amr::cuda::async_copy_fence_record(scratch.sources_copy_fence);
     scratch.copy_pending = 1;
 
-    for (std::size_t i = 0; i < device_buffers.size(); ++i)
+    for (std::size_t i = 0; i < device_buffer_slots.size(); ++i)
     {
-        auto* device_bytes      = static_cast<unsigned char*>(device_buffers[i]);
+        auto* source_bytes      = static_cast<unsigned char*>(*device_buffer_slots[i]);
         const auto total_bytes  = patch_count * patch_bytes[i];
 
-        scratch.ensure_temp_capacity(total_bytes);
+        scratch.ensure_alternate_capacity(i, total_bytes);
+        auto* destination_bytes = scratch.alternate_buffers[i];
 
-        permute_patches_with_device_sources(
-            device_bytes,
+        scratch.alternate_buffers[i] = permute_patches_with_device_sources(
+            source_bytes,
+            destination_bytes,
             patch_count,
             patch_bytes[i],
-            scratch.device_sources,
-            scratch.temp_buffer
+            scratch.device_sources
         );
+        *device_buffer_slots[i] = destination_bytes;
     }
-}
-
-auto permute_patches_inplace(
-    void*              device_buffer,
-    std::size_t        patch_count,
-    std::size_t        patch_bytes,
-    const std::size_t* host_sources,
-    std::size_t        source_count
-) -> void
-{
-    auto device_buffers = std::span{ &device_buffer, std::size_t{ 1 } };
-    auto patch_sizes    = std::span{ &patch_bytes, std::size_t{ 1 } };
-
-    permute_patches_inplace_batch(
-        device_buffers,
-        patch_sizes,
-        patch_count,
-        host_sources,
-        source_count
-    );
 }
 
 } // namespace amr::cuda
