@@ -13,6 +13,7 @@
 #include "cuda/profiler.hpp"
 #endif
 #include <algorithm>
+#include <cstdint>
 #include <execution>
 #include <limits>
 #include <vector>
@@ -43,14 +44,18 @@ private:
     arithmetic_t const m_gamma; // Specific heat ratio
     arithmetic_t const m_cfl;   // CFL number
     arithmetic_t       m_host_pending_batch_dt{};
+    std::size_t        m_host_pending_batch_step_count{};
 #ifdef AMR_ENABLE_CUDA_AMR
-    mutable arithmetic_t* m_device_dt_buffer = nullptr;
+    mutable arithmetic_t*   m_device_dt_buffer                = nullptr;
     mutable arithmetic_t* m_device_dt_accumulator_buffer = nullptr;
-    mutable arithmetic_t* m_pinned_dt_buffer = nullptr;
-    mutable void*         m_dt_ready_fence   = nullptr;
-    mutable void*         m_dt_copy_fence    = nullptr;
-    mutable void*         m_dt_copy_stream   = nullptr;
-    mutable std::size_t   m_dt_copy_pending  = 0;
+    mutable arithmetic_t*   m_device_remaining_time_buffer    = nullptr;
+    mutable arithmetic_t*   m_pinned_dt_buffer                = nullptr;
+    mutable std::uint32_t*  m_device_executed_step_count_buffer = nullptr;
+    mutable std::uint32_t*  m_pinned_executed_step_count_buffer = nullptr;
+    mutable void*           m_dt_ready_fence                  = nullptr;
+    mutable void*           m_dt_copy_fence                   = nullptr;
+    mutable void*           m_dt_copy_stream                  = nullptr;
+    mutable std::size_t     m_dt_copy_pending                 = 0;
 #endif
 
 public:
@@ -73,7 +78,10 @@ public:
         amr::cuda::async_copy_stream_destroy(m_dt_copy_stream);
         amr::cuda::async_copy_fence_destroy(m_dt_ready_fence);
         amr::cuda::async_copy_fence_destroy(m_dt_copy_fence);
+        amr::cuda::host_pinned_free(static_cast<void*>(m_pinned_executed_step_count_buffer));
         amr::cuda::host_pinned_free(static_cast<void*>(m_pinned_dt_buffer));
+        amr::cuda::device_free(static_cast<void*>(m_device_executed_step_count_buffer));
+        amr::cuda::device_free(static_cast<void*>(m_device_remaining_time_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_dt_accumulator_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_dt_buffer));
 #endif
@@ -144,7 +152,10 @@ public:
         return finish_advance_batch();
     }
 
-    auto advance_batch_async(std::size_t step_count) -> void
+    auto advance_batch_async(
+        std::size_t step_count,
+        arithmetic_t remaining_time = std::numeric_limits<arithmetic_t>::max()
+    ) -> void
     {
 #ifdef AMR_ENABLE_CUDA_AMR
         auto nvtx_range = amr::cuda::scoped_profile_range{ "advance_batch_async" };
@@ -152,6 +163,8 @@ public:
         wait_for_pending_dt_copy();
 
         amr::cuda::launch_set_double_buffer(m_device_dt_accumulator_buffer, 0.0);
+        amr::cuda::launch_set_double_buffer(m_device_remaining_time_buffer, remaining_time);
+        amr::cuda::launch_set_uint32_buffer(m_device_executed_step_count_buffer, 0u);
 
         auto config = make_cuda_time_step_config();
         config.cfl  = m_cfl;
@@ -169,9 +182,11 @@ public:
                 m_device_dt_buffer
             );
 
-            amr::cuda::launch_accumulate_scaled_double_buffer(
-                m_device_dt_accumulator_buffer,
+            amr::cuda::launch_finalize_step_dt(
                 m_device_dt_buffer,
+                m_device_dt_accumulator_buffer,
+                m_device_remaining_time_buffer,
+                m_device_executed_step_count_buffer,
                 m_cfl
             );
 
@@ -195,26 +210,53 @@ public:
             sizeof(arithmetic_t),
             m_dt_copy_stream
         );
+        amr::cuda::copy_device_to_host_async_on_stream(
+            static_cast<void*>(m_pinned_executed_step_count_buffer),
+            static_cast<void const*>(m_device_executed_step_count_buffer),
+            sizeof(std::uint32_t),
+            m_dt_copy_stream
+        );
         amr::cuda::async_copy_fence_record_on_stream(m_dt_copy_fence, m_dt_copy_stream);
         m_dt_copy_pending = 1;
 #else
         m_host_pending_batch_dt = 0.0;
+        m_host_pending_batch_step_count = 0;
+        auto remaining = remaining_time;
         for (std::size_t step_idx = 0; step_idx < step_count; ++step_idx)
         {
+            if (remaining <= 0.0)
+            {
+                break;
+            }
             const auto dt = compute_time_step_cpu();
-            time_step_cpu(dt);
-            m_host_pending_batch_dt += dt;
+            const auto step_dt = std::min(dt, remaining);
+            if (step_dt <= 0.0)
+            {
+                break;
+            }
+            time_step_cpu(step_dt);
+            m_host_pending_batch_dt += step_dt;
+            remaining -= step_dt;
+            ++m_host_pending_batch_step_count;
         }
 #endif
     }
 
-    auto finish_advance_batch() -> arithmetic_t
+    auto finish_advance_batch(std::size_t* executed_step_count = nullptr) -> arithmetic_t
     {
 #ifdef AMR_ENABLE_CUDA_AMR
         auto nvtx_range = amr::cuda::scoped_profile_range{ "finish_advance_batch" };
         wait_for_pending_dt_copy();
+        if (executed_step_count != nullptr)
+        {
+            *executed_step_count = static_cast<std::size_t>(*m_pinned_executed_step_count_buffer);
+        }
         return *m_pinned_dt_buffer;
 #else
+        if (executed_step_count != nullptr)
+        {
+            *executed_step_count = m_host_pending_batch_step_count;
+        }
         return m_host_pending_batch_dt;
 #endif
     }
@@ -385,10 +427,28 @@ private:
                 amr::cuda::device_malloc(sizeof(arithmetic_t))
             );
         }
+        if (m_device_remaining_time_buffer == nullptr)
+        {
+            m_device_remaining_time_buffer = static_cast<arithmetic_t*>(
+                amr::cuda::device_malloc(sizeof(arithmetic_t))
+            );
+        }
+        if (m_device_executed_step_count_buffer == nullptr)
+        {
+            m_device_executed_step_count_buffer = static_cast<std::uint32_t*>(
+                amr::cuda::device_malloc(sizeof(std::uint32_t))
+            );
+        }
         if (m_pinned_dt_buffer == nullptr)
         {
             m_pinned_dt_buffer = static_cast<arithmetic_t*>(
                 amr::cuda::host_pinned_malloc(sizeof(arithmetic_t))
+            );
+        }
+        if (m_pinned_executed_step_count_buffer == nullptr)
+        {
+            m_pinned_executed_step_count_buffer = static_cast<std::uint32_t*>(
+                amr::cuda::host_pinned_malloc(sizeof(std::uint32_t))
             );
         }
         if (m_dt_ready_fence == nullptr)

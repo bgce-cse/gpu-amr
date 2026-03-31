@@ -2,6 +2,7 @@
 #define AMR_INCLUDED_CUDA_FVM_TIME_STEP
 
 #include <cstddef>
+#include <cstdint>
 #include <array>
 
 namespace amr::cuda
@@ -45,10 +46,15 @@ namespace amr::cuda
 
     auto launch_set_double_buffer(double* device_buffer, double value) -> void;
 
-    auto launch_accumulate_scaled_double_buffer(
-        double* device_accumulator,
-        const double* device_value,
-        double scale
+    auto launch_set_uint32_buffer(std::uint32_t* device_buffer, std::uint32_t value)
+        -> void;
+
+    auto launch_finalize_step_dt(
+        double*         device_dt_buffer,
+        double*         device_dt_accumulator,
+        double*         device_remaining_time,
+        std::uint32_t*  device_executed_step_count,
+        double          cfl
     ) -> void;
 
 } // namespace amr::cuda

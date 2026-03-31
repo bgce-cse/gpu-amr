@@ -216,16 +216,18 @@ int main()
 
     while (t < tmax)
     {
-        solver.advance_batch_async(reconstruction_interval);
-        cell_update_count +=
-            static_cast<std::size_t>(reconstruction_interval) *
-            solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
+        const auto remaining_time = tmax - t;
+        const auto patch_count_before_reconstruction = solver.get_tree().size();
+        solver.advance_batch_async(reconstruction_interval, remaining_time);
 
         solver.get_tree().reconstruct_tree(acousticWaveCriterion);
         solver.get_tree().halo_exchange_update();
 
-        t += solver.finish_advance_batch();
-        step += reconstruction_interval;
+        std::size_t executed_steps = 0;
+        t += solver.finish_advance_batch(&executed_steps);
+        cell_update_count += executed_steps * patch_count_before_reconstruction *
+                             patch_layout_t::data_layout_t::flat_size();
+        step += static_cast<int>(executed_steps);
     }
 #ifdef AMR_ENABLE_CUDA_AMR
     amr::cuda::profile_capture_stop();

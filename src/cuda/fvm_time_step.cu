@@ -4,6 +4,7 @@
 #include <cuda_runtime.h>
 #include <array>
 #include <cfloat>
+#include <cstdint>
 
 namespace amr::cuda {
 
@@ -108,7 +109,7 @@ __global__ void time_step_kernel_device_dt(
     const double* global_dt)
 {
     time_step_launch_config local_config = config;
-    local_config.dt = (*global_dt) * config.cfl;
+    local_config.dt = *global_dt;
     time_step_kernel_body<EquationT, DIM>(
         in_patches,
         out_patches,
@@ -193,14 +194,42 @@ __global__ void initialize_double_buffer_kernel(double* buffer, double value)
     }
 }
 
-__global__ void accumulate_scaled_double_buffer_kernel(
-    double*       accumulator,
-    const double* value,
-    double        scale)
+__global__ void initialize_uint32_buffer_kernel(std::uint32_t* buffer, std::uint32_t value)
 {
     if (threadIdx.x == 0 && blockIdx.x == 0)
     {
-        *accumulator += (*value) * scale;
+        *buffer = value;
+    }
+}
+
+__global__ void finalize_step_dt_kernel(
+    double*        dt_buffer,
+    double*        accumulator,
+    double*        remaining_time,
+    std::uint32_t* executed_step_count,
+    double         cfl)
+{
+    if (threadIdx.x == 0 && blockIdx.x == 0)
+    {
+        const auto raw_dt = *dt_buffer;
+        auto       step_dt = raw_dt * cfl;
+
+        if (*remaining_time <= 0.0)
+        {
+            step_dt = 0.0;
+        }
+        else if (step_dt > *remaining_time)
+        {
+            step_dt = *remaining_time;
+        }
+
+        *dt_buffer = step_dt;
+        *accumulator += step_dt;
+        if (step_dt > 0.0)
+        {
+            *remaining_time -= step_dt;
+            ++(*executed_step_count);
+        }
     }
 }
 
@@ -210,15 +239,25 @@ auto launch_set_double_buffer(double* device_buffer, double value) -> void
     cudaGetLastError();
 }
 
-auto launch_accumulate_scaled_double_buffer(
-    double* device_accumulator,
-    const double* device_value,
-    double scale) -> void
+auto launch_set_uint32_buffer(std::uint32_t* device_buffer, std::uint32_t value) -> void
 {
-    accumulate_scaled_double_buffer_kernel<<<1, 1>>>(
-        device_accumulator,
-        device_value,
-        scale
+    initialize_uint32_buffer_kernel<<<1, 1>>>(device_buffer, value);
+    cudaGetLastError();
+}
+
+auto launch_finalize_step_dt(
+    double*        device_dt_buffer,
+    double*        device_dt_accumulator,
+    double*        device_remaining_time,
+    std::uint32_t* device_executed_step_count,
+    double         cfl) -> void
+{
+    finalize_step_dt_kernel<<<1, 1>>>(
+        device_dt_buffer,
+        device_dt_accumulator,
+        device_remaining_time,
+        device_executed_step_count,
+        cfl
     );
     cudaGetLastError();
 }
