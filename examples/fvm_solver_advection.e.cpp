@@ -136,11 +136,9 @@ int main()
 
     while (t < t_max)
     {
-        double dt = solver.compute_time_step();
+        const double dt = solver.advance();
 
         std::cout << "Step " << step << ", t=" << t << ", dt=" << dt << std::endl;
-
-        solver.time_step(dt);
 
         t += dt;
         step++;

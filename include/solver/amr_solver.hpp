@@ -10,6 +10,7 @@
 #ifdef AMR_ENABLE_CUDA_AMR
 #include "cuda/device_buffer.hpp"
 #include "cuda/fvm_time_step.hpp"
+#include "cuda/profiler.hpp"
 #endif
 #include <algorithm>
 #include <execution>
@@ -41,8 +42,15 @@ private:
     TreeT              m_tree;
     arithmetic_t const m_gamma; // Specific heat ratio
     arithmetic_t const m_cfl;   // CFL number
+    arithmetic_t       m_host_pending_batch_dt{};
 #ifdef AMR_ENABLE_CUDA_AMR
     mutable arithmetic_t* m_device_dt_buffer = nullptr;
+    mutable arithmetic_t* m_device_dt_accumulator_buffer = nullptr;
+    mutable arithmetic_t* m_pinned_dt_buffer = nullptr;
+    mutable void*         m_dt_ready_fence   = nullptr;
+    mutable void*         m_dt_copy_fence    = nullptr;
+    mutable void*         m_dt_copy_stream   = nullptr;
+    mutable std::size_t   m_dt_copy_pending  = 0;
 #endif
 
 public:
@@ -58,6 +66,15 @@ public:
     ~amr_solver()
     {
 #ifdef AMR_ENABLE_CUDA_AMR
+        if (m_dt_copy_pending != 0)
+        {
+            amr::cuda::async_copy_fence_wait(m_dt_copy_fence);
+        }
+        amr::cuda::async_copy_stream_destroy(m_dt_copy_stream);
+        amr::cuda::async_copy_fence_destroy(m_dt_ready_fence);
+        amr::cuda::async_copy_fence_destroy(m_dt_copy_fence);
+        amr::cuda::host_pinned_free(static_cast<void*>(m_pinned_dt_buffer));
+        amr::cuda::device_free(static_cast<void*>(m_device_dt_accumulator_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_dt_buffer));
 #endif
     }
@@ -121,65 +138,92 @@ public:
 
     template <auto B> struct BufferTag { static constexpr auto value = B; };
 
-    auto time_step(const arithmetic_t dt) -> void
+    auto advance() -> arithmetic_t
+    {
+        advance_batch_async(1);
+        return finish_advance_batch();
+    }
+
+    auto advance_batch_async(std::size_t step_count) -> void
     {
 #ifdef AMR_ENABLE_CUDA_AMR
-        // Helper to fetch all NVAR device pointers into a std::array
-        auto get_device_ptrs = [&]<std::size_t... Is>(std::index_sequence<Is...>, auto buffer_tag) {
-            return std::array<double*, NVAR>{
-                reinterpret_cast<double*>(m_tree.template get_device_buffer<
-                    typename std::tuple_element<Is, typename EquationT::FieldTags>::type, 
-                    decltype(buffer_tag)::value
-                >())...
-            };
-        };
-        
-        std::array<double*, NVAR> in_ptrs = 
-            get_device_ptrs(std::make_index_sequence<NVAR>{}, BufferTag<tree_t::current_buffer>{});
-            
-        std::array<double*, NVAR> out_ptrs = 
-            get_device_ptrs(std::make_index_sequence<NVAR>{}, BufferTag<tree_t::next_buffer>{});
+        auto nvtx_range = amr::cuda::scoped_profile_range{ "advance_batch_async" };
+        ensure_cuda_dt_resources();
+        wait_for_pending_dt_copy();
 
-        // Setup the launch configuration
-        amr::cuda::time_step_launch_config config{};
-        config.num_patches     = m_tree.size();
-        config.patch_flat_size = patch_layout_t::flat_size();
-        config.data_flat_size  = patch_layout_t::data_layout_t::flat_size(); // Interior cells only
-        config.halo_width      = patch_layout_t::halo_width();               // Halo padding
-        config.dt              = dt;
-        config.gamma           = m_gamma;
-        
-        // Root cell sizes for AMR dx calculations
-        const auto root_size = GeometryT::cell_sizes(patch_index_t::root());
-        config.root_c_size = {0.0, 0.0, 0.0};
-        for (int d = 0; d < DIM; ++d) {
-            config.root_c_size[d] = root_size[d];
+        amr::cuda::launch_set_double_buffer(m_device_dt_accumulator_buffer, 0.0);
+
+        auto config = make_cuda_time_step_config();
+        config.cfl  = m_cfl;
+
+        for (std::size_t step_idx = 0; step_idx < step_count; ++step_idx)
+        {
+            auto in_ptrs    = get_device_ro_ptrs(BufferTag<tree_t::current_buffer>{});
+            auto out_ptrs   = get_device_rw_ptrs(BufferTag<tree_t::next_buffer>{});
+            auto in_ptrs_rw = in_ptrs_as_mutable(in_ptrs);
+
+            amr::cuda::launch_compute_dt_kernel_device<EquationT, DIM>(
+                in_ptrs,
+                m_tree.get_device_patch_level_buffer(),
+                config,
+                m_device_dt_buffer
+            );
+
+            amr::cuda::launch_accumulate_scaled_double_buffer(
+                m_device_dt_accumulator_buffer,
+                m_device_dt_buffer,
+                m_cfl
+            );
+
+            amr::cuda::launch_time_step_kernel_with_device_dt<EquationT, DIM>(
+                in_ptrs_rw,
+                out_ptrs,
+                m_tree.get_device_patch_level_buffer(),
+                config,
+                m_device_dt_buffer
+            );
+
+            m_tree.swap_buffers();
+            m_tree.halo_exchange_update();
         }
 
-        config.stride_y = patch_layout_t::padded_layout_t::shape_t::sizes()[DIM - 1];
-        config.stride_z = (DIM == 3) ? patch_layout_t::padded_layout_t::shape_t::sizes()[1] * config.stride_y : 0;
-
-        // Fill layout arrays so the GPU can map interior 1D indices to padded 1D memory indices
-        for (int d = 0; d < DIM; ++d) {
-            config.data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
-            config.data_strides[d]   = patch_layout_t::data_layout_t::strides()[d];
-            config.padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
-        }
-
-        // Launch the CUDA Kernel
-        amr::cuda::launch_time_step_kernel<EquationT, DIM>(
-            in_ptrs, 
-            out_ptrs, 
-            m_tree.get_device_patch_level_buffer(),
-            config
+        amr::cuda::async_copy_fence_record(m_dt_ready_fence);
+        amr::cuda::async_copy_stream_wait_for_fence(m_dt_copy_stream, m_dt_ready_fence);
+        amr::cuda::copy_device_to_host_async_on_stream(
+            static_cast<void*>(m_pinned_dt_buffer),
+            static_cast<void const*>(m_device_dt_accumulator_buffer),
+            sizeof(arithmetic_t),
+            m_dt_copy_stream
         );
-
-        m_tree.swap_buffers();
-        m_tree.halo_exchange_update();
+        amr::cuda::async_copy_fence_record_on_stream(m_dt_copy_fence, m_dt_copy_stream);
+        m_dt_copy_pending = 1;
 #else
+        m_host_pending_batch_dt = 0.0;
+        for (std::size_t step_idx = 0; step_idx < step_count; ++step_idx)
+        {
+            const auto dt = compute_time_step_cpu();
+            time_step_cpu(dt);
+            m_host_pending_batch_dt += dt;
+        }
+#endif
+    }
+
+    auto finish_advance_batch() -> arithmetic_t
+    {
+#ifdef AMR_ENABLE_CUDA_AMR
+        auto nvtx_range = amr::cuda::scoped_profile_range{ "finish_advance_batch" };
+        wait_for_pending_dt_copy();
+        return *m_pinned_dt_buffer;
+#else
+        return m_host_pending_batch_dt;
+#endif
+    }
+
+private:
+    auto time_step_cpu(const arithmetic_t dt) -> void
+    {
         static constexpr auto stride_y =
             patch_layout_t::padded_layout_t::shape_t::sizes()[DIM - 1];
-        // TODO: Maybe use the stride accessors layout types provide
         static constexpr auto stride_z =
             (DIM == 3) ? patch_layout_t::padded_layout_t::shape_t::sizes()[1] * stride_y
                        : 0;
@@ -194,7 +238,6 @@ public:
                 const auto patch_id = m_tree.get_node_index_at(p_idx);
                 const auto c_size   = GeometryT::cell_sizes(patch_id);
 
-                // Fetch READ patches (Current state at time t)
                 auto fetch_in_patches = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
                     return std::forward_as_tuple(
                         m_tree.template get_patch<
@@ -204,7 +247,6 @@ public:
                 };
                 auto in_patches = fetch_in_patches(std::make_index_sequence<NVAR>{});
 
-                // Fetch WRITE patches (Next state at time t + dt)
                 auto fetch_out_patches = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
                     return std::forward_as_tuple(
                         m_tree.template get_out_patch<
@@ -215,7 +257,6 @@ public:
                 };
                 auto out_patches = fetch_out_patches(std::make_index_sequence<NVAR>{});
 
-                // --- Calculate and Write Directly ---
                 amr::containers::manipulators::shaped_for<
                     typename patch_layout_t::interior_iteration_control_t>(
                     [this, dt, &c_size, &in_patches, &out_patches](
@@ -225,7 +266,6 @@ public:
                         const auto linear_idx = padded_layout_t::linear_index(idxs);
                         amr::containers::static_vector<arithmetic_t, NVAR> total_update{};
 
-                        // --- Fetch the CENTER cell exactly once into registers ---
                         amr::containers::static_vector<arithmetic_t, NVAR> U_center;
                         auto fetch_center = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
                             ((U_center[Is] = std::get<Is>(in_patches)[linear_idx]), ...);
@@ -235,8 +275,7 @@ public:
                         for (int d = 0; d < DIM; ++d)
                         {
                             const auto stride = (d == 0) ? 1 : (d == 1 ? stride_y : stride_z);
-                            
-                            // Fetch the specific neighbors into registers
+
                             amr::containers::static_vector<arithmetic_t, NVAR> U_L, U_R;
                             auto fetch_neighbors = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
                                 ((U_L[Is] = std::get<Is>(in_patches)[linear_idx - stride]), ...);
@@ -244,15 +283,12 @@ public:
                             };
                             fetch_neighbors(std::make_index_sequence<NVAR>{});
 
-                            // TODO: Remove out paramters if possible
-                            // TODO: Evaluate merging both calls into one since they share
-                            // input params
                             amr::containers::static_vector<arithmetic_t, NVAR> fL, fR;
-                            
+
                             EquationT::rusanovFlux(U_L, U_center, fL, d, m_gamma);
                             EquationT::rusanovFlux(U_center, U_R, fR, d, m_gamma);
 
-                            arithmetic_t dt_over_dx = dt / c_size[d];
+                            const arithmetic_t dt_over_dx = dt / c_size[d];
 
                             for (int k = 0; k < NVAR; ++k)
                             {
@@ -260,9 +296,10 @@ public:
                             }
                         }
 
-                        // Write directly to its final destination (out_patches)
                         auto apply_update = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                            ((std::get<Is>(out_patches)[linear_idx] = std::get<Is>(in_patches)[linear_idx] + total_update[Is]), ...);
+                            ((std::get<Is>(out_patches)[linear_idx] =
+                                  std::get<Is>(in_patches)[linear_idx] + total_update[Is]),
+                             ...);
                         };
                         apply_update(std::make_index_sequence<NVAR>{});
                     }
@@ -271,53 +308,10 @@ public:
         );
         m_tree.swap_buffers();
         m_tree.halo_exchange_update();
-#endif
     }
 
-    auto compute_time_step() const -> arithmetic_t
+    auto compute_time_step_cpu() const -> arithmetic_t
     {
-#ifdef AMR_ENABLE_CUDA_AMR
-        if (m_device_dt_buffer == nullptr)
-        {
-            m_device_dt_buffer = static_cast<arithmetic_t*>(
-                amr::cuda::device_malloc(sizeof(arithmetic_t))
-            );
-        }
-
-        auto get_device_ptrs = [&]<std::size_t... Is>(std::index_sequence<Is...>, auto buffer_tag) {
-            return std::array<const double*, NVAR>{
-                reinterpret_cast<const double*>(m_tree.template get_device_buffer<
-                    typename std::tuple_element<Is, typename EquationT::FieldTags>::type, 
-                    decltype(buffer_tag)::value
-                >())...
-            };
-        };
-        
-        std::array<const double*, NVAR> in_ptrs = 
-            get_device_ptrs(std::make_index_sequence<NVAR>{}, BufferTag<tree_t::current_buffer>{});
-
-        amr::cuda::time_step_launch_config config{};
-        config.num_patches     = m_tree.size();
-        config.patch_flat_size = patch_layout_t::flat_size();
-        config.data_flat_size  = patch_layout_t::data_layout_t::flat_size();
-        config.halo_width      = patch_layout_t::halo_width();
-        config.gamma           = m_gamma;
-
-        const auto root_size = GeometryT::cell_sizes(patch_index_t::root());
-        config.root_c_size = {0.0, 0.0, 0.0};
-        for (int d = 0; d < DIM; ++d) config.root_c_size[d] = root_size[d];
-
-        for (int d = 0; d < DIM; ++d) {
-            config.data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
-            config.data_strides[d]   = patch_layout_t::data_layout_t::strides()[d];
-            config.padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
-        }
-
-        double dt = amr::cuda::launch_compute_dt_kernel<EquationT, DIM>(
-            in_ptrs, m_tree.get_device_patch_level_buffer(), config, m_device_dt_buffer
-        );
-        return m_cfl * dt;
-#else
         // Global minimum time step, safely updated across threads
         // TODO: We could have a tighter upper bound here.
         //       maybe there is some other theoretical limit we can use instead
@@ -374,8 +368,119 @@ public:
             }
         );
         return m_cfl * dt;
-#endif
     }
+
+#ifdef AMR_ENABLE_CUDA_AMR
+    auto ensure_cuda_dt_resources() const -> void
+    {
+        if (m_device_dt_buffer == nullptr)
+        {
+            m_device_dt_buffer = static_cast<arithmetic_t*>(
+                amr::cuda::device_malloc(sizeof(arithmetic_t))
+            );
+        }
+        if (m_device_dt_accumulator_buffer == nullptr)
+        {
+            m_device_dt_accumulator_buffer = static_cast<arithmetic_t*>(
+                amr::cuda::device_malloc(sizeof(arithmetic_t))
+            );
+        }
+        if (m_pinned_dt_buffer == nullptr)
+        {
+            m_pinned_dt_buffer = static_cast<arithmetic_t*>(
+                amr::cuda::host_pinned_malloc(sizeof(arithmetic_t))
+            );
+        }
+        if (m_dt_ready_fence == nullptr)
+        {
+            m_dt_ready_fence = amr::cuda::async_copy_fence_create();
+        }
+        if (m_dt_copy_fence == nullptr)
+        {
+            m_dt_copy_fence = amr::cuda::async_copy_fence_create();
+        }
+        if (m_dt_copy_stream == nullptr)
+        {
+            m_dt_copy_stream = amr::cuda::async_copy_stream_create();
+        }
+    }
+
+    template <auto B>
+    auto get_device_ro_ptrs(BufferTag<B> buffer_tag) const
+        -> std::array<const double*, NVAR>
+    {
+        return [&]<std::size_t... Is>(std::index_sequence<Is...>)
+        {
+            return std::array<const double*, NVAR>{
+                reinterpret_cast<const double*>(m_tree.template get_device_buffer<
+                    typename std::tuple_element<Is, typename EquationT::FieldTags>::type,
+                    decltype(buffer_tag)::value>())...
+            };
+        }(std::make_index_sequence<NVAR>{});
+    }
+
+    template <auto B>
+    auto get_device_rw_ptrs(BufferTag<B> buffer_tag) -> std::array<double*, NVAR>
+    {
+        return [&]<std::size_t... Is>(std::index_sequence<Is...>)
+        {
+            return std::array<double*, NVAR>{
+                reinterpret_cast<double*>(m_tree.template get_device_buffer<
+                    typename std::tuple_element<Is, typename EquationT::FieldTags>::type,
+                    decltype(buffer_tag)::value>())...
+            };
+        }(std::make_index_sequence<NVAR>{});
+    }
+
+    auto in_ptrs_as_mutable(std::array<const double*, NVAR> const& in_ptrs) const
+        -> std::array<double*, NVAR>
+    {
+        std::array<double*, NVAR> mutable_ptrs{};
+        for (std::size_t i = 0; i < NVAR; ++i)
+        {
+            mutable_ptrs[i] = const_cast<double*>(in_ptrs[i]);
+        }
+        return mutable_ptrs;
+    }
+
+    auto make_cuda_time_step_config() const -> amr::cuda::time_step_launch_config
+    {
+        amr::cuda::time_step_launch_config config{};
+        config.num_patches     = m_tree.size();
+        config.patch_flat_size = patch_layout_t::flat_size();
+        config.data_flat_size  = patch_layout_t::data_layout_t::flat_size();
+        config.halo_width      = patch_layout_t::halo_width();
+        config.dt              = 0.0;
+        config.cfl             = 0.0;
+        config.gamma           = m_gamma;
+
+        const auto root_size = GeometryT::cell_sizes(patch_index_t::root());
+        config.root_c_size = { 0.0, 0.0, 0.0 };
+        for (int d = 0; d < DIM; ++d)
+        {
+            config.root_c_size[d] = root_size[d];
+            config.data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
+            config.data_strides[d]   = patch_layout_t::data_layout_t::strides()[d];
+            config.padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
+        }
+
+        config.stride_y = patch_layout_t::padded_layout_t::shape_t::sizes()[DIM - 1];
+        config.stride_z =
+            (DIM == 3)
+                ? patch_layout_t::padded_layout_t::shape_t::sizes()[1] * config.stride_y
+                : 0;
+        return config;
+    }
+
+    auto wait_for_pending_dt_copy() const -> void
+    {
+        if (m_dt_copy_pending != 0)
+        {
+            amr::cuda::async_copy_fence_wait(m_dt_copy_fence);
+            m_dt_copy_pending = 0;
+        }
+    }
+#endif
 };
 
 // Typedefs

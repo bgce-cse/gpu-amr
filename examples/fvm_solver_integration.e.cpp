@@ -212,11 +212,9 @@ int main()
 
     while (t < tmax)
     {
-        const double dt = solver.compute_time_step();
+        const double dt = solver.advance();
 
         DEFAULT_SOURCE_LOG_PROGRESS("Step: {},\tt: {:.5f},\tdt: {:.5f} ", step, t, dt);
-
-        solver.time_step(dt);
         cell_update_count +=
             solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
 
