@@ -835,7 +835,7 @@ public:
                 fragment(m_to_refine[i - 1], &transfer_tasks);
             }
             interpolate_patches_device(transfer_tasks);
-            sort_buffers();
+            // sort_buffers();
             return;
         }
 #endif
