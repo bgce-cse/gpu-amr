@@ -1922,6 +1922,7 @@ private:
 #endif
     }
 
+#ifdef AMR_ENABLE_CUDA_AMR
     auto wait_for_pending_halo_exchange_metadata_copy() -> void
     {
         if (m_halo_exchange_metadata_copy_pending)
@@ -1948,6 +1949,7 @@ private:
             m_transfer_task_copy_pending = false;
         }
     }
+#endif
 
     [[gnu::always_inline, gnu::flatten]]
     auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
