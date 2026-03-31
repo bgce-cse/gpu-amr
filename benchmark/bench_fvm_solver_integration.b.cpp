@@ -115,8 +115,6 @@ int main()
 #ifdef AMR_ENABLE_CUDA_AMR
         auto fill_refine_flags(tree_t& target_tree) const -> void
         {
-            target_tree.build_patch_levels_on_device();
-
             const auto* rho_device_buffer = reinterpret_cast<const double*>(
                 target_tree.template get_device_buffer<amr::cell::Rho>()
             );
@@ -210,6 +208,7 @@ int main()
     std::cout << "\nStarting AMR simulation...\n";
 
     std::size_t cell_update_count = 0;
+    constexpr int reconstruction_interval = 10;
 #ifdef AMR_ENABLE_CUDA_AMR
     amr::cuda::profile_capture_start();
 #endif
@@ -217,19 +216,18 @@ int main()
 
     while (t < tmax)
     {
-        const double dt = solver.compute_time_step();
-        solver.time_step(dt);
-        cell_update_count +=
-            solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
+        const auto remaining_time = tmax - t;
+        const auto patch_count_before_reconstruction = solver.get_tree().size();
+        solver.advance_batch_async(reconstruction_interval, remaining_time);
 
-        if (step % 5 == 0)
-        {
-            solver.get_tree().reconstruct_tree(acousticWaveCriterion);
-            solver.get_tree().halo_exchange_update();
-        }
+        solver.get_tree().reconstruct_tree(acousticWaveCriterion);
+        solver.get_tree().halo_exchange_update();
 
-        t += dt;
-        step++;
+        std::size_t executed_steps = 0;
+        t += solver.finish_advance_batch(&executed_steps);
+        cell_update_count += executed_steps * patch_count_before_reconstruction *
+                             patch_layout_t::data_layout_t::flat_size();
+        step += static_cast<int>(executed_steps);
     }
 #ifdef AMR_ENABLE_CUDA_AMR
     amr::cuda::profile_capture_stop();

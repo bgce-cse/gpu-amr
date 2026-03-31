@@ -2,6 +2,7 @@
 #define AMR_INCLUDED_CUDA_FVM_TIME_STEP
 
 #include <cstddef>
+#include <cstdint>
 #include <array>
 
 namespace amr::cuda
@@ -14,6 +15,7 @@ namespace amr::cuda
         std::size_t halo_width;  
         
         double dt;
+        double cfl;
         double gamma;
         std::array<double, 3> root_c_size;
 
@@ -25,23 +27,35 @@ namespace amr::cuda
         std::array<std::size_t, 3> padded_strides;
     };
 
-    // The Launcher signature. 
-    // pass std::array by value so CUDA copies the pointers to the device automatically
     template <typename EquationT, int DIM>
-    auto launch_time_step_kernel(
+    auto launch_time_step_kernel_with_device_dt(
         std::array<double*, EquationT::NVAR> device_in_patches,
         std::array<double*, EquationT::NVAR> device_out_patches,
         const int* device_patch_levels,
-        const time_step_launch_config& config
+        const time_step_launch_config& config,
+        const double* device_dt_buffer
     ) -> void;
 
     template <typename EquationT, int DIM>
-    auto launch_compute_dt_kernel(
+    auto launch_compute_dt_kernel_device(
         std::array<const double*, EquationT::NVAR> device_in_patches,
         const int* device_patch_levels,
         const time_step_launch_config& config,
         double* device_dt_buffer
-    ) -> double;
+    ) -> void;
+
+    auto launch_set_double_buffer(double* device_buffer, double value) -> void;
+
+    auto launch_set_uint32_buffer(std::uint32_t* device_buffer, std::uint32_t value)
+        -> void;
+
+    auto launch_finalize_step_dt(
+        double*         device_dt_buffer,
+        double*         device_dt_accumulator,
+        double*         device_remaining_time,
+        std::uint32_t*  device_executed_step_count,
+        double          cfl
+    ) -> void;
 
 } // namespace amr::cuda
 

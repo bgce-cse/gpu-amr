@@ -3,6 +3,7 @@
 
 #include <cuda_profiler_api.h>
 #include <cuda_runtime.h>
+#include <nvtx3/nvToolsExt.h>
 
 #include <sstream>
 #include <stdexcept>
@@ -94,6 +95,42 @@ auto copy_device_to_host(void* dst, const void* src, std::size_t bytes) -> void
     throw_if_cuda_error(cudaMemcpy(dst, src, bytes, cudaMemcpyDeviceToHost), "cudaMemcpy D2H");
 }
 
+auto copy_device_to_host_async(void* dst, const void* src, std::size_t bytes) -> void
+{
+    if (bytes == 0)
+    {
+        return;
+    }
+
+    throw_if_cuda_error(
+        cudaMemcpyAsync(dst, src, bytes, cudaMemcpyDeviceToHost, nullptr),
+        "cudaMemcpyAsync D2H"
+    );
+}
+
+auto copy_device_to_host_async_on_stream(
+    void* dst,
+    const void* src,
+    std::size_t bytes,
+    void* stream) -> void
+{
+    if (bytes == 0)
+    {
+        return;
+    }
+
+    throw_if_cuda_error(
+        cudaMemcpyAsync(
+            dst,
+            src,
+            bytes,
+            cudaMemcpyDeviceToHost,
+            static_cast<cudaStream_t>(stream)
+        ),
+        "cudaMemcpyAsync D2H"
+    );
+}
+
 auto copy_device_to_device(void* dst, const void* src, std::size_t bytes) -> void
 {
     if (bytes == 0)
@@ -102,6 +139,35 @@ auto copy_device_to_device(void* dst, const void* src, std::size_t bytes) -> voi
     }
 
     throw_if_cuda_error(cudaMemcpy(dst, src, bytes, cudaMemcpyDeviceToDevice), "cudaMemcpy D2D");
+}
+
+auto async_copy_stream_create() -> void*
+{
+    cudaStream_t stream{};
+    throw_if_cuda_error(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), "cudaStreamCreateWithFlags");
+    return static_cast<void*>(stream);
+}
+
+auto async_copy_stream_destroy(void* stream) noexcept -> void
+{
+    if (stream == nullptr)
+    {
+        return;
+    }
+
+    (void)cudaStreamDestroy(static_cast<cudaStream_t>(stream));
+}
+
+auto async_copy_stream_wait_for_fence(void* stream, void* fence) -> void
+{
+    throw_if_cuda_error(
+        cudaStreamWaitEvent(
+            static_cast<cudaStream_t>(stream),
+            static_cast<cudaEvent_t>(fence),
+            0
+        ),
+        "cudaStreamWaitEvent"
+    );
 }
 
 auto async_copy_fence_create() -> void*
@@ -126,8 +192,16 @@ auto async_copy_fence_destroy(void* fence) noexcept -> void
 
 auto async_copy_fence_record(void* fence) -> void
 {
+    async_copy_fence_record_on_stream(fence, nullptr);
+}
+
+auto async_copy_fence_record_on_stream(void* fence, void* stream) -> void
+{
     throw_if_cuda_error(
-        cudaEventRecord(static_cast<cudaEvent_t>(fence), nullptr),
+        cudaEventRecord(
+            static_cast<cudaEvent_t>(fence),
+            static_cast<cudaStream_t>(stream)
+        ),
         "cudaEventRecord"
     );
 }
@@ -150,6 +224,16 @@ auto profile_capture_stop() -> void
 {
     throw_if_cuda_error(cudaDeviceSynchronize(), "cudaDeviceSynchronize after profiling");
     throw_if_cuda_error(cudaProfilerStop(), "cudaProfilerStop");
+}
+
+auto profile_range_push(const char* label) -> void
+{
+    nvtxRangePushA(label);
+}
+
+auto profile_range_pop() noexcept -> void
+{
+    (void)nvtxRangePop();
 }
 
 } // namespace amr::cuda

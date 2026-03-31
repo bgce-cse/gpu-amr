@@ -4,6 +4,7 @@
 #include <cuda_runtime.h>
 #include <array>
 #include <cfloat>
+#include <cstdint>
 
 namespace amr::cuda {
 
@@ -37,7 +38,7 @@ __device__ __forceinline__ double atomicMinDouble(double* address, double val) {
 }
 
 template <typename EquationT, int DIM>
-__global__ void time_step_kernel(
+__device__ __forceinline__ void time_step_kernel_body(
     std::array<double*, EquationT::NVAR> in_patches, 
     std::array<double*, EquationT::NVAR> out_patches, 
     const int* patch_levels,
@@ -99,26 +100,47 @@ __global__ void time_step_kernel(
     }
 }
 
-// Launcher
 template <typename EquationT, int DIM>
-auto launch_time_step_kernel(
-    std::array<double*, EquationT::NVAR> device_in_patches, 
-    std::array<double*, EquationT::NVAR> device_out_patches, 
+__global__ void time_step_kernel_device_dt(
+    std::array<double*, EquationT::NVAR> in_patches,
+    std::array<double*, EquationT::NVAR> out_patches,
+    const int* patch_levels,
+    time_step_launch_config config,
+    const double* global_dt)
+{
+    time_step_launch_config local_config = config;
+    local_config.dt = *global_dt;
+    time_step_kernel_body<EquationT, DIM>(
+        in_patches,
+        out_patches,
+        patch_levels,
+        local_config
+    );
+}
+
+template <typename EquationT, int DIM>
+auto launch_time_step_kernel_with_device_dt(
+    std::array<double*, EquationT::NVAR> device_in_patches,
+    std::array<double*, EquationT::NVAR> device_out_patches,
     const int* device_patch_levels,
-    const time_step_launch_config& config) -> void
+    const time_step_launch_config& config,
+    const double* device_dt_buffer) -> void
 {
     if (config.num_patches == 0) return;
 
-    // use data_flat_size to only launch threads for interior cells
     const std::size_t total_work_items = config.num_patches * config.data_flat_size;
-    
+
     constexpr unsigned int threads_per_block = 256;
     const unsigned int blocks = (total_work_items + threads_per_block - 1) / threads_per_block;
 
-    time_step_kernel<EquationT, DIM><<<blocks, threads_per_block>>>(
-        device_in_patches, device_out_patches, device_patch_levels, config
+    time_step_kernel_device_dt<EquationT, DIM><<<blocks, threads_per_block>>>(
+        device_in_patches,
+        device_out_patches,
+        device_patch_levels,
+        config,
+        device_dt_buffer
     );
-    
+
     cudaGetLastError();
 }
 
@@ -172,17 +194,84 @@ __global__ void initialize_double_buffer_kernel(double* buffer, double value)
     }
 }
 
+__global__ void initialize_uint32_buffer_kernel(std::uint32_t* buffer, std::uint32_t value)
+{
+    if (threadIdx.x == 0 && blockIdx.x == 0)
+    {
+        *buffer = value;
+    }
+}
+
+__global__ void finalize_step_dt_kernel(
+    double*        dt_buffer,
+    double*        accumulator,
+    double*        remaining_time,
+    std::uint32_t* executed_step_count,
+    double         cfl)
+{
+    if (threadIdx.x == 0 && blockIdx.x == 0)
+    {
+        const auto raw_dt = *dt_buffer;
+        auto       step_dt = raw_dt * cfl;
+
+        if (*remaining_time <= 0.0)
+        {
+            step_dt = 0.0;
+        }
+        else if (step_dt > *remaining_time)
+        {
+            step_dt = *remaining_time;
+        }
+
+        *dt_buffer = step_dt;
+        *accumulator += step_dt;
+        if (step_dt > 0.0)
+        {
+            *remaining_time -= step_dt;
+            ++(*executed_step_count);
+        }
+    }
+}
+
+auto launch_set_double_buffer(double* device_buffer, double value) -> void
+{
+    initialize_double_buffer_kernel<<<1, 1>>>(device_buffer, value);
+    cudaGetLastError();
+}
+
+auto launch_set_uint32_buffer(std::uint32_t* device_buffer, std::uint32_t value) -> void
+{
+    initialize_uint32_buffer_kernel<<<1, 1>>>(device_buffer, value);
+    cudaGetLastError();
+}
+
+auto launch_finalize_step_dt(
+    double*        device_dt_buffer,
+    double*        device_dt_accumulator,
+    double*        device_remaining_time,
+    std::uint32_t* device_executed_step_count,
+    double         cfl) -> void
+{
+    finalize_step_dt_kernel<<<1, 1>>>(
+        device_dt_buffer,
+        device_dt_accumulator,
+        device_remaining_time,
+        device_executed_step_count,
+        cfl
+    );
+    cudaGetLastError();
+}
+
 template <typename EquationT, int DIM>
-auto launch_compute_dt_kernel(
+auto launch_compute_dt_kernel_device(
     std::array<const double*, EquationT::NVAR> device_in_patches, 
     const int* device_patch_levels,
     const time_step_launch_config& config,
-    double* device_dt_buffer) -> double
+    double* device_dt_buffer) -> void
 {
-    if (config.num_patches == 0) return DBL_MAX;
+    if (config.num_patches == 0) return;
 
-    initialize_double_buffer_kernel<<<1, 1>>>(device_dt_buffer, DBL_MAX);
-    cudaGetLastError();
+    launch_set_double_buffer(device_dt_buffer, DBL_MAX);
 
     const std::size_t total_work_items = config.num_patches * config.data_flat_size;
     constexpr unsigned int threads_per_block = 256;
@@ -192,46 +281,55 @@ auto launch_compute_dt_kernel(
         device_in_patches, device_patch_levels, config, device_dt_buffer
     );
     cudaGetLastError();
-    
-    double h_dt = DBL_MAX;
-    // Bring the minimum dt back to the CPU
-    cudaMemcpy(&h_dt, device_dt_buffer, sizeof(double), cudaMemcpyDeviceToHost);
-
-    return h_dt;
 }
 
 // Explicit instantiation for the exact signatures
-template auto launch_time_step_kernel<EulerPhysics<2>, 2>(
-    std::array<double*, 4>, std::array<double*, 4>, const int*, const time_step_launch_config&
+template auto launch_time_step_kernel_with_device_dt<EulerPhysics<2>, 2>(
+    std::array<double*, 4>,
+    std::array<double*, 4>,
+    const int*,
+    const time_step_launch_config&,
+    const double*
 ) -> void;
 
-template auto launch_time_step_kernel<EulerPhysics<3>, 3>(
-    std::array<double*, 5>, std::array<double*, 5>, const int*, const time_step_launch_config&
+template auto launch_time_step_kernel_with_device_dt<EulerPhysics<3>, 3>(
+    std::array<double*, 5>,
+    std::array<double*, 5>,
+    const int*,
+    const time_step_launch_config&,
+    const double*
 ) -> void;
 
-template auto launch_time_step_kernel<AdvectionPhysics<2>, 2>(
-    std::array<double*, 1>, std::array<double*, 1>, const int*, const time_step_launch_config&
+template auto launch_time_step_kernel_with_device_dt<AdvectionPhysics<2>, 2>(
+    std::array<double*, 1>,
+    std::array<double*, 1>,
+    const int*,
+    const time_step_launch_config&,
+    const double*
 ) -> void;
 
-template auto launch_time_step_kernel<AdvectionPhysics<3>, 3>(
-    std::array<double*, 1>, std::array<double*, 1>, const int*, const time_step_launch_config&
+template auto launch_time_step_kernel_with_device_dt<AdvectionPhysics<3>, 3>(
+    std::array<double*, 1>,
+    std::array<double*, 1>,
+    const int*,
+    const time_step_launch_config&,
+    const double*
 ) -> void;
 
-
-template auto launch_compute_dt_kernel<EulerPhysics<2>, 2>(
+template auto launch_compute_dt_kernel_device<EulerPhysics<2>, 2>(
     std::array<const double*, 4>, const int*, const time_step_launch_config&, double*
-) -> double;
+) -> void;
 
-template auto launch_compute_dt_kernel<EulerPhysics<3>, 3>(
+template auto launch_compute_dt_kernel_device<EulerPhysics<3>, 3>(
     std::array<const double*, 5>, const int*, const time_step_launch_config&, double*
-) -> double;
+) -> void;
 
-template auto launch_compute_dt_kernel<AdvectionPhysics<2>, 2>(
+template auto launch_compute_dt_kernel_device<AdvectionPhysics<2>, 2>(
     std::array<const double*, 1>, const int*, const time_step_launch_config&, double*
-) -> double;
+) -> void;
 
-template auto launch_compute_dt_kernel<AdvectionPhysics<3>, 3>(
+template auto launch_compute_dt_kernel_device<AdvectionPhysics<3>, 3>(
     std::array<const double*, 1>, const int*, const time_step_launch_config&, double*
-) -> double;
+) -> void;
 
 } // namespace amr::cuda
