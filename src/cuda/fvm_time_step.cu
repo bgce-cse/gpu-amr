@@ -44,64 +44,62 @@ __device__ __forceinline__ void time_step_kernel_body(
     const int* patch_levels,
     time_step_launch_config config)
 {
-    // Flatten over the interior cells only
-    const std::size_t global_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    const std::size_t total_work_items = config.num_patches * config.data_flat_size;
-    if (global_idx >= total_work_items) return;
+    // 1 Block = 1 Patch
+    const std::size_t p_idx = blockIdx.x; 
+    if (p_idx >= config.num_patches) return;
 
-    // Identify patch and local indices
-    const std::size_t p_idx        = global_idx / config.data_flat_size;
-    const std::size_t interior_idx = global_idx % config.data_flat_size;
-    
-    // Map to the actual memory layout (skipping the halo)
-    const std::size_t local_padded_idx = get_padded_linear_idx<DIM>(interior_idx, config);
-    const std::size_t memory_idx       = (p_idx * config.patch_flat_size) + local_padded_idx;
-
-    // Compute Cell Size using the AMR Level
     int level = patch_levels[p_idx];
     double dt_over_dx[3];
     for (int d = 0; d < DIM; ++d) {
-        // Bitshift (1 << level) divides the root size perfectly
         double c_size = config.root_c_size[d] / static_cast<double>(1 << level);
         dt_over_dx[d] = config.dt / c_size;
     }
 
-    // Fetch Center Cell into Registers
-    amr::containers::static_vector<double, EquationT::NVAR> U_center;
-    for (int k = 0; k < EquationT::NVAR; ++k) {
-        U_center[k] = in_patches[k][memory_idx];
-    }
+    // Grid-Stride Loop localized to this patch
+    for (std::size_t interior_idx = threadIdx.x; 
+         interior_idx < config.data_flat_size; 
+         interior_idx += blockDim.x) 
+    {
+        // Map to the actual memory layout (skipping the halo)
+        const std::size_t local_padded_idx = get_padded_linear_idx<DIM>(interior_idx, config);
+        const std::size_t memory_idx       = (p_idx * config.patch_flat_size) + local_padded_idx;
 
-    amr::containers::static_vector<double, EquationT::NVAR> total_update{};
-
-    // Compute Fluxes
-    for (int d = 0; d < DIM; ++d) {
-        const std::size_t stride = (d == 0) ? 1 : (d == 1 ? config.stride_y : config.stride_z);
-        
-        amr::containers::static_vector<double, EquationT::NVAR> U_L, U_R;
+        // Fetch Center Cell into Registers
+        amr::containers::static_vector<double, EquationT::NVAR> U_center;
         for (int k = 0; k < EquationT::NVAR; ++k) {
-            U_L[k] = in_patches[k][memory_idx - stride];
-            U_R[k] = in_patches[k][memory_idx + stride];
+            U_center[k] = in_patches[k][memory_idx];
         }
 
-        amr::containers::static_vector<double, EquationT::NVAR> fL, fR;
-        EquationT::rusanovFlux(U_L, U_center, fL, d, config.gamma);
-        EquationT::rusanovFlux(U_center, U_R, fR, d, config.gamma);
+        amr::containers::static_vector<double, EquationT::NVAR> total_update{};
 
-        for (int k = 0; k < EquationT::NVAR; ++k) {
-            total_update[k] -= dt_over_dx[d] * (fR[k] - fL[k]);
+        // Compute Fluxes
+        for (int d = 0; d < DIM; ++d) {
+            const std::size_t stride = (d == 0) ? 1 : (d == 1 ? config.stride_y : config.stride_z);
+            
+            amr::containers::static_vector<double, EquationT::NVAR> U_L, U_R;
+            for (int k = 0; k < EquationT::NVAR; ++k) {
+                U_L[k] = in_patches[k][memory_idx - stride];
+                U_R[k] = in_patches[k][memory_idx + stride];
+            }
+
+            amr::containers::static_vector<double, EquationT::NVAR> fL, fR;
+            EquationT::rusanovFlux(U_L, U_center, fL, d, config.gamma);
+            EquationT::rusanovFlux(U_center, U_R, fR, d, config.gamma);
+
+            for (int k = 0; k < EquationT::NVAR; ++k) {
+                total_update[k] -= dt_over_dx[d] * (fR[k] - fL[k]);
+            }
         }
-    }
 
-    // Write to Global Memory
-    for (int k = 0; k < EquationT::NVAR; ++k) {
-        out_patches[k][memory_idx] = U_center[k] + total_update[k];
+        // Write to Global Memory
+        for (int k = 0; k < EquationT::NVAR; ++k) {
+            out_patches[k][memory_idx] = U_center[k] + total_update[k];
+        }
     }
 }
 
 template <typename EquationT, int DIM>
-__global__ void time_step_kernel_device_dt(
+__global__ __launch_bounds__(256) void time_step_kernel_device_dt(
     std::array<double*, EquationT::NVAR> in_patches,
     std::array<double*, EquationT::NVAR> out_patches,
     const int* patch_levels,
@@ -128,10 +126,10 @@ auto launch_time_step_kernel_with_device_dt(
 {
     if (config.num_patches == 0) return;
 
-    const std::size_t total_work_items = config.num_patches * config.data_flat_size;
+    // 1 Block = 1 Patch
+    const unsigned int blocks = config.num_patches;
 
     constexpr unsigned int threads_per_block = 256;
-    const unsigned int blocks = (total_work_items + threads_per_block - 1) / threads_per_block;
 
     time_step_kernel_device_dt<EquationT, DIM><<<blocks, threads_per_block>>>(
         device_in_patches,
@@ -145,27 +143,28 @@ auto launch_time_step_kernel_with_device_dt(
 }
 
 template <typename EquationT, int DIM>
-__global__ void compute_dt_kernel(
+__global__ __launch_bounds__(256) void compute_dt_kernel(
     std::array<const double*, EquationT::NVAR> in_patches, 
     const int* patch_levels,
     time_step_launch_config config,
     double* global_dt)
 {
-    const std::size_t global_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const std::size_t total_work_items = config.num_patches * config.data_flat_size;
+    // 1 Block = 1 Patch
+    const std::size_t p_idx = blockIdx.x;
+    if (p_idx >= config.num_patches) return;
     
     double local_dt = DBL_MAX;
+    int level = patch_levels[p_idx];
 
-    if (global_idx < total_work_items) {
-        const std::size_t p_idx        = global_idx / config.data_flat_size;
-        const std::size_t interior_idx = global_idx % config.data_flat_size;
+    // Grid-Stride Loop localized to this patch
+    for (std::size_t interior_idx = threadIdx.x; 
+         interior_idx < config.data_flat_size; 
+         interior_idx += blockDim.x) 
+    {
         const std::size_t local_padded_idx = get_padded_linear_idx<DIM>(interior_idx, config);
         const std::size_t memory_idx       = (p_idx * config.patch_flat_size) + local_padded_idx;
 
-        int level = patch_levels[p_idx];
-
         for (int d = 0; d < DIM; ++d) {
-            // Re-using the memory_idx to fetch directly from the SoA arrays
             double speed = EquationT::getMaxSpeed(in_patches, memory_idx, d, config.gamma);
             if (speed > 1e-12) {
                 double c_size = config.root_c_size[d] / static_cast<double>(1 << level);
@@ -273,9 +272,9 @@ auto launch_compute_dt_kernel_device(
 
     launch_set_double_buffer(device_dt_buffer, DBL_MAX);
 
-    const std::size_t total_work_items = config.num_patches * config.data_flat_size;
+    // 1 Block = 1 Patch
+    const unsigned int blocks = config.num_patches;
     constexpr unsigned int threads_per_block = 256;
-    const unsigned int blocks = (total_work_items + threads_per_block - 1) / threads_per_block;
 
     compute_dt_kernel<EquationT, DIM><<<blocks, threads_per_block>>>(
         device_in_patches, device_patch_levels, config, device_dt_buffer

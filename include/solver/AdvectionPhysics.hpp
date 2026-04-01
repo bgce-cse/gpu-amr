@@ -10,6 +10,7 @@
 #ifndef __CUDACC__
 #define __host__
 #define __device__
+#define __forceinline__ inline
 #endif
 // -----------------------------------
 
@@ -28,7 +29,7 @@ public:
      * @brief For linear advection, conservative and primitive variables are identical.
      * This function is required by the amr_solver interface.
      */
-    __host__ __device__ static void primitiveToConservative(
+    __host__ __device__ __forceinline__ static void primitiveToConservative(
         const amr::containers::static_vector<double, NVAR>& prim,
         amr::containers::static_vector<double, NVAR>&       cons,
         [[maybe_unused]] double                             gamma
@@ -41,7 +42,7 @@ public:
      * @brief Rusanov (Local Lax-Friedrichs) Numerical Flux
      * Used to resolve the state at the interface between two cells.
      */
-    __host__ __device__ static void rusanovFlux(
+    __host__ __device__ __forceinline__ static void rusanovFlux(
         const amr::containers::static_vector<double, NVAR>& UL,
         const amr::containers::static_vector<double, NVAR>& UR,
         amr::containers::static_vector<double, NVAR>&       flux,
@@ -70,7 +71,7 @@ public:
      * Used by amr_solver::compute_time_step to satisfy the CFL condition.
      */
     template <typename PatchTuple>
-    __host__ __device__ static double getMaxSpeed(
+    __host__ __device__ __forceinline__ static double getMaxSpeed(
         [[maybe_unused]] const PatchTuple& patches, 
         [[maybe_unused]] std::size_t idx, 
         int direction, 
