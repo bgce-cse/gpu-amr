@@ -1,6 +1,14 @@
 #ifndef AMR_INCLUDED_NDTREE
 #define AMR_INCLUDED_NDTREE
 
+#ifdef AMR_ENABLE_CUDA_AMR
+#    include "cuda/device_buffer.hpp"
+#    include "cuda/fvm_refinement_criterion.hpp"
+#    include "cuda/halo_exchange.hpp"
+#    include "cuda/intergrid_transfer.hpp"
+#    include "cuda/permutation.hpp"
+#    include "cuda/profiler.hpp"
+#endif
 #include "config/definitions.hpp"
 #include "ndconcepts.hpp"
 #include "ndtype_traits.hpp"
@@ -15,6 +23,7 @@
 #    include <iostream>
 #endif
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
@@ -27,6 +36,7 @@
 #include <unordered_map>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #ifndef NDEBUG
 #    define AMR_NDTREE_CHECKBOUNDS
@@ -37,6 +47,49 @@
 
 namespace amr::ndt::tree
 {
+
+namespace detail
+{
+
+template <typename T>
+struct cuda_flat_double_storage
+{
+    static constexpr bool compatible = false;
+    static constexpr std::size_t components = 0;
+};
+
+template <>
+struct cuda_flat_double_storage<double>
+{
+    static constexpr bool compatible = true;
+    static constexpr std::size_t components = 1;
+};
+
+template <typename T, std::integral auto N>
+struct cuda_flat_double_storage<containers::static_vector<T, N>>
+{
+    static constexpr bool compatible = cuda_flat_double_storage<T>::compatible;
+    static constexpr std::size_t components =
+        N * cuda_flat_double_storage<T>::components;
+};
+
+template <typename T, containers::concepts::StaticLayout Layout>
+struct cuda_flat_double_storage<containers::static_tensor<T, Layout>>
+{
+    static constexpr bool compatible = cuda_flat_double_storage<T>::compatible;
+    static constexpr std::size_t components =
+        Layout::flat_size() * cuda_flat_double_storage<T>::components;
+};
+
+template <typename T>
+inline constexpr bool cuda_flat_double_storage_v =
+    cuda_flat_double_storage<T>::compatible;
+
+template <typename T>
+inline constexpr std::size_t cuda_flat_double_components_v =
+    cuda_flat_double_storage<T>::components;
+
+} // namespace detail
 
 template <
     concepts::DeconstructibleType T,
@@ -71,6 +124,7 @@ private:
     static constexpr size_type s_1d_fanout  = patch_index_t::fanout();
     static constexpr size_type s_nd_fanout  = patch_index_t::nd_fanout();
     static constexpr size_type s_rank       = patch_layout_t::rank();
+    static constexpr size_type s_halo_direction_count = patch_direction_t::elements();
 
     static_assert(s_1d_fanout > 1);
     static_assert(s_nd_fanout > 1);
@@ -119,6 +173,95 @@ public:
     using deconstructed_types_t =
         type_traits::tuple_type_apply_t<value_t, deconstructed_patch_types_map_t>;
 
+
+    // Safety check: GPU patch-local kernels operate on flat contiguous doubles per cell.
+#ifdef AMR_ENABLE_CUDA_AMR
+    template <typename Map_Type>
+    static constexpr bool s_cuda_scalar_halo_map =
+        detail::cuda_flat_double_storage_v<typename Map_Type::type>;
+
+    template <typename Map_Type>
+    static constexpr std::size_t s_cuda_components_per_cell =
+        detail::cuda_flat_double_components_v<typename Map_Type::type>;
+
+    using halo_metadata_t = amr::cuda::halo_direction_metadata;
+
+    template <typename Map_Type>
+    static consteval auto make_halo_exchange_static_config()
+        -> amr::cuda::halo_exchange_launch_config
+    {
+        amr::cuda::halo_exchange_launch_config config{
+            .num_patches         = 0,
+            .patch_flat_size     = patch_layout_t::flat_size() * s_cuda_components_per_cell<Map_Type>,
+            .components_per_cell = s_cuda_components_per_cell<Map_Type>,
+            .rank                = s_rank,
+            .halo_width          = s_halo_width,
+            .fanout_1d           = s_1d_fanout,
+        };
+
+        for (std::size_t d = 0; d != s_rank; ++d)
+        {
+            config.padded_sizes[d]   = patch_layout_t::padded_layout_t::sizes()[d];
+            config.padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
+            config.data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
+        }
+        for (std::size_t dim = 0; dim != s_rank; ++dim)
+        {
+            auto halo_cells = s_halo_width;
+            for (std::size_t d = 0; d != s_rank; ++d)
+            {
+                if (d != dim)
+                {
+                    halo_cells *= config.data_sizes[d];
+                }
+            }
+            config.halo_cells_per_dim[dim] = halo_cells;
+            config.halo_work_items_per_patch += 2 * halo_cells;
+        }
+
+        return config;
+    }
+
+    template <std::size_t... I>
+    static consteval auto cuda_scalar_halo_compatible_impl(std::index_sequence<I...>) -> bool
+    {
+        return (... && s_cuda_scalar_halo_map<
+            std::tuple_element_t<I, deconstructed_raw_map_types_t>>);
+    }
+
+    static constexpr bool s_cuda_scalar_patch_compatible =
+        cuda_scalar_halo_compatible_impl(
+            std::make_index_sequence<std::tuple_size_v<deconstructed_raw_map_types_t>>{}
+        ) &&
+        (s_rank <= 3) && (s_1d_fanout == 2);
+
+    static constexpr bool s_cuda_scalar_halo_compatible = s_cuda_scalar_patch_compatible;
+
+    using device_transfer_task_t = amr::cuda::intergrid_transfer_task_metadata;
+
+    template <typename Map_Type>
+    static consteval auto make_intergrid_transfer_static_config()
+        -> amr::cuda::intergrid_transfer_launch_config
+    {
+        amr::cuda::intergrid_transfer_launch_config config{
+            .patch_flat_size     = patch_layout_t::flat_size() * s_cuda_components_per_cell<Map_Type>,
+            .data_flat_size      = patch_layout_t::data_layout_t::flat_size(),
+            .components_per_cell = s_cuda_components_per_cell<Map_Type>,
+            .halo_width          = s_halo_width,
+        };
+
+        for (std::size_t d = 0; d != s_rank; ++d)
+        {
+            config.padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
+            config.data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
+            config.data_strides[d]   = patch_layout_t::data_layout_t::strides()[d];
+        }
+
+        return config;
+    }
+
+#endif
+
 public:
     enum struct RefinementStatus : std::int8_t
     {
@@ -130,6 +273,7 @@ public:
 
     using linear_index_map_t         = pointer_t<patch_index_t>;
     using linear_index_array_t       = pointer_t<linear_index_t>;
+    using patch_level_array_t        = pointer_t<int>;
     using flat_refine_status_array_t = pointer_t<refine_status_t>;
     using index_map_t                = std::unordered_map<patch_index_t, linear_index_t>;
     using neighbor_buffer_t          = pointer_t<patch_neighbors_t>;
@@ -176,7 +320,6 @@ public:
 public:
     ndtree(size_type size) noexcept
         : m_size{}
-
     {
         std::apply(
             [size](auto&... b)
@@ -196,6 +339,28 @@ public:
             },
             m_next_buffers
         );
+#ifdef AMR_ENABLE_CUDA_AMR
+        std::apply(
+            [size](auto&... b)
+            {
+                ((void)(b = static_cast<pointer_t<value_t<decltype(b)>>>(
+                            amr::cuda::device_malloc(size * sizeof(value_t<decltype(b)>))
+                        )),
+                 ...);
+            },
+            m_device_data_buffers
+        );
+        std::apply(
+            [size](auto&... b)
+            {
+                ((void)(b = static_cast<pointer_t<value_t<decltype(b)>>>(
+                            amr::cuda::device_malloc(size * sizeof(value_t<decltype(b)>))
+                        )),
+                 ...);
+            },
+            m_device_next_buffers
+        );
+#endif
         m_linear_index_map =
             (pointer_t<patch_index_t>)std::malloc(size * sizeof(patch_index_t));
         m_reorder_buffer =
@@ -204,6 +369,44 @@ public:
             (pointer_t<refine_status_t>)std::malloc(size * sizeof(refine_status_t));
         m_neighbors =
             (pointer_t<patch_neighbors_t>)std::malloc(size * sizeof(patch_neighbors_t));
+#ifdef AMR_ENABLE_CUDA_AMR
+        m_patch_level_buffer = static_cast<pointer_t<int>>(
+            amr::cuda::host_pinned_malloc(size * sizeof(int))
+        );
+        m_device_patch_level_buffer =
+            static_cast<pointer_t<int>>(amr::cuda::device_malloc(size * sizeof(int)));
+        m_patch_level_copy_fence = amr::cuda::async_copy_fence_create();
+        m_device_refine_status_buffer = static_cast<pointer_t<refine_status_t>>(
+            amr::cuda::device_malloc(size * sizeof(refine_status_t))
+        );
+        m_halo_exchange_metadata.resize(size * patch_direction_t::elements());
+        m_device_halo_exchange_metadata = static_cast<halo_metadata_t*>(
+            amr::cuda::device_malloc(
+                size * patch_direction_t::elements() * sizeof(halo_metadata_t)
+            )
+        );
+        m_pinned_halo_exchange_metadata_capacity =
+            size * patch_direction_t::elements();
+        m_pinned_halo_exchange_metadata = static_cast<halo_metadata_t*>(
+            amr::cuda::host_pinned_malloc(
+                m_pinned_halo_exchange_metadata_capacity * sizeof(halo_metadata_t)
+            )
+        );
+        m_halo_exchange_metadata_copy_fence = amr::cuda::async_copy_fence_create();
+        m_device_transfer_task_capacity =
+            std::max<std::size_t>(static_cast<std::size_t>(size) * 4, 4096);
+        m_device_transfer_tasks =
+            static_cast<device_transfer_task_t*>(amr::cuda::device_malloc(
+                m_device_transfer_task_capacity * sizeof(device_transfer_task_t)
+            ));
+        m_pinned_transfer_task_capacity = m_device_transfer_task_capacity;
+        m_pinned_transfer_tasks = static_cast<device_transfer_task_t*>(
+            amr::cuda::host_pinned_malloc(
+                m_pinned_transfer_task_capacity * sizeof(device_transfer_task_t)
+            )
+        );
+        m_transfer_task_copy_fence = amr::cuda::async_copy_fence_create();
+#endif
 
         std::iota(m_reorder_buffer, &m_reorder_buffer[size], 0);
         patch_neighbors_t root_neighbors;
@@ -216,6 +419,9 @@ public:
             root_neighbors[d.index()] = periodic_neighbor;
         }
         append(patch_index_t::root(), root_neighbors);
+#ifdef AMR_ENABLE_CUDA_AMR
+        refresh_halo_exchange_metadata_on_device();
+#endif
     }
 
     ~ndtree() noexcept
@@ -226,6 +432,38 @@ public:
         std::free(m_neighbors);
         std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_next_buffers);
         std::apply([](auto&... b) { ((void)std::free(b), ...); }, m_data_buffers);
+#ifdef AMR_ENABLE_CUDA_AMR
+        if (m_patch_level_copy_pending)
+        {
+            amr::cuda::async_copy_fence_wait(m_patch_level_copy_fence);
+        }
+        amr::cuda::async_copy_fence_destroy(m_patch_level_copy_fence);
+        amr::cuda::host_pinned_free(static_cast<void*>(m_patch_level_buffer));
+        amr::cuda::device_free(static_cast<void*>(m_device_patch_level_buffer));
+        amr::cuda::device_free(static_cast<void*>(m_device_refine_status_buffer));
+        amr::cuda::device_free(static_cast<void*>(m_device_halo_exchange_metadata));
+        if (m_halo_exchange_metadata_copy_pending)
+        {
+            amr::cuda::async_copy_fence_wait(m_halo_exchange_metadata_copy_fence);
+        }
+        amr::cuda::async_copy_fence_destroy(m_halo_exchange_metadata_copy_fence);
+        amr::cuda::host_pinned_free(static_cast<void*>(m_pinned_halo_exchange_metadata));
+        if (m_transfer_task_copy_pending)
+        {
+            amr::cuda::async_copy_fence_wait(m_transfer_task_copy_fence);
+        }
+        amr::cuda::async_copy_fence_destroy(m_transfer_task_copy_fence);
+        amr::cuda::host_pinned_free(static_cast<void*>(m_pinned_transfer_tasks));
+        amr::cuda::device_free(static_cast<void*>(m_device_transfer_tasks));
+        std::apply(
+            [](auto&... b) { ((void)amr::cuda::device_free(static_cast<void*>(b)), ...); },
+            m_device_next_buffers
+        );
+        std::apply(
+            [](auto&... b) { ((void)amr::cuda::device_free(static_cast<void*>(b)), ...); },
+            m_device_data_buffers
+        );
+#endif
     }
 
 public:
@@ -319,6 +557,117 @@ public:
             utility::error_handling::assert_unreachable();
     }
 
+#ifdef AMR_ENABLE_CUDA_AMR
+    template <concepts::MapType Map_Type, auto Buffer = current_buffer>
+    [[nodiscard]]
+    auto get_device_buffer() noexcept -> patch_t<Map_Type>*
+    {
+        return const_cast<patch_t<Map_Type>*>(
+            std::as_const(*this).template get_device_buffer<Map_Type, Buffer>()
+        );
+    }
+
+    template <concepts::MapType Map_Type, auto Buffer = current_buffer>
+    [[nodiscard]]
+    auto get_device_buffer() const noexcept -> patch_t<Map_Type> const*
+    {
+        if constexpr (Buffer == current_buffer)
+            return std::get<Map_Type::index()>(m_device_data_buffers);
+        if constexpr (Buffer == next_buffer)
+            return std::get<Map_Type::index()>(m_device_next_buffers);
+        else
+            utility::error_handling::assert_unreachable();
+    }
+
+    auto sync_current_to_device() const -> void
+    {
+        sync_buffer_set_to_device(m_data_buffers, m_device_data_buffers);
+    }
+
+    auto sync_current_from_device() -> void
+    {
+        sync_buffer_set_from_device(m_data_buffers, m_device_data_buffers);
+    }
+
+    auto sync_next_to_device() const -> void
+    {
+        sync_buffer_set_to_device(m_next_buffers, m_device_next_buffers);
+    }
+
+    auto sync_next_from_device() -> void
+    {
+        sync_buffer_set_from_device(m_next_buffers, m_device_next_buffers);
+    }
+
+    auto sync_all_to_device() const -> void
+    {
+        sync_current_to_device();
+        sync_next_to_device();
+    }
+
+    auto sync_all_from_device() -> void
+    {
+        sync_current_from_device();
+        sync_next_from_device();
+    }
+
+    [[nodiscard]]
+    auto get_device_refine_status_buffer() noexcept -> refine_status_t*
+    {
+        return m_device_refine_status_buffer;
+    }
+
+    [[nodiscard]]
+    auto get_device_refine_status_buffer() const noexcept -> refine_status_t const*
+    {
+        return m_device_refine_status_buffer;
+    }
+
+    [[nodiscard]]
+    auto get_device_patch_level_buffer() noexcept -> int*
+    {
+        return m_device_patch_level_buffer;
+    }
+
+    [[nodiscard]]
+    auto get_device_patch_level_buffer() const noexcept -> int const*
+    {
+        return m_device_patch_level_buffer;
+    }
+
+    auto sync_refine_status_from_device() -> void
+    {
+        auto nvtx_range = amr::cuda::scoped_profile_range{ "sync_refine_status_from_device" };
+        amr::cuda::copy_device_to_host(
+            static_cast<void*>(m_refine_status_buffer),
+            static_cast<void const*>(m_device_refine_status_buffer),
+            m_size * sizeof(refine_status_t)
+        );
+    }
+
+    //to be renamed to sync patch level to device (when we implement the next comment)
+    auto build_patch_levels_on_device() -> void
+    {
+        auto nvtx_range = amr::cuda::scoped_profile_range{ "build_patch_levels_on_device" };
+        wait_for_pending_patch_level_copy();
+
+        //we shuold maintian this buffer during tree opertions, for a cleanr design. fine for prototyping now
+        //maintiangin this buffer, makes the floowing loop obsolete...
+        for (linear_index_t i = 0; i != m_size; ++i)
+        {
+            m_patch_level_buffer[i] = static_cast<int>(patch_index_t::level(m_linear_index_map[i]));
+        }
+
+        amr::cuda::copy_host_to_device_async(
+            static_cast<void*>(m_device_patch_level_buffer),
+            static_cast<void const*>(m_patch_level_buffer),
+            m_size * sizeof(int)
+        );
+        amr::cuda::async_copy_fence_record(m_patch_level_copy_fence);
+        m_patch_level_copy_pending = true;
+    }
+#endif
+
     [[nodiscard, gnu::always_inline, gnu::flatten]]
     auto get_neighbor_at(
         linear_index_t const     idx,
@@ -365,7 +714,13 @@ public:
         );
     }
 
-    auto fragment(patch_index_t const node_id) -> void
+    auto fragment(
+        patch_index_t const node_id
+#ifdef AMR_ENABLE_CUDA_AMR
+        ,
+        std::vector<device_transfer_task_t>* transfer_tasks = nullptr
+#endif
+    ) -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Fragmenting node {}", node_id.repr());
         const auto it   = find_index(node_id);
@@ -386,14 +741,39 @@ public:
             CONTRACTS_CHECK(m_linear_index_map[back_idx()] == child_id);
         }
         enforce_symmetry_after_refinement(node_id);
-        interpolate_patch(from, start_to);
+#ifdef AMR_ENABLE_CUDA_AMR
+        if constexpr (s_cuda_scalar_patch_compatible)
+        {
+            if (transfer_tasks != nullptr)
+            {
+                transfer_tasks->push_back(device_transfer_task_t{
+                    .source_patch      = static_cast<std::int32_t>(from),
+                    .destination_patch = static_cast<std::int32_t>(start_to),
+                });
+            }
+            else
+            {
+                interpolate_patch(from, start_to);
+            }
+        }
+        else
+#endif
+        {
+            interpolate_patch(from, start_to);
+        }
         m_index_map.erase(it.value());
 #ifdef AMR_NDTREE_ENABLE_CHECKS
         check_index_map();
 #endif
     }
 
-    auto recombine(patch_index_t const parent_node_id) -> void
+    auto recombine(
+        patch_index_t const parent_node_id
+#ifdef AMR_ENABLE_CUDA_AMR
+        ,
+        std::vector<device_transfer_task_t>* transfer_tasks = nullptr
+#endif
+    ) -> void
     {
         using offset_t = typename patch_index_t::offset_t;
         CONTRACTS_CHECK(!find_index(parent_node_id).has_value());
@@ -419,13 +799,46 @@ public:
         const auto to = m_size;
         append(parent_node_id, neighbor_array);
         CONTRACTS_CHECK(m_linear_index_map[back_idx()] == parent_node_id);
-        restrict_patches(start, to);
+#ifdef AMR_ENABLE_CUDA_AMR
+        if constexpr (s_cuda_scalar_patch_compatible)
+        {
+            if (transfer_tasks != nullptr)
+            {
+                transfer_tasks->push_back(device_transfer_task_t{
+                    .source_patch      = static_cast<std::int32_t>(start),
+                    .destination_patch = static_cast<std::int32_t>(to),
+                });
+            }
+            else
+            {
+                restrict_patches(start, to);
+            }
+        }
+        else
+#endif
+        {
+            restrict_patches(start, to);
+        }
 
         enforce_symmetry_after_recombining(parent_node_id, neighbor_array);
     }
 
     auto fragment() -> void
     {
+#ifdef AMR_ENABLE_CUDA_AMR
+        if constexpr (s_cuda_scalar_patch_compatible)
+        {
+            std::vector<device_transfer_task_t> transfer_tasks;
+            transfer_tasks.reserve(m_to_refine.size());
+            for (auto i = m_to_refine.size(); i > 0; --i)
+            {
+                fragment(m_to_refine[i - 1], &transfer_tasks);
+            }
+            interpolate_patches_device(transfer_tasks);
+            // sort_buffers();
+            return;
+        }
+#endif
         for (auto i = m_to_refine.size(); i > 0; --i)
         {
             fragment(m_to_refine[i - 1]);
@@ -435,6 +848,20 @@ public:
 
     auto recombine() -> void
     {
+#ifdef AMR_ENABLE_CUDA_AMR
+        if constexpr (s_cuda_scalar_patch_compatible)
+        {
+            std::vector<device_transfer_task_t> transfer_tasks;
+            transfer_tasks.reserve(m_to_coarsen.size());
+            for (const auto& node_id : m_to_coarsen)
+            {
+                recombine(node_id, &transfer_tasks);
+            }
+            restrict_patches_device(transfer_tasks);
+            sort_buffers();
+            return;
+        }
+#endif
         for (const auto& node_id : m_to_coarsen)
         {
             recombine(node_id);
@@ -443,13 +870,20 @@ public:
     }
 
     template <typename Fn>
-    auto update_refine_flags(Fn&& fn) noexcept(
-        noexcept(fn(std::declval<linear_index_t&>()))
-    )
+    auto update_refine_flags(Fn&& fn)
     {
-        for (linear_index_t i = 0; i != m_size; ++i)
+        if constexpr (requires(std::remove_reference_t<Fn> const& criterion, ndtree& tree) {
+                          criterion.fill_refine_flags(tree);
+                      })
         {
-            m_refine_status_buffer[i] = fn(m_linear_index_map[i]);
+            std::as_const(fn).fill_refine_flags(*this);
+        }
+        else
+        {
+            for (linear_index_t i = 0; i != m_size; ++i)
+            {
+                m_refine_status_buffer[i] = fn(m_linear_index_map[i]);
+            }
         }
     }
 
@@ -793,15 +1227,17 @@ public:
 
 public:
     template <typename Fn>
-    auto reconstruct_tree(Fn&& fn) noexcept(noexcept(fn(std::declval<linear_index_t&>())))
-        -> void
-
+    auto reconstruct_tree(Fn&& fn) -> void
     {
         update_refine_flags(fn);
         apply_refine_coarsen();
         balancing();
         fragment();
         recombine();
+#ifdef AMR_ENABLE_CUDA_AMR
+        refresh_halo_exchange_metadata_on_device();
+        build_patch_levels_on_device();
+#endif
     }
 
     // TODO: Use this function internally where the invariant must hold rather
@@ -844,6 +1280,9 @@ private:
         m_index_map[node_id]       = m_size;
         m_neighbors[m_size]        = neighbor_array;
         ++m_size;
+#ifdef AMR_ENABLE_CUDA_AMR
+        m_halo_exchange_metadata_dirty = 1;
+#endif
     }
 
     [[nodiscard]]
@@ -872,6 +1311,11 @@ private:
             [this](auto const i, auto const j)
             { return m_linear_index_map[i] < m_linear_index_map[j]; }
         );
+#ifdef AMR_ENABLE_CUDA_AMR
+        std::vector<linear_index_t> device_sources(
+            m_reorder_buffer, &m_reorder_buffer[m_size]
+        );
+#endif
 
         linear_index_t        backup_start_pos;
         patch_index_t         backup_node_index;
@@ -934,6 +1378,9 @@ private:
             std::ranges::is_sorted(m_reorder_buffer, &m_reorder_buffer[m_size])
         );
         CONTRACTS_CHECK(is_sorted());
+#ifdef AMR_ENABLE_CUDA_AMR
+        permute_device_current_buffers(device_sources);
+#endif
     }
 
     [[nodiscard]]
@@ -1082,6 +1529,9 @@ public:
     {
         DEFAULT_SOURCE_LOG_TRACE("Swap buffers");
         std::swap(m_data_buffers, m_next_buffers);
+#ifdef AMR_ENABLE_CUDA_AMR
+        std::swap(m_device_data_buffers, m_device_next_buffers);
+#endif
 #ifndef NDEBUG
         std::apply(
             [this](auto&&... b)
@@ -1098,8 +1548,7 @@ public:
 #endif
     }
 
-    constexpr auto halo_exchange_update() noexcept -> void
-
+    auto halo_exchange_update_cpu() noexcept -> void
     {
         DEFAULT_SOURCE_LOG_TRACE("Performing halo exchange");
         auto const r = std::views::iota(size_type{}, m_size);
@@ -1114,6 +1563,302 @@ public:
                     patch_direction_t>(*this, i);
             }
         );
+    }
+
+#ifdef AMR_ENABLE_CUDA_AMR
+private:
+    [[nodiscard]]
+    auto halo_exchange_metadata_count() const noexcept -> std::size_t
+    {
+        return m_size * s_halo_direction_count;
+    }
+
+    auto rebuild_halo_exchange_metadata() -> void
+    {
+        for (linear_index_t idx = 0; idx != m_size; ++idx)
+        {
+            for (auto d = patch_direction_t::first(); d != patch_direction_t::sentinel();
+                 d.advance())
+            {
+                auto& out =
+                    m_halo_exchange_metadata[idx * patch_direction_t::elements() + d.index()];
+                const auto neighbor = neighbor_linear_index(get_neighbor_at(idx, d));
+                std::visit(
+                    [&out](auto const& n)
+                    {
+                        using neighbor_t = std::decay_t<decltype(n)>;
+                        if constexpr (std::is_same_v<
+                                          neighbor_t,
+                                          typename neighbor_linear_index_variant_t::none>)
+                        {
+                            out.relation = amr::cuda::halo_neighbor_relation::none;
+                        }
+                        else if constexpr (std::is_same_v<
+                                               neighbor_t,
+                                               typename neighbor_linear_index_variant_t::same>)
+                        {
+                            out.relation = amr::cuda::halo_neighbor_relation::same;
+                            out.neighbor = static_cast<std::int32_t>(n.id);
+                        }
+                        else if constexpr (std::is_same_v<
+                                               neighbor_t,
+                                               typename neighbor_linear_index_variant_t::finer>)
+                        {
+                            out.relation = amr::cuda::halo_neighbor_relation::finer;
+                            for (std::size_t i = 0; i != n.num_neighbors(); ++i)
+                            {
+                                out.finer_ids[i] = static_cast<std::int32_t>(n.ids[i]);
+                            }
+                        }
+                        else if constexpr (std::is_same_v<
+                                               neighbor_t,
+                                               typename neighbor_linear_index_variant_t::coarser>)
+                        {
+                            out.relation = amr::cuda::halo_neighbor_relation::coarser;
+                            out.neighbor = static_cast<std::int32_t>(n.id);
+                            for (std::size_t i = 0; i != s_rank; ++i)
+                            {
+                                out.quadrant[i] =
+                                    static_cast<std::int32_t>(n.contact_quadrant[i]);
+                            }
+                        }
+                    },
+                    neighbor.data
+                );
+            }
+        }
+    }
+
+    auto sync_halo_exchange_metadata_to_device() const -> void
+    {
+        auto nvtx_range =
+            amr::cuda::scoped_profile_range{ "sync_halo_exchange_metadata_to_device" };
+        const auto metadata_count = halo_exchange_metadata_count();
+        if (metadata_count == 0)
+        {
+            return;
+        }
+
+        auto& self = const_cast<ndtree&>(*this);
+        self.wait_for_pending_halo_exchange_metadata_copy();
+
+        std::copy_n(
+            m_halo_exchange_metadata.data(),
+            metadata_count,
+            self.m_pinned_halo_exchange_metadata
+        );
+
+        amr::cuda::copy_host_to_device_async(
+            static_cast<void*>(m_device_halo_exchange_metadata),
+            static_cast<void const*>(self.m_pinned_halo_exchange_metadata),
+            metadata_count * sizeof(halo_metadata_t)
+        );
+        amr::cuda::async_copy_fence_record(self.m_halo_exchange_metadata_copy_fence);
+        self.m_halo_exchange_metadata_copy_pending = true;
+    }
+
+    auto refresh_halo_exchange_metadata_on_device() -> void
+    {
+        if (m_halo_exchange_metadata_dirty == 0)
+        {
+            return;
+        }
+
+        rebuild_halo_exchange_metadata();
+        sync_halo_exchange_metadata_to_device();
+        m_halo_exchange_metadata_dirty = 0;
+    }
+
+    template <concepts::MapType Map_Type>
+    auto halo_exchange_update_device_map() -> void
+    {
+        static_assert(
+            s_cuda_scalar_halo_map<Map_Type>,
+            "CUDA halo exchange requires flat contiguous double-valued cell storage"
+        );
+
+        auto* device_patch_data =
+            reinterpret_cast<double*>(get_device_buffer<Map_Type>());
+        auto config = make_halo_exchange_static_config<Map_Type>();
+        config.num_patches = m_size;
+
+        amr::cuda::halo_exchange_scalar_patches_inplace(
+            device_patch_data,
+            m_device_halo_exchange_metadata,
+            halo_exchange_metadata_count(),
+            config
+        );
+    }
+
+    auto halo_exchange_update_device() -> void
+    {
+        CONTRACTS_CHECK(
+            m_halo_exchange_metadata_dirty == 0 &&
+            "Halo exchange metadata must be refreshed after tree reconstruction"
+        );
+        [this]<std::size_t... I>(std::index_sequence<I...>)
+        {
+            (halo_exchange_update_device_map<
+                 std::tuple_element_t<I, deconstructed_raw_map_types_t>>(),
+             ...);
+        }(std::make_index_sequence<std::tuple_size_v<deconstructed_raw_map_types_t>>{});
+        // sync_current_from_device();
+    }
+
+    auto sync_transfer_tasks_to_device(
+        std::vector<device_transfer_task_t> const& transfer_tasks
+    ) -> void
+    {
+        auto nvtx_range = amr::cuda::scoped_profile_range{ "sync_transfer_tasks_to_device" };
+        if (transfer_tasks.empty())
+        {
+            return;
+        }
+
+        if (transfer_tasks.size() > m_device_transfer_task_capacity)
+        {
+            amr::cuda::device_free(static_cast<void*>(m_device_transfer_tasks));
+            m_device_transfer_task_capacity =
+                std::max(transfer_tasks.size() * 2, std::size_t{ 4096 });
+            m_device_transfer_tasks = static_cast<device_transfer_task_t*>(
+                amr::cuda::device_malloc(
+                    m_device_transfer_task_capacity * sizeof(device_transfer_task_t)
+                )
+            );
+        }
+
+        wait_for_pending_transfer_task_copy();
+
+        if (transfer_tasks.size() > m_pinned_transfer_task_capacity)
+        {
+            amr::cuda::host_pinned_free(static_cast<void*>(m_pinned_transfer_tasks));
+            m_pinned_transfer_task_capacity =
+                std::max(transfer_tasks.size() * 2, std::size_t{ 4096 });
+            m_pinned_transfer_tasks = static_cast<device_transfer_task_t*>(
+                amr::cuda::host_pinned_malloc(
+                    m_pinned_transfer_task_capacity * sizeof(device_transfer_task_t)
+                )
+            );
+        }
+
+        std::copy_n(
+            transfer_tasks.data(),
+            transfer_tasks.size(),
+            m_pinned_transfer_tasks
+        );
+
+        amr::cuda::copy_host_to_device_async(
+            static_cast<void*>(m_device_transfer_tasks),
+            static_cast<void const*>(m_pinned_transfer_tasks),
+            transfer_tasks.size() * sizeof(device_transfer_task_t)
+        );
+        amr::cuda::async_copy_fence_record(m_transfer_task_copy_fence);
+        m_transfer_task_copy_pending = true;
+    }
+
+    template <concepts::MapType Map_Type>
+    auto interpolate_patches_device_map(
+        std::vector<device_transfer_task_t> const&         transfer_tasks,
+        amr::cuda::intergrid_transfer_launch_config const& config
+    ) -> void
+    {
+        static_assert(
+            s_cuda_scalar_halo_map<Map_Type>,
+            "CUDA intergrid transfer requires flat contiguous double-valued cell storage"
+        );
+
+        auto* device_patch_data =
+            reinterpret_cast<double*>(get_device_buffer<Map_Type>());
+        amr::cuda::interpolate_scalar_patches_inplace<s_rank>(
+            device_patch_data,
+            m_device_transfer_tasks,
+            transfer_tasks.size(),
+            config
+        );
+    }
+
+    template <concepts::MapType Map_Type>
+    auto restrict_patches_device_map(
+        std::vector<device_transfer_task_t> const&         transfer_tasks,
+        amr::cuda::intergrid_transfer_launch_config const& config
+    ) -> void
+    {
+        static_assert(
+            s_cuda_scalar_halo_map<Map_Type>,
+            "CUDA intergrid transfer requires flat contiguous double-valued cell storage"
+        );
+
+        auto* device_patch_data =
+            reinterpret_cast<double*>(get_device_buffer<Map_Type>());
+        amr::cuda::restrict_scalar_patches_inplace<s_rank>(
+            device_patch_data,
+            m_device_transfer_tasks,
+            transfer_tasks.size(),
+            config
+        );
+    }
+
+    auto interpolate_patches_device(
+        std::vector<device_transfer_task_t> const& transfer_tasks
+    ) -> void
+    {
+        if (transfer_tasks.empty())
+        {
+            return;
+        }
+
+        sync_transfer_tasks_to_device(transfer_tasks);
+        [&transfer_tasks, this]<std::size_t... I>(std::index_sequence<I...>)
+        {
+            (interpolate_patches_device_map<
+                 std::tuple_element_t<I, deconstructed_raw_map_types_t>>(
+                 transfer_tasks,
+                 make_intergrid_transfer_static_config<
+                     std::tuple_element_t<I, deconstructed_raw_map_types_t>>()
+             ),
+             ...);
+        }(std::make_index_sequence<std::tuple_size_v<deconstructed_raw_map_types_t>>{});
+    }
+
+    auto restrict_patches_device(
+        std::vector<device_transfer_task_t> const& transfer_tasks
+    ) -> void
+    {
+        if (transfer_tasks.empty())
+        {
+            return;
+        }
+
+        sync_transfer_tasks_to_device(transfer_tasks);
+        [&transfer_tasks, this]<std::size_t... I>(std::index_sequence<I...>)
+        {
+            (restrict_patches_device_map<
+                 std::tuple_element_t<I, deconstructed_raw_map_types_t>>(
+                 transfer_tasks,
+                 make_intergrid_transfer_static_config<
+                     std::tuple_element_t<I, deconstructed_raw_map_types_t>>()
+             ),
+             ...);
+        }(std::make_index_sequence<std::tuple_size_v<deconstructed_raw_map_types_t>>{});
+    }
+
+public:
+#endif
+    auto halo_exchange_update() noexcept -> void
+
+    {
+#ifdef AMR_ENABLE_CUDA_AMR
+        if constexpr (s_cuda_scalar_halo_compatible)
+        {
+            halo_exchange_update_device();
+        }
+        else
+        {
+            halo_exchange_update_cpu();
+        }
+#else
+        halo_exchange_update_cpu();
+#endif
     }
 
     [[nodiscard]]
@@ -1160,11 +1905,18 @@ private:
     {
         DEFAULT_SOURCE_LOG_TRACE("Comacting tree");
         size_t tail = 0;
+#ifdef AMR_ENABLE_CUDA_AMR
+        std::vector<linear_index_t> device_sources;
+        device_sources.reserve(m_size);
+#endif
         for (linear_index_t head = 0; head < m_size; ++head)
         {
             const auto node_id = m_linear_index_map[head];
             if (m_index_map.contains(node_id))
             {
+#ifdef AMR_ENABLE_CUDA_AMR
+                device_sources.push_back(head);
+#endif
                 block_buffer_swap(head, tail);
                 ++tail;
             }
@@ -1175,7 +1927,39 @@ private:
         {
             m_index_map[m_linear_index_map[i]] = i;
         }
+#ifdef AMR_ENABLE_CUDA_AMR
+        permute_device_current_buffers(device_sources);
+#endif
     }
+
+#ifdef AMR_ENABLE_CUDA_AMR
+    auto wait_for_pending_halo_exchange_metadata_copy() -> void
+    {
+        if (m_halo_exchange_metadata_copy_pending)
+        {
+            amr::cuda::async_copy_fence_wait(m_halo_exchange_metadata_copy_fence);
+            m_halo_exchange_metadata_copy_pending = false;
+        }
+    }
+
+    auto wait_for_pending_patch_level_copy() -> void
+    {
+        if (m_patch_level_copy_pending)
+        {
+            amr::cuda::async_copy_fence_wait(m_patch_level_copy_fence);
+            m_patch_level_copy_pending = false;
+        }
+    }
+
+    auto wait_for_pending_transfer_task_copy() -> void
+    {
+        if (m_transfer_task_copy_pending)
+        {
+            amr::cuda::async_copy_fence_wait(m_transfer_task_copy_fence);
+            m_transfer_task_copy_pending = false;
+        }
+    }
+#endif
 
     [[gnu::always_inline, gnu::flatten]]
     auto block_buffer_swap(linear_index_t const i, linear_index_t const j) noexcept
@@ -1192,11 +1976,115 @@ private:
         std::swap(m_linear_index_map[i], m_linear_index_map[j]);
         std::swap(m_refine_status_buffer[i], m_refine_status_buffer[j]);
         std::swap(m_neighbors[i], m_neighbors[j]);
+#ifdef AMR_ENABLE_CUDA_AMR
+        m_halo_exchange_metadata_dirty = 1;
+#endif
 
         std::apply(
             [i, j](auto&... b) { ((void)std::swap(b[i], b[j]), ...); }, m_data_buffers
         );
     }
+
+#ifdef AMR_ENABLE_CUDA_AMR
+    template <std::size_t... I>
+    auto sync_buffer_set_to_device_impl(
+        deconstructed_buffers_t const& host_buffers,
+        deconstructed_buffers_t const& device_buffers,
+        std::index_sequence<I...>
+    ) const -> void
+    {
+        (
+            (void)amr::cuda::copy_host_to_device(
+                static_cast<void*>(std::get<I>(device_buffers)),
+                static_cast<void const*>(std::get<I>(host_buffers)),
+                m_size * sizeof(std::remove_pointer_t<std::remove_reference_t<decltype(std::get<I>(host_buffers))>>)
+            ),
+            ...
+        );
+    }
+
+    template <std::size_t... I>
+    auto sync_buffer_set_from_device_impl(
+        deconstructed_buffers_t&       host_buffers,
+        deconstructed_buffers_t const& device_buffers,
+        std::index_sequence<I...>
+    ) const -> void
+    {
+        (
+            (void)amr::cuda::copy_device_to_host(
+                static_cast<void*>(std::get<I>(host_buffers)),
+                static_cast<void const*>(std::get<I>(device_buffers)),
+                m_size * sizeof(std::remove_pointer_t<std::remove_reference_t<decltype(std::get<I>(host_buffers))>>)
+            ),
+            ...
+        );
+    }
+
+    auto sync_buffer_set_to_device(
+        deconstructed_buffers_t const& host_buffers,
+        deconstructed_buffers_t const& device_buffers
+    ) const -> void
+    {
+        sync_buffer_set_to_device_impl(
+            host_buffers,
+            device_buffers,
+            std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{}
+        );
+    }
+
+    auto sync_buffer_set_from_device(
+        deconstructed_buffers_t&       host_buffers,
+        deconstructed_buffers_t const& device_buffers
+    ) const -> void
+    {
+        sync_buffer_set_from_device_impl(
+            host_buffers,
+            device_buffers,
+            std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{}
+        );
+    }
+
+    template <std::size_t... I>
+    auto permute_device_buffer_set_impl(
+        deconstructed_buffers_t&        device_buffers,
+        std::vector<linear_index_t> const& sources,
+        std::index_sequence<I...>
+    ) const -> void
+    {
+        auto permutation_targets =
+            std::array<void**, sizeof...(I)>{
+                reinterpret_cast<void**>(&std::get<I>(device_buffers))...
+            };
+        auto permutation_patch_bytes = std::array<std::size_t, sizeof...(I)>{
+            sizeof(std::remove_pointer_t<std::remove_reference_t<decltype(std::get<I>(device_buffers))>>)...
+        };
+
+        (void)amr::cuda::permute_patches_inplace_batch(
+            permutation_targets,
+            permutation_patch_bytes,
+            sources.size(),
+            sources.data(),
+            sources.size()
+        );
+    }
+
+    auto permute_device_current_buffers(
+        std::vector<linear_index_t> const& sources
+    ) -> void
+    {
+        auto nvtx_range = amr::cuda::scoped_profile_range{ "permute_device_current_buffers" };
+        if (sources.empty())
+        {
+            return;
+        }
+
+        permute_device_buffer_set_impl(
+            m_device_data_buffers,
+            sources,
+            std::make_index_sequence<std::tuple_size_v<deconstructed_buffers_t>>{}
+        );
+    }
+#endif
 
 #ifdef AMR_NDTREE_ENABLE_CHECKS
     auto check_index_map() const noexcept -> void
@@ -1224,6 +2112,28 @@ private:
     index_map_t                m_index_map;
     deconstructed_buffers_t    m_data_buffers;
     deconstructed_buffers_t    m_next_buffers;
+#ifdef AMR_ENABLE_CUDA_AMR
+    deconstructed_buffers_t    m_device_data_buffers{};
+    deconstructed_buffers_t    m_device_next_buffers{};
+    patch_level_array_t        m_patch_level_buffer{};
+    patch_level_array_t        m_device_patch_level_buffer{};
+    void*                      m_patch_level_copy_fence{};
+    flat_refine_status_array_t m_device_refine_status_buffer{};
+    std::vector<halo_metadata_t> m_halo_exchange_metadata{};
+    halo_metadata_t*             m_device_halo_exchange_metadata{};
+    halo_metadata_t*             m_pinned_halo_exchange_metadata{};
+    std::size_t                  m_pinned_halo_exchange_metadata_capacity{};
+    void*                        m_halo_exchange_metadata_copy_fence{};
+    device_transfer_task_t*      m_device_transfer_tasks{};
+    device_transfer_task_t*      m_pinned_transfer_tasks{};
+    std::size_t                  m_device_transfer_task_capacity{};
+    std::size_t                  m_pinned_transfer_task_capacity{};
+    void*                        m_transfer_task_copy_fence{};
+    std::size_t                  m_patch_level_copy_pending{};
+    std::size_t                  m_halo_exchange_metadata_copy_pending{};
+    std::size_t                  m_transfer_task_copy_pending{};
+    std::size_t                  m_halo_exchange_metadata_dirty{ 1 };
+#endif
     linear_index_map_t         m_linear_index_map;
     linear_index_array_t       m_reorder_buffer;
     flat_refine_status_array_t m_refine_status_buffer;

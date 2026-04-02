@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 project(gpu_amr VERSION 0.1 LANGUAGES CXX)
 
+include(CTest)
+
 # ----------------------------
 # Global settings
 # ----------------------------
@@ -17,6 +19,18 @@ endif()
 # Options
 # ----------------------------
 option(ENABLE_SANITIZERS "Enable runtime sanitizers (Debug only)" ON)
+option(ENABLE_CUDA_AMR "Build CUDA AMR kernels for patch-local tree operations" OFF)
+option(BUILD_EXAMPLES "Build example executables" ON)
+option(BUILD_BENCHMARKS "Build benchmark executables" ON)
+
+if(ENABLE_CUDA_AMR)
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
+
+    if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+        set(CMAKE_CUDA_ARCHITECTURES native CACHE STRING "CUDA architectures")
+    endif()
+endif()
 
 # ----------------------------
 # Execution policy
@@ -39,7 +53,7 @@ find_package(TBB REQUIRED)
 # ----------------------------
 # Logger
 # ----------------------------
-option(ENABLE_SPDLOG "Enable spdlog" ON)
+option(ENABLE_SPDLOG "Enable spdlog" OFF)
 set_property(CACHE ENABLE_SPDLOG PROPERTY STRINGS ON OFF)
 
 add_library(utility_logging
@@ -102,6 +116,7 @@ message(STATUS "  Contracts        : ${CONTRACTS}")
 message(STATUS "  Execution policy : ${EXECUTION}")
 message(STATUS "  Log level        : ${LOG_LEVEL}")
 message(STATUS "  Sanitizers       : ${ENABLE_SANITIZERS}")
+message(STATUS "  CUDA AMR         : ${ENABLE_CUDA_AMR}")
 message(STATUS "  Output dir       : ${OUTPUT_DIR_EXAMPLES}")
 message(STATUS "----------------------------")
 
@@ -122,6 +137,44 @@ target_link_libraries(gpu_amr
     INTERFACE utility_logging
     INTERFACE amr_compiler_options
 )
+
+if(ENABLE_CUDA_AMR)
+    add_library(gpu_amr_cuda STATIC
+        src/cuda/device_buffer.cu
+        src/cuda/halo_exchange.cu
+        src/cuda/intergrid_transfer.cu
+        src/cuda/permutation.cu
+        src/cuda/fvm_refinement_criterion.cu
+        src/cuda/fvm_time_step.cu
+    )
+
+    target_include_directories(gpu_amr_cuda
+        PUBLIC ${PROJECT_SOURCE_DIR}/include
+    )
+
+    target_link_libraries(gpu_amr_cuda
+        PUBLIC CUDA::cudart
+    )
+
+    set_target_properties(gpu_amr_cuda PROPERTIES
+        CUDA_STANDARD 20
+        CUDA_STANDARD_REQUIRED ON
+        CUDA_SEPARABLE_COMPILATION ON
+        POSITION_INDEPENDENT_CODE ON
+    )
+
+    target_compile_options(gpu_amr_cuda PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
+    )
+
+    target_link_libraries(gpu_amr
+        INTERFACE gpu_amr_cuda
+    )
+
+    target_compile_definitions(gpu_amr INTERFACE
+        AMR_ENABLE_CUDA_AMR=1
+    )
+endif()
 
 # ----------------------------
 # Compiler flags
@@ -176,6 +229,14 @@ target_compile_definitions(amr_tests INTERFACE
 # CMake Subdirectories
 # ----------------------------
 
-add_subdirectory(examples)
-add_subdirectory(tests)
-add_subdirectory(benchmark)
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
+if(BUILD_BENCHMARKS)
+    add_subdirectory(benchmark)
+endif()

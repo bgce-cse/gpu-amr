@@ -1,6 +1,9 @@
 #include "containers/static_layout.hpp"
 #include "containers/static_shape.hpp"
 #include "containers/static_vector.hpp"
+#ifdef AMR_ENABLE_CUDA_AMR
+#    include "cuda/fvm_refinement_criterion.hpp"
+#endif
 #include "morton/morton_id.hpp"
 #include "ndtree/intergrid_operator.hpp"
 #include "ndtree/ndhierarchy.hpp"
@@ -41,6 +44,12 @@ int main()
         patch_index_t,
         patch_layout_t,
         intergrid_operator_t>;
+    using rho_patch_t = typename tree_t::template patch_t<amr::cell::Rho>;
+
+    static_assert(
+        sizeof(rho_patch_t) == patch_layout_t::flat_size() * sizeof(double),
+        "Rho patch mirror must be a contiguous flat double buffer"
+    );
 
     using physics_t =
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
@@ -48,16 +57,14 @@ int main()
     amr::ndt::print::vtk_print<physics_t> printer("euler_print");
 
     double tmax = 400; // Example tmax, adjust as needed
-    [[maybe_unused]]
-    double print_frequency = 5.0; // Print every 10 seconds
-    [[maybe_unused]]
-    const std::string output_prefix = "solver_integration_test_refine";
+    [[maybe_unused]] double print_frequency = 5.0; 
+    [[maybe_unused]] const std::string output_prefix = "solver_integration_test_refine";
 
     int inital_refinement = 3;
 
     // Instantiate the AMR solver.
     amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(
-        1000000, 1.4, 0.3
+        10000, 1.4, 0.3
     ); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
@@ -66,48 +73,77 @@ int main()
         return tree_t::refine_status_t::Refine;
     };
 
-    auto acousticWaveCriterion = [&](const patch_index_t& idx)
+    struct acoustic_wave_amr_criterion
     {
-        // Define Thresholds and Limits
-        constexpr double REFINE_RHO_THRESHOLD  = 0.53;
-        constexpr double COARSEN_RHO_THRESHOLD = 0.49;
-        constexpr int    MAX_LEVEL             = 6;
-        constexpr int    MIN_LEVEL             = 1;
+        tree_t& tree;
 
-        int level = idx.level();
+        double s_refine_threshold  = 0.53;
+        double s_coarsen_threshold = 0.49;
+        int    s_max_level         = 6;
+        int    s_min_level         = 1;
 
-        // Compute Jump (using the undivided second difference of density, Rho)
-        // ----> first use only placeholder with abs value
-        auto   rho_patch     = solver.get_tree().template get_patch<amr::cell::Rho>(idx);
-        double max_rho_value = 0;
-
-        for (std::size_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
-             ++linear_idx)
+        auto operator()(const patch_index_t& idx) const -> tree_t::refine_status_t
         {
-            max_rho_value = std::max(rho_patch[linear_idx], max_rho_value);
+            const int level = idx.level();
+            auto      rho_patch = tree.template get_patch<amr::cell::Rho>(idx);
+            double    max_rho_value = 0;
+
+            for (std::size_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
+                 ++linear_idx)
+            {
+                max_rho_value = std::max(rho_patch[linear_idx], max_rho_value);
+            }
+
+            if (level < s_max_level && max_rho_value > s_refine_threshold)
+            {
+                return tree_t::refine_status_t::Refine;
+            }
+
+            if (level > s_min_level && max_rho_value < s_coarsen_threshold)
+            {
+                return tree_t::refine_status_t::Coarsen;
+            }
+
+            return tree_t::refine_status_t::Stable;
         }
 
-        // Hard check for refinement limit
-        if (level < MAX_LEVEL && max_rho_value > REFINE_RHO_THRESHOLD)
+#ifdef AMR_ENABLE_CUDA_AMR
+        auto fill_refine_flags(tree_t& target_tree) const -> void
         {
-            return tree_t::refine_status_t::Refine;
-        }
+            target_tree.build_patch_levels_on_device();
 
-        // Hard check for coarsening limit (only coarsen patches that are already refined)
-        if (level > MIN_LEVEL && max_rho_value < COARSEN_RHO_THRESHOLD)
-        {
-            return tree_t::refine_status_t::Coarsen;
-        }
+            const auto* rho_device_buffer = reinterpret_cast<const double*>(
+                target_tree.template get_device_buffer<amr::cell::Rho>()
+            );
 
-        return tree_t::refine_status_t::Stable;
+            amr::cuda::compute_scalar_patch_amr_decisions_from_device(
+                rho_device_buffer,
+                target_tree.get_device_patch_level_buffer(),
+                target_tree.size(),
+                amr::cuda::scalar_patch_amr_launch_config{
+                    .num_patches       = target_tree.size(),
+                    .cells_per_patch   = patch_layout_t::flat_size(),
+                    .refine_threshold  = s_refine_threshold,
+                    .coarsen_threshold = s_coarsen_threshold,
+                    .min_level         = s_min_level,
+                    .max_level         = s_max_level,
+                },
+                reinterpret_cast<std::int8_t*>(target_tree.get_device_refine_status_buffer()),
+                target_tree.size()
+            );
+
+            target_tree.sync_refine_status_from_device();
+        }
+#endif
     };
+
+    const auto acousticWaveCriterion = acoustic_wave_amr_criterion{ solver.get_tree() };
 
     // Parameters for the Acoustic Pulse
     constexpr double RHO_BG    = 0.5;
     constexpr double P_BG      = 1.0;
     constexpr double AMPLITUDE = 10.0;
-    constexpr double PULSE_WIDTH_SQ =
-        0.01 * physics_x * physics_y; // sigma^2 in physical units
+    constexpr double PULSE_WIDTH_SQ = 0.01 * physics_x * physics_y;
     constexpr double CENTER_X = 0.5 * physics_x;
     constexpr double CENTER_Y = 0.5 * physics_y;
 
@@ -132,7 +168,7 @@ int main()
         prim[0] = RHO_BG + (perturbation * 0.2); // Density (rho)
         prim[1] = 0.0;                           // X-velocity (u)
         prim[2] = 0.0;                           // Y-velocity (v)
-        prim[3] = P_BG + perturbation;           // Pressure (p)
+        prim[3] = P_BG + perturbation;           // Pressure (p)          
 
         return prim;
     };
@@ -141,11 +177,24 @@ int main()
     for (int i = 0; i < inital_refinement; i++)
     {
         solver.get_tree().reconstruct_tree(refineAll);
+#ifdef AMR_ENABLE_CUDA_AMR
+        solver.get_tree().sync_current_to_device();
+#endif
         solver.get_tree().halo_exchange_update();
+#ifdef AMR_ENABLE_CUDA_AMR
+        solver.get_tree().sync_current_from_device();
+#endif
     }
 
     solver.initialize(acousticPulseIC);
+#ifdef AMR_ENABLE_CUDA_AMR
+    solver.get_tree().sync_current_to_device();
+    solver.get_tree().build_patch_levels_on_device();
+#endif
     solver.get_tree().halo_exchange_update();
+#ifdef AMR_ENABLE_CUDA_AMR
+    solver.get_tree().sync_current_from_device();
+#endif
 
     // Print initial state
     printer.print(solver.get_tree(), "_iteration_0.vtk");
@@ -153,10 +202,8 @@ int main()
     // Main Simulation Loop
     double t    = 0.0;
     int    step = 1;
-    [[maybe_unused]]
-    double next_print_time = print_frequency;
-    [[maybe_unused]]
-    int output_counter = 1;
+    [[maybe_unused]] double next_print_time = print_frequency;
+    [[maybe_unused]] int output_counter = 1;
 
     std::cout << "\nStarting AMR simulation...\n";
 
@@ -165,11 +212,9 @@ int main()
 
     while (t < tmax)
     {
-        const double dt = solver.compute_time_step();
+        const double dt = solver.advance();
 
         DEFAULT_SOURCE_LOG_PROGRESS("Step: {},\tt: {:.5f},\tdt: {:.5f} ", step, t, dt);
-
-        solver.time_step(dt);
         cell_update_count +=
             solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
 
@@ -184,6 +229,11 @@ int main()
         // Print only when we've passed the next print time
         if (t >= next_print_time)
         {
+#ifdef AMR_ENABLE_CUDA_AMR
+            
+            solver.get_tree().sync_current_from_device();
+            
+#endif
             std::string file_extension =
                 "_iteration_" + std::to_string(output_counter) + ".vtk";
             printer.print(solver.get_tree(), file_extension);

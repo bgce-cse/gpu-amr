@@ -60,6 +60,20 @@
             }
         },
         {
+            "name": "gcc-release-cuda",
+            "inherits": "gcc-base",
+            "binaryDir": "build/gcc-release-cuda",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "LOG_LEVEL": "PROGRESS",
+                "CONTRACTS": "OFF",
+                "EXECUTION": "SEQ",
+                "ENABLE_SANITIZERS": "OFF",
+                "ENABLE_CUDA_AMR": "ON"
+
+            }
+        },
+        {
             "name": "clang-debug",
             "inherits": "clang-base",
             "binaryDir": "build/clang-debug",
@@ -111,6 +125,11 @@
             "name": "gcc-release",
             "inherits": "build-base",
             "configurePreset": "gcc-release"
+        },
+        {
+            "name": "gcc-release-cuda",
+            "inherits": "build-base",
+            "configurePreset": "gcc-release-cuda"
         },
         {
             "name": "clang-debug",

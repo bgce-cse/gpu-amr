@@ -167,12 +167,9 @@ int main()
 
     while (t < tmax)
     {
-        double dt = solver.compute_time_step();
+        const double dt = solver.advance();
 
         std::cout << "Step " << step << ", t=" << t << ", dt=" << dt << std::endl;
-
-        solver.time_step(dt);
-        solver.get_tree().halo_exchange_update();
 
         if (step % 5 == 0)
         {
