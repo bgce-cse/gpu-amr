@@ -379,6 +379,7 @@ public:
         m_device_refine_status_buffer = static_cast<pointer_t<refine_status_t>>(
             amr::cuda::device_malloc(size * sizeof(refine_status_t))
         );
+        m_refine_status_ready_fence = amr::cuda::async_copy_fence_create();
         m_halo_exchange_metadata.resize(size * patch_direction_t::elements());
         m_device_halo_exchange_metadata = static_cast<halo_metadata_t*>(
             amr::cuda::device_malloc(
@@ -440,6 +441,7 @@ public:
         amr::cuda::async_copy_fence_destroy(m_patch_level_copy_fence);
         amr::cuda::host_pinned_free(static_cast<void*>(m_patch_level_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_patch_level_buffer));
+        amr::cuda::async_copy_fence_destroy(m_refine_status_ready_fence);
         amr::cuda::device_free(static_cast<void*>(m_device_refine_status_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_halo_exchange_metadata));
         if (m_halo_exchange_metadata_copy_pending)
@@ -637,12 +639,21 @@ public:
 
     auto sync_refine_status_from_device() -> void
     {
-        auto nvtx_range = amr::cuda::scoped_profile_range{ "sync_refine_status_from_device" };
-        amr::cuda::copy_device_to_host(
-            static_cast<void*>(m_refine_status_buffer),
-            static_cast<void const*>(m_device_refine_status_buffer),
-            m_size * sizeof(refine_status_t)
-        );
+        {
+            auto nvtx_range =
+                amr::cuda::scoped_profile_range{ "wait_for_refine_status_ready" };
+            amr::cuda::async_copy_fence_record(m_refine_status_ready_fence);
+            amr::cuda::async_copy_fence_wait(m_refine_status_ready_fence);
+        }
+        {
+            auto nvtx_range =
+                amr::cuda::scoped_profile_range{ "copy_refine_status_from_device" };
+            amr::cuda::copy_device_to_host(
+                static_cast<void*>(m_refine_status_buffer),
+                static_cast<void const*>(m_device_refine_status_buffer),
+                m_size * sizeof(refine_status_t)
+            );
+        }
     }
 
     //to be renamed to sync patch level to device (when we implement the next comment)
@@ -835,7 +846,6 @@ public:
                 fragment(m_to_refine[i - 1], &transfer_tasks);
             }
             interpolate_patches_device(transfer_tasks);
-            // sort_buffers();
             return;
         }
 #endif
@@ -843,7 +853,6 @@ public:
         {
             fragment(m_to_refine[i - 1]);
         }
-        sort_buffers();
     }
 
     auto recombine() -> void
@@ -858,7 +867,6 @@ public:
                 recombine(node_id, &transfer_tasks);
             }
             restrict_patches_device(transfer_tasks);
-            sort_buffers();
             return;
         }
 #endif
@@ -866,7 +874,6 @@ public:
         {
             recombine(node_id);
         }
-        sort_buffers();
     }
 
     template <typename Fn>
@@ -1234,6 +1241,8 @@ public:
         balancing();
         fragment();
         recombine();
+        compact();
+        sort_buffers();
 #ifdef AMR_ENABLE_CUDA_AMR
         refresh_halo_exchange_metadata_on_device();
         build_patch_levels_on_device();
@@ -1304,7 +1313,7 @@ private:
 private:
     auto sort_buffers() noexcept -> void
     {
-        compact();
+        
         std::sort(
             m_reorder_buffer,
             &m_reorder_buffer[m_size],
@@ -2119,6 +2128,7 @@ private:
     patch_level_array_t        m_device_patch_level_buffer{};
     void*                      m_patch_level_copy_fence{};
     flat_refine_status_array_t m_device_refine_status_buffer{};
+    void*                      m_refine_status_ready_fence{};
     std::vector<halo_metadata_t> m_halo_exchange_metadata{};
     halo_metadata_t*             m_device_halo_exchange_metadata{};
     halo_metadata_t*             m_pinned_halo_exchange_metadata{};
