@@ -843,7 +843,7 @@ public:
         {
             fragment(m_to_refine[i - 1]);
         }
-        sort_buffers();
+        // sort_buffers();
     }
 
     auto recombine() -> void
@@ -858,7 +858,7 @@ public:
                 recombine(node_id, &transfer_tasks);
             }
             restrict_patches_device(transfer_tasks);
-            sort_buffers();
+            // sort_buffers();
             return;
         }
 #endif
@@ -866,7 +866,7 @@ public:
         {
             recombine(node_id);
         }
-        sort_buffers();
+        // sort_buffers();
     }
 
     template <typename Fn>
@@ -1234,6 +1234,8 @@ public:
         balancing();
         fragment();
         recombine();
+        compact();
+        sort_buffers();
 #ifdef AMR_ENABLE_CUDA_AMR
         refresh_halo_exchange_metadata_on_device();
         build_patch_levels_on_device();
@@ -1304,7 +1306,7 @@ private:
 private:
     auto sort_buffers() noexcept -> void
     {
-        compact();
+        
         std::sort(
             m_reorder_buffer,
             &m_reorder_buffer[m_size],
