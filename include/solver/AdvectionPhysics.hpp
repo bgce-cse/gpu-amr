@@ -6,13 +6,21 @@
 #include <algorithm>
 #include <cmath>
 
+// --- HIDE CUDA KEYWORDS FROM GCC ---
+#ifndef __CUDACC__
+#define __host__
+#define __device__
+#define __forceinline__ inline
+#endif
+// -----------------------------------
+
 template <int DIM>
 class AdvectionPhysics
 {
 public:
     static constexpr int NVAR = 1; // Only one variable: the scalar concentration (u)
 
-    // Define a constant velocity for the "wind"
+    // TODO: only temporary fix bc the Unit Tests need to read this
     static constexpr double Velocity[3] = { 1.0, 0.5, 0.0 };
 
     using FieldTags = std::tuple<amr::cell::Scalar>;
@@ -21,7 +29,7 @@ public:
      * @brief For linear advection, conservative and primitive variables are identical.
      * This function is required by the amr_solver interface.
      */
-    static void primitiveToConservative(
+    __host__ __device__ __forceinline__ static void primitiveToConservative(
         const amr::containers::static_vector<double, NVAR>& prim,
         amr::containers::static_vector<double, NVAR>&       cons,
         [[maybe_unused]] double                             gamma
@@ -34,7 +42,7 @@ public:
      * @brief Rusanov (Local Lax-Friedrichs) Numerical Flux
      * Used to resolve the state at the interface between two cells.
      */
-    static void rusanovFlux(
+    __host__ __device__ __forceinline__ static void rusanovFlux(
         const amr::containers::static_vector<double, NVAR>& UL,
         const amr::containers::static_vector<double, NVAR>& UR,
         amr::containers::static_vector<double, NVAR>&       flux,
@@ -42,12 +50,15 @@ public:
         [[maybe_unused]] double                             gamma
     )
     {
+        // TODO: fix GPU LOCAL ARRAY: Named 'local_vel' to avoid shadowing warnings
+        constexpr double local_vel[3] = { 1.0, 0.5, 0.0 };
+
         // Calculate physical fluxes
-        double fluxL = UL[0] * Velocity[direction];
-        double fluxR = UR[0] * Velocity[direction];
+        double fluxL = UL[0] * local_vel[direction];
+        double fluxR = UR[0] * local_vel[direction];
 
         // For linear advection, the wave speed is simply the constant velocity component
-        double smax = std::abs(Velocity[direction]);
+        double smax = std::abs(local_vel[direction]);
 
         // Numerical Flux: F* = 0.5 * (fL + fR) - 0.5 * smax * (uR - uL)
         // This provides upwind-like stability.
@@ -60,15 +71,17 @@ public:
      * Used by amr_solver::compute_time_step to satisfy the CFL condition.
      */
     template <typename PatchTuple>
-    static double getMaxSpeed(
+    __host__ __device__ __forceinline__ static double getMaxSpeed(
         [[maybe_unused]] const PatchTuple& patches, 
         [[maybe_unused]] std::size_t idx, 
         int direction, 
         [[maybe_unused]] double gamma
     ) 
     {
+        // TODO: fix GPU LOCAL ARRAY: Named 'local_vel' to avoid shadowing warnings
+        constexpr double local_vel[3] = { 1.0, 0.5, 0.0 };
         // The speed is independent of the state in linear advection.
-        return std::abs(Velocity[direction]);
+        return std::abs(local_vel[direction]);
     }
 
     static constexpr int getNumVars()

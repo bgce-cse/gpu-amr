@@ -4,7 +4,6 @@
 set(AMR_WARNINGS
     -fbounds-check
     -fvisibility=hidden
-    -pedantic
     -Wall
     -Wconversion
     -Wdangling-else

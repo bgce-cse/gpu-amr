@@ -1,6 +1,10 @@
 #include "containers/static_layout.hpp"
 #include "containers/static_shape.hpp"
 #include "containers/static_vector.hpp"
+#ifdef AMR_ENABLE_CUDA_AMR
+#    include "cuda/fvm_refinement_criterion.hpp"
+#    include "cuda/profiler.hpp"
+#endif
 #include "morton/morton_id.hpp"
 #include "ndtree/intergrid_operator.hpp"
 #include "ndtree/ndhierarchy.hpp"
@@ -22,6 +26,11 @@
 int main()
 {
     std::cout << "Hello AMR world\n";
+#ifdef AMR_ENABLE_CUDA_AMR
+    std::cout << "CUDA ENABLED\n";
+#else
+    std::cout << "CUDA DISABLED\n";
+#endif
     constexpr std::size_t N         = 10;
     constexpr std::size_t M         = 10;
     constexpr std::size_t Halo      = 2;
@@ -60,7 +69,7 @@ int main()
 
     // Instantiate the AMR solver.
     amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(
-        1000000, 1.4, 0.3
+        10000, 1.4, 0.3
     ); // Provide initial capacity for tree
 
     auto refineAll = [&]([[maybe_unused]]
@@ -69,41 +78,69 @@ int main()
         return tree_t::refine_status_t::Refine;
     };
 
-    auto acousticWaveCriterion = [&](const patch_index_t& idx)
+    struct acoustic_wave_amr_criterion
     {
-        // Define Thresholds and Limits
-        constexpr double REFINE_RHO_THRESHOLD  = 0.53;
-        constexpr double COARSEN_RHO_THRESHOLD = 0.49;
-        constexpr int    MAX_LEVEL             = 6;
-        constexpr int    MIN_LEVEL             = 1;
+        tree_t& tree;
 
-        int level = idx.level();
+        double s_refine_threshold  = 0.53;
+        double s_coarsen_threshold = 0.49;
+        int    s_max_level         = 6;
+        int    s_min_level         = 1;
 
-        // Compute Jump (using the undivided second difference of density, Rho)
-        // ----> first use only placeholder with abs value
-        auto   rho_patch     = solver.get_tree().template get_patch<amr::cell::Rho>(idx);
-        double max_rho_value = 0;
-
-        for (std::size_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
-             ++linear_idx)
+        auto operator()(const patch_index_t& idx) const -> tree_t::refine_status_t
         {
-            max_rho_value = std::max(rho_patch[linear_idx], max_rho_value);
+            const int level = idx.level();
+            auto      rho_patch = tree.template get_patch<amr::cell::Rho>(idx);
+            double    max_rho_value = 0;
+
+            for (std::size_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
+                 ++linear_idx)
+            {
+                max_rho_value = std::max(rho_patch[linear_idx], max_rho_value);
+            }
+
+            if (level < s_max_level && max_rho_value > s_refine_threshold)
+            {
+                return tree_t::refine_status_t::Refine;
+            }
+
+            if (level > s_min_level && max_rho_value < s_coarsen_threshold)
+            {
+                return tree_t::refine_status_t::Coarsen;
+            }
+
+            return tree_t::refine_status_t::Stable;
         }
 
-        // Hard check for refinement limit
-        if (level < MAX_LEVEL && max_rho_value > REFINE_RHO_THRESHOLD)
+#ifdef AMR_ENABLE_CUDA_AMR
+        auto fill_refine_flags(tree_t& target_tree) const -> void
         {
-            return tree_t::refine_status_t::Refine;
-        }
+            const auto* rho_device_buffer = reinterpret_cast<const double*>(
+                target_tree.template get_device_buffer<amr::cell::Rho>()
+            );
 
-        // Hard check for coarsening limit (only coarsen patches that are already refined)
-        if (level > MIN_LEVEL && max_rho_value < COARSEN_RHO_THRESHOLD)
-        {
-            return tree_t::refine_status_t::Coarsen;
-        }
+            amr::cuda::compute_scalar_patch_amr_decisions_from_device(
+                rho_device_buffer,
+                target_tree.get_device_patch_level_buffer(),
+                target_tree.size(),
+                amr::cuda::scalar_patch_amr_launch_config{
+                    .num_patches       = target_tree.size(),
+                    .cells_per_patch   = patch_layout_t::flat_size(),
+                    .refine_threshold  = s_refine_threshold,
+                    .coarsen_threshold = s_coarsen_threshold,
+                    .min_level         = s_min_level,
+                    .max_level         = s_max_level,
+                },
+                reinterpret_cast<std::int8_t*>(target_tree.get_device_refine_status_buffer()),
+                target_tree.size()
+            );
 
-        return tree_t::refine_status_t::Stable;
+            target_tree.sync_refine_status_from_device();
+        }
+#endif
     };
+
+    const auto acousticWaveCriterion = acoustic_wave_amr_criterion{ solver.get_tree() };
 
     // Parameters for the Acoustic Pulse
     constexpr double RHO_BG    = 0.5;
@@ -114,7 +151,7 @@ int main()
     constexpr double CENTER_X = 0.5 * physics_x;
     constexpr double CENTER_Y = 0.5 * physics_y;
 
-    // The initial condition function (auto IC = [](){})
+    // The initial condition function
     auto acousticPulseIC =
         [&](auto const& coords) -> amr::containers::static_vector<double, 4>
     {
@@ -135,7 +172,7 @@ int main()
         prim[0] = RHO_BG + (perturbation * 0.2); // Density (rho)
         prim[1] = 0.0;                           // X-velocity (u)
         prim[2] = 0.0;                           // Y-velocity (v)
-        prim[3] = P_BG + perturbation;           // Pressure (p)
+        prim[3] = P_BG + perturbation;           // Pressure (p)        
 
         return prim;
     };
@@ -144,16 +181,21 @@ int main()
     for (int i = 0; i < inital_refinement; i++)
     {
         solver.get_tree().reconstruct_tree(refineAll);
+#ifdef AMR_ENABLE_CUDA_AMR
+        solver.get_tree().sync_current_to_device();
+#endif
         solver.get_tree().halo_exchange_update();
+#ifdef AMR_ENABLE_CUDA_AMR
+        solver.get_tree().sync_current_from_device();
+#endif
     }
 
     solver.initialize(acousticPulseIC);
-    solver.get_tree().halo_exchange_update();
-
-// Print initial state
-#if VTK_PRINT
-    printer.print(solver.get_tree(), "_iteration_0.vtk");
+#ifdef AMR_ENABLE_CUDA_AMR
+    solver.get_tree().sync_current_to_device();
+    solver.get_tree().build_patch_levels_on_device();
 #endif
+    solver.get_tree().halo_exchange_update();
 
     // Main Simulation Loop
     double t    = 0.0;
@@ -166,41 +208,30 @@ int main()
     std::cout << "\nStarting AMR simulation...\n";
 
     std::size_t cell_update_count = 0;
+    constexpr int reconstruction_interval = 10;
+#ifdef AMR_ENABLE_CUDA_AMR
+    amr::cuda::profile_capture_start();
+#endif
     const auto  start             = std::chrono::steady_clock::now();
 
     while (t < tmax)
     {
-        const double dt = solver.compute_time_step();
+        const auto remaining_time = tmax - t;
+        const auto patch_count_before_reconstruction = solver.get_tree().size();
+        solver.advance_batch_async(reconstruction_interval, remaining_time);
 
-        DEFAULT_SOURCE_LOG_PROGRESS("Step: {},\tt: {:.5f},\tdt: {:.5f} ", step, t, dt);
+        solver.get_tree().reconstruct_tree(acousticWaveCriterion);
+        solver.get_tree().halo_exchange_update();
 
-        solver.time_step(dt);
-        cell_update_count +=
-            solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
-
-        if (step % 5 == 0)
-        {
-            solver.get_tree().reconstruct_tree(acousticWaveCriterion);
-            solver.get_tree().halo_exchange_update();
-        }
-
-        t += dt;
-
-#if VTK_PRINT
-        // Print only when we've passed the next print time
-        if (t >= next_print_time)
-        {
-            std::string file_extension =
-                "_iteration_" + std::to_string(output_counter) + ".vtk";
-            // printer.print(solver.get_tree(), file_extension);
-            printer.print(solver.get_tree(), file_extension);
-            next_print_time += print_frequency;
-            output_counter++;
-        }
-#endif
-
-        step++;
+        std::size_t executed_steps = 0;
+        t += solver.finish_advance_batch(&executed_steps);
+        cell_update_count += executed_steps * patch_count_before_reconstruction *
+                             patch_layout_t::data_layout_t::flat_size();
+        step += static_cast<int>(executed_steps);
     }
+#ifdef AMR_ENABLE_CUDA_AMR
+    amr::cuda::profile_capture_stop();
+#endif
     const auto                          end      = std::chrono::steady_clock::now();
     const std::chrono::duration<double> duration = end - start;
     std::cout << "Updated cells: " << cell_update_count << '\n';

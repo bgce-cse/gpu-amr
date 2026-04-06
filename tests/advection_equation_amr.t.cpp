@@ -73,12 +73,12 @@ TYPED_TEST(AdvectionSolverTest, PulseCenterMovement)
 
     // Run for a fixed amount of time
     double t        = 0.0;
+    double dt        = 0.0;
     double t_target = 0.5;
     while (t < t_target)
     {
-        double dt = solver.compute_time_step();
+        dt = solver.advance();
         if (t + dt > t_target) dt = t_target - t;
-        solver.time_step(dt);
         solver.get_tree().halo_exchange_update();
         t += dt;
     }
@@ -177,9 +177,7 @@ TYPED_TEST(AdvectionSolverTest, PulseCenterMovementAMR)
     double t_target = 0.5;
     while (t < t_target)
     {
-        double dt = solver.compute_time_step();
-        if (t + dt > t_target) dt = t_target - t;
-        solver.time_step(dt);
+        const double dt = solver.advance();
         solver.get_tree().halo_exchange_update();
         solver.get_tree().reconstruct_tree(amrCriterion);
         solver.get_tree().halo_exchange_update();

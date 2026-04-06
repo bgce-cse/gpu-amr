@@ -6,6 +6,14 @@
 #include <algorithm>
 #include <cmath>
 
+// --- HIDE CUDA KEYWORDS FROM GCC ---
+#ifndef __CUDACC__
+#define __host__
+#define __device__
+#define __forceinline__ inline
+#endif
+// -----------------------------------
+
 template <int DIM>
 class EulerPhysics
 {
@@ -28,7 +36,7 @@ public:
      * @param cons Output conservative variables [rho, rho*u, rho*v, (rho*w), E]
      * @param gamma Specific heat ratio
      */
-    static void primitiveToConservative(
+    __host__ __device__ __forceinline__ static void primitiveToConservative(
         const amr::containers::static_vector<double, NVAR>& prim,
         amr::containers::static_vector<double, NVAR>&       cons,
         double                                              gamma
@@ -63,7 +71,7 @@ public:
      * @param direction Direction index (0=x, 1=y, 2=z)
      * @param gamma Specific heat ratio
      */
-    static void rusanovFlux(
+    __host__ __device__ __forceinline__ static void rusanovFlux(
         const amr::containers::static_vector<double, NVAR>& UL,
         const amr::containers::static_vector<double, NVAR>& UR,
         amr::containers::static_vector<double, NVAR>&       flux,
@@ -126,7 +134,7 @@ public:
      * @return Max speed |u| + a
      */
     template <typename PatchTuple>
-    static double getMaxSpeed(
+    __host__ __device__ __forceinline__ static double getMaxSpeed(
         const PatchTuple& patches, 
         std::size_t idx, 
         int direction, 
