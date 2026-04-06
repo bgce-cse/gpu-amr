@@ -26,7 +26,7 @@ int main()
     std::cout << "Hello AMR world\n";
     constexpr std::size_t N         = 10;
     constexpr std::size_t M         = 10;
-    constexpr std::size_t Halo      = 2;
+    constexpr std::size_t Halo      = 1;
     constexpr double      physics_x = 1000;
     constexpr double      physics_y = 1000;
 

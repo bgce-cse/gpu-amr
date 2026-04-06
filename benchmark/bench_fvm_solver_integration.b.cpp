@@ -21,8 +21,6 @@
 #include <iostream>
 #include <string>
 
-#define VTK_PRINT (false)
-
 int main()
 {
     std::cout << "Hello AMR world\n";
@@ -36,6 +34,8 @@ int main()
     constexpr std::size_t Halo      = 1;
     constexpr double      physics_x = 1000;
     constexpr double      physics_y = 1000;
+    double tmax = 50; 
+    int inital_refinement = 3;
 
     constexpr std::array<double, 2> physics_lengths = { physics_x, physics_y };
 
@@ -55,22 +55,9 @@ int main()
     using physics_t =
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
-#if VTK_PRINT
-    amr::ndt::print::vtk_print<physics_t> printer("euler_print");
-#endif
-
-    double tmax = 50; // Example tmax, adjust as needed
-    [[maybe_unused]]
-    double print_frequency = 5.0; // Print every 10 seconds
-    [[maybe_unused]]
-    const std::string output_prefix = "solver_integration_test_refine";
-
-    int inital_refinement = 3;
-
-    // Instantiate the AMR solver.
     amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(
         10000, 1.4, 0.3
-    ); // Provide initial capacity for tree
+    ); 
 
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
@@ -197,13 +184,8 @@ int main()
 #endif
     solver.get_tree().halo_exchange_update();
 
-    // Main Simulation Loop
     double t    = 0.0;
     int    step = 1;
-    [[maybe_unused]]
-    double next_print_time = print_frequency;
-    [[maybe_unused]]
-    int output_counter = 1;
 
     std::cout << "\nStarting AMR simulation...\n";
 

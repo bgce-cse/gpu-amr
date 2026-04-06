@@ -846,7 +846,6 @@ public:
                 fragment(m_to_refine[i - 1], &transfer_tasks);
             }
             interpolate_patches_device(transfer_tasks);
-            // sort_buffers();
             return;
         }
 #endif
@@ -854,7 +853,6 @@ public:
         {
             fragment(m_to_refine[i - 1]);
         }
-        // sort_buffers();
     }
 
     auto recombine() -> void
@@ -869,7 +867,6 @@ public:
                 recombine(node_id, &transfer_tasks);
             }
             restrict_patches_device(transfer_tasks);
-            // sort_buffers();
             return;
         }
 #endif
@@ -877,7 +874,6 @@ public:
         {
             recombine(node_id);
         }
-        // sort_buffers();
     }
 
     template <typename Fn>
