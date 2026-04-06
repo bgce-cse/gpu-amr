@@ -31,9 +31,9 @@ int main()
 #else
     std::cout << "CUDA DISABLED\n";
 #endif
-    constexpr std::size_t N         = 10;
-    constexpr std::size_t M         = 10;
-    constexpr std::size_t Halo      = 2;
+    constexpr std::size_t N         = 62;
+    constexpr std::size_t M         = 62;
+    constexpr std::size_t Halo      = 1;
     constexpr double      physics_x = 1000;
     constexpr double      physics_y = 1000;
 
@@ -59,7 +59,7 @@ int main()
     amr::ndt::print::vtk_print<physics_t> printer("euler_print");
 #endif
 
-    double tmax = 400; // Example tmax, adjust as needed
+    double tmax = 50; // Example tmax, adjust as needed
     [[maybe_unused]]
     double print_frequency = 5.0; // Print every 10 seconds
     [[maybe_unused]]
