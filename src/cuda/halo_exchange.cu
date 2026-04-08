@@ -2,7 +2,6 @@
 
 #include <cuda_runtime.h>
 
-#include <cfloat>
 #include <sstream>
 #include <stdexcept>
 
@@ -31,10 +30,8 @@ struct device_halo_exchange_launch_config
     std::size_t num_patches;
     std::size_t patch_flat_size;
     std::size_t components_per_cell;
-    std::size_t rank;
     std::size_t halo_width;
     std::size_t fanout_1d;
-    std::size_t padded_sizes[3];
     std::size_t padded_strides[3];
     std::size_t data_sizes[3];
     std::size_t halo_cells_per_dim[3];
@@ -80,15 +77,16 @@ AMR_DEVICE_FORCEINLINE auto hypercube_offsets(
     }
 }
 
-template <std::size_t Rank, std::size_t DirectionIndex>
+template <std::size_t Rank>
 AMR_DEVICE_FORCEINLINE auto halo_task_to_coords(
     std::size_t                               halo_cell_idx,
+    std::size_t                               direction_index,
     device_halo_exchange_launch_config const& config,
     std::size_t*                              coords
 ) -> void
 {
-    constexpr auto dim = DirectionIndex / 2;
-    constexpr auto positive = (DirectionIndex % 2) == 1;
+    const auto dim      = direction_index / 2;
+    const auto positive = (direction_index % 2) == 1;
 
     std::size_t extents[3] = { 1, 1, 1 };
     std::size_t local_strides[3] = { 1, 1, 1 };
@@ -119,29 +117,28 @@ AMR_DEVICE_FORCEINLINE auto halo_task_to_coords(
     }
 }
 
-template <std::size_t Rank, std::size_t DirectionIndex>
-AMR_DEVICE_FORCEINLINE auto process_halo_task(
+template <std::size_t Rank>
+AMR_DEVICE_FORCEINLINE auto process_halo_task_from_meta(
     double*                            device_patch_data,
-    const halo_direction_metadata*     neighbor_metadata,
+    const halo_direction_metadata&     meta,
     device_halo_exchange_launch_config const& config,
     std::size_t                        patch_idx,
+    std::size_t                        direction_index,
     std::size_t                        halo_cell_idx
 ) -> void
 {
     auto* self_patch = device_patch_data + patch_idx * config.patch_flat_size;
     constexpr std::size_t max_hypercube_entries = 8;
-
-    const auto& meta = neighbor_metadata[patch_idx * (2 * Rank) + DirectionIndex];
     if (meta.relation == halo_neighbor_relation::none)
     {
         return;
     }
 
-    constexpr auto dim      = DirectionIndex / 2;
-    constexpr auto positive = (DirectionIndex % 2) == 1;
+    const auto dim      = direction_index / 2;
+    const auto positive = (direction_index % 2) == 1;
 
     std::size_t coords[3] = { 0, 0, 0 };
-    halo_task_to_coords<Rank, DirectionIndex>(halo_cell_idx, config, coords);
+    halo_task_to_coords<Rank>(halo_cell_idx, direction_index, config, coords);
     const auto linear_idx =
         coords_to_linear<Rank>(coords, config.padded_strides) * config.components_per_cell;
 
@@ -244,91 +241,109 @@ AMR_DEVICE_FORCEINLINE auto process_halo_task(
     }
 }
 
-template <std::size_t Rank, std::size_t DirectionIndex>
-__global__ void halo_exchange_scalar_kernel_direction(
+template <std::size_t Rank>
+AMR_DEVICE_FORCEINLINE auto decode_fused_halo_work_item(
+    std::size_t local_work_item_idx,
+    device_halo_exchange_launch_config const& config,
+    std::size_t& direction_index,
+    std::size_t& halo_cell_idx
+) -> void
+{
+    for (std::size_t dim = 0; dim != Rank; ++dim)
+    {
+        const auto halo_cells_per_patch_dim = config.halo_cells_per_dim[dim];
+        const auto dim_work_items = 2 * halo_cells_per_patch_dim;
+        if (local_work_item_idx < dim_work_items)
+        {
+            direction_index = 2 * dim + (local_work_item_idx >= halo_cells_per_patch_dim);
+            halo_cell_idx   = local_work_item_idx % halo_cells_per_patch_dim;
+            return;
+        }
+        local_work_item_idx -= dim_work_items;
+    }
+
+    direction_index = 0;
+    halo_cell_idx   = 0;
+}
+
+template <std::size_t Rank>
+AMR_DEVICE_FORCEINLINE auto process_halo_task(
+    double*                            device_patch_data,
+    const halo_direction_metadata*     neighbor_metadata,
+    device_halo_exchange_launch_config const& config,
+    std::size_t                        patch_idx,
+    std::size_t                        direction_index,
+    std::size_t                        halo_cell_idx
+) -> void
+{
+    const auto& meta = neighbor_metadata[patch_idx * (2 * Rank) + direction_index];
+    process_halo_task_from_meta<Rank>(
+        device_patch_data,
+        meta,
+        config,
+        patch_idx,
+        direction_index,
+        halo_cell_idx
+    );
+}
+
+template <std::size_t Rank>
+__global__ void halo_exchange_scalar_kernel_fused(
     double*                                    device_patch_data,
     const halo_direction_metadata*             neighbor_metadata,
     device_halo_exchange_launch_config         config
 )
 {
     const auto global_idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-    constexpr auto dim = DirectionIndex / 2;
-    const auto halo_cells_per_patch = config.halo_cells_per_dim[dim];
-    const auto total_work_items = config.num_patches * halo_cells_per_patch;
+    const auto total_work_items = config.num_patches * config.halo_work_items_per_patch;
     if (global_idx >= total_work_items)
     {
         return;
     }
 
-    const auto patch_idx = global_idx / halo_cells_per_patch;
-    const auto halo_cell_idx = global_idx % halo_cells_per_patch;
-    process_halo_task<Rank, DirectionIndex>(
+    const auto patch_idx = global_idx / config.halo_work_items_per_patch;
+    const auto local_work_item_idx = global_idx % config.halo_work_items_per_patch;
+
+    std::size_t direction_index = 0;
+    std::size_t halo_cell_idx   = 0;
+    decode_fused_halo_work_item<Rank>(
+        local_work_item_idx, config, direction_index, halo_cell_idx
+    );
+
+    process_halo_task<Rank>(
         device_patch_data,
         neighbor_metadata,
         config,
         patch_idx,
+        direction_index,
         halo_cell_idx
     );
 }
 
-template <std::size_t Rank, std::size_t DirectionIndex>
-auto launch_halo_exchange_direction_kernel(
+template <std::size_t Rank>
+auto launch_halo_exchange_fused_kernel(
     double*                                   device_patch_data,
     const halo_direction_metadata*            device_neighbor_metadata,
     device_halo_exchange_launch_config const& device_config
 ) -> void
 {
-    constexpr auto dim = DirectionIndex / 2;
     const auto total_work_items =
-        device_config.num_patches * device_config.halo_cells_per_dim[dim];
+        device_config.num_patches * device_config.halo_work_items_per_patch;
     if (total_work_items == 0)
     {
         return;
     }
 
-    constexpr unsigned int threads_per_block = 128;
+    constexpr unsigned int threads_per_block = 256;
     const auto blocks = static_cast<unsigned int>(
         (total_work_items + threads_per_block - 1) / threads_per_block
     );
 
-    halo_exchange_scalar_kernel_direction<Rank, DirectionIndex><<<blocks, threads_per_block>>>(
+    halo_exchange_scalar_kernel_fused<Rank><<<blocks, threads_per_block>>>(
         device_patch_data,
         device_neighbor_metadata,
         device_config
     );
-}
-
-template <std::size_t Rank>
-auto launch_halo_exchange_rank_kernels(
-    double*                                   device_patch_data,
-    const halo_direction_metadata*            device_neighbor_metadata,
-    device_halo_exchange_launch_config const& device_config
-) -> void
-{
-    launch_halo_exchange_direction_kernel<Rank, 0>(
-        device_patch_data, device_neighbor_metadata, device_config
-    );
-    launch_halo_exchange_direction_kernel<Rank, 1>(
-        device_patch_data, device_neighbor_metadata, device_config
-    );
-    if constexpr (Rank >= 2)
-    {
-        launch_halo_exchange_direction_kernel<Rank, 2>(
-            device_patch_data, device_neighbor_metadata, device_config
-        );
-        launch_halo_exchange_direction_kernel<Rank, 3>(
-            device_patch_data, device_neighbor_metadata, device_config
-        );
-    }
-    if constexpr (Rank >= 3)
-    {
-        launch_halo_exchange_direction_kernel<Rank, 4>(
-            device_patch_data, device_neighbor_metadata, device_config
-        );
-        launch_halo_exchange_direction_kernel<Rank, 5>(
-            device_patch_data, device_neighbor_metadata, device_config
-        );
-    }
 }
 
 } // namespace
@@ -355,12 +370,10 @@ auto halo_exchange_scalar_patches_inplace(
     device_config.num_patches    = config.num_patches;
     device_config.patch_flat_size = config.patch_flat_size;
     device_config.components_per_cell = config.components_per_cell;
-    device_config.rank           = config.rank;
     device_config.halo_width     = config.halo_width;
     device_config.fanout_1d      = config.fanout_1d;
     for (std::size_t d = 0; d != 3; ++d)
     {
-        device_config.padded_sizes[d] = config.padded_sizes[d];
         device_config.padded_strides[d] = config.padded_strides[d];
         device_config.data_sizes[d] = config.data_sizes[d];
         device_config.halo_cells_per_dim[d] = config.halo_cells_per_dim[d];
@@ -370,17 +383,17 @@ auto halo_exchange_scalar_patches_inplace(
     switch (config.rank)
     {
     case 1:
-        launch_halo_exchange_rank_kernels<1>(
+        launch_halo_exchange_fused_kernel<1>(
             device_patch_data, device_neighbor_metadata, device_config
         );
         break;
     case 2:
-        launch_halo_exchange_rank_kernels<2>(
+        launch_halo_exchange_fused_kernel<2>(
             device_patch_data, device_neighbor_metadata, device_config
         );
         break;
     default:
-        launch_halo_exchange_rank_kernels<3>(
+        launch_halo_exchange_fused_kernel<3>(
             device_patch_data, device_neighbor_metadata, device_config
         );
         break;
