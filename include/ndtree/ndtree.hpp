@@ -201,7 +201,6 @@ public:
 
         for (std::size_t d = 0; d != s_rank; ++d)
         {
-            config.padded_sizes[d]   = patch_layout_t::padded_layout_t::sizes()[d];
             config.padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
             config.data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
         }
@@ -319,7 +318,7 @@ public:
 
 public:
     ndtree(size_type size) noexcept
-        : m_size{}
+        : m_size{}, m_capacity{ size }
     {
         std::apply(
             [size](auto&... b)
@@ -2072,6 +2071,7 @@ private:
             permutation_targets,
             permutation_patch_bytes,
             sources.size(),
+            m_capacity,
             sources.data(),
             sources.size()
         );
@@ -2149,6 +2149,7 @@ private:
     flat_refine_status_array_t m_refine_status_buffer;
     neighbor_buffer_t          m_neighbors;
     size_type                  m_size;
+    size_type                  m_capacity;
     std::vector<patch_index_t> m_to_refine;
     std::vector<patch_index_t> m_to_coarsen;
 };

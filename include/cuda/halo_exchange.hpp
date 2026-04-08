@@ -33,7 +33,6 @@ struct halo_exchange_launch_config
     std::size_t rank;
     std::size_t halo_width;
     std::size_t fanout_1d;
-    std::array<std::size_t, 3> padded_sizes   = { 1, 1, 1 };
     std::array<std::size_t, 3> padded_strides = { 1, 1, 1 };
     std::array<std::size_t, 3> data_sizes     = { 1, 1, 1 };
     std::array<std::size_t, 3> halo_cells_per_dim = { 1, 1, 1 };
