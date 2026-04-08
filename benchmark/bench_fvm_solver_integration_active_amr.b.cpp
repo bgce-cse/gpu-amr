@@ -26,6 +26,7 @@
 int main()
 {
     std::cout << "Hello AMR world\n";
+    std::cout << "Benchmark variant: active AMR topology\n";
 #ifdef AMR_ENABLE_CUDA_AMR
     std::cout << "CUDA ENABLED\n";
 #else
@@ -36,8 +37,8 @@ int main()
     constexpr std::size_t Halo      = 1;
     constexpr double      physics_x = 1000;
     constexpr double      physics_y = 1000;
-    double tmax = 50; 
-    int inital_refinement = 3;
+    double                tmax      = 30;
+    int                   initial_refinement = 2;
 
     constexpr std::array<double, 2> physics_lengths = { physics_x, physics_y };
 
@@ -59,28 +60,27 @@ int main()
 
     amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(
         10000, 1.4, 0.3
-    ); 
+    );
 
-    auto refineAll = [&]([[maybe_unused]]
-                         const patch_index_t& idx)
+    auto refine_all = [&]([[maybe_unused]] const patch_index_t& idx)
     {
         return tree_t::refine_status_t::Refine;
     };
 
-    struct acoustic_wave_amr_criterion
+    struct active_wave_amr_criterion
     {
         tree_t& tree;
 
-        double s_refine_threshold  = 0.53;
-        double s_coarsen_threshold = 0.49;
-        int    s_max_level         = 6;
+        double s_refine_threshold  = 0.512;
+        double s_coarsen_threshold = 0.506;
+        int    s_max_level         = 7;
         int    s_min_level         = 1;
 
         auto operator()(const patch_index_t& idx) const -> tree_t::refine_status_t
         {
             const int level = idx.level();
             auto      rho_patch = tree.template get_patch<amr::cell::Rho>(idx);
-            double    max_rho_value = 0;
+            double    max_rho_value = 0.0;
 
             for (std::size_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
                  ++linear_idx)
@@ -129,7 +129,7 @@ int main()
 #endif
     };
 
-    const auto acousticWaveCriterion = acoustic_wave_amr_criterion{ solver.get_tree() };
+    const auto activeWaveCriterion = active_wave_amr_criterion{ solver.get_tree() };
     auto capture_topology = [&](const tree_t& tree) -> std::vector<patch_index_t>
     {
         std::vector<patch_index_t> topology;
@@ -141,17 +141,17 @@ int main()
         return topology;
     };
 
-    // Parameters for the Acoustic Pulse
-    constexpr double RHO_BG    = 0.5;
-    constexpr double P_BG      = 1.0;
-    constexpr double AMPLITUDE = 10.0;
-    constexpr double PULSE_WIDTH_SQ =
-        0.01 * physics_x * physics_y; // sigma^2 in physical units
-    constexpr double CENTER_X = 0.5 * physics_x;
-    constexpr double CENTER_Y = 0.5 * physics_y;
+    constexpr double RHO_BG          = 0.5;
+    constexpr double P_BG            = 1.0;
+    constexpr double AMPLITUDE_A     = 12.0;
+    constexpr double AMPLITUDE_B     = 9.0;
+    constexpr double PULSE_WIDTH_SQ  = 0.004 * physics_x * physics_y;
+    constexpr double CENTER_AX       = 0.35 * physics_x;
+    constexpr double CENTER_AY       = 0.45 * physics_y;
+    constexpr double CENTER_BX       = 0.68 * physics_x;
+    constexpr double CENTER_BY       = 0.58 * physics_y;
 
-    // The initial condition function
-    auto acousticPulseIC =
+    auto multi_pulse_ic =
         [&](auto const& coords) -> amr::containers::static_vector<double, 4>
     {
         const double x = coords[0];
@@ -159,27 +159,29 @@ int main()
 
         amr::containers::static_vector<double, 4> prim;
 
-        // Calculate distance squared from the center
-        double dx   = x - CENTER_X;
-        double dy   = y - CENTER_Y;
-        double r_sq = dx * dx + dy * dy;
+        const double dx_a = x - CENTER_AX;
+        const double dy_a = y - CENTER_AY;
+        const double dx_b = x - CENTER_BX;
+        const double dy_b = y - CENTER_BY;
 
-        // Calculate the density/pressure perturbation
-        double perturbation = AMPLITUDE * std::exp(-r_sq / PULSE_WIDTH_SQ);
+        const double pulse_a =
+            AMPLITUDE_A * std::exp(-(dx_a * dx_a + dy_a * dy_a) / PULSE_WIDTH_SQ);
+        const double pulse_b =
+            AMPLITUDE_B * std::exp(-(dx_b * dx_b + dy_b * dy_b) / PULSE_WIDTH_SQ);
+        const double perturbation = pulse_a + pulse_b;
 
-        // Set primitive variables: [rho, u, v, p]
-        prim[0] = RHO_BG + (perturbation * 0.2); // Density (rho)
-        prim[1] = 0.0;                           // X-velocity (u)
-        prim[2] = 0.0;                           // Y-velocity (v)
-        prim[3] = P_BG + perturbation;           // Pressure (p)        
+        prim[0] = RHO_BG + (perturbation * 0.2);
+        prim[1] = 0.0;
+        prim[2] = 0.0;
+        prim[3] = P_BG + perturbation;
 
         return prim;
     };
 
     std::cout << "Initializing solver..." << std::endl;
-    for (int i = 0; i < inital_refinement; i++)
+    for (int i = 0; i < initial_refinement; ++i)
     {
-        solver.get_tree().reconstruct_tree(refineAll);
+        solver.get_tree().reconstruct_tree(refine_all);
 #ifdef AMR_ENABLE_CUDA_AMR
         solver.get_tree().sync_current_to_device();
 #endif
@@ -189,7 +191,7 @@ int main()
 #endif
     }
 
-    solver.initialize(acousticPulseIC);
+    solver.initialize(multi_pulse_ic);
 #ifdef AMR_ENABLE_CUDA_AMR
     solver.get_tree().sync_current_to_device();
     solver.get_tree().build_patch_levels_on_device();
@@ -201,19 +203,19 @@ int main()
 
     std::cout << "\nStarting AMR simulation...\n";
 
-    std::size_t cell_update_count                  = 0;
-    std::size_t total_solver_timesteps             = 0;
-    std::size_t initial_reconstruction_count       = static_cast<std::size_t>(inital_refinement);
-    std::size_t timed_reconstruction_count         = 0;
-    std::size_t identity_reconstruction_count      = 0;
+    std::size_t cell_update_count                     = 0;
+    std::size_t total_solver_timesteps                = 0;
+    std::size_t initial_reconstruction_count          = static_cast<std::size_t>(initial_refinement);
+    std::size_t timed_reconstruction_count            = 0;
+    std::size_t identity_reconstruction_count         = 0;
     std::size_t topology_changed_reconstruction_count = 0;
-    std::size_t min_patch_count                    = solver.get_tree().size();
-    std::size_t max_patch_count                    = solver.get_tree().size();
-    constexpr int reconstruction_interval = 10;
+    std::size_t min_patch_count                       = solver.get_tree().size();
+    std::size_t max_patch_count                       = solver.get_tree().size();
+    constexpr int reconstruction_interval             = 10;
 #ifdef AMR_ENABLE_CUDA_AMR
     amr::cuda::profile_capture_start();
 #endif
-    const auto  start             = std::chrono::steady_clock::now();
+    const auto start = std::chrono::steady_clock::now();
 
     while (t < tmax)
     {
@@ -222,10 +224,11 @@ int main()
         solver.advance_batch_async(reconstruction_interval, remaining_time);
 
         const auto topology_before_reconstruction = capture_topology(solver.get_tree());
-        solver.get_tree().reconstruct_tree(acousticWaveCriterion);
+        solver.get_tree().reconstruct_tree(activeWaveCriterion);
         const auto topology_unchanged =
             topology_before_reconstruction == capture_topology(solver.get_tree());
         solver.get_tree().halo_exchange_update();
+
         ++timed_reconstruction_count;
         if (topology_unchanged)
         {
