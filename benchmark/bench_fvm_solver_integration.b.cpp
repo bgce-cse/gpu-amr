@@ -14,12 +14,14 @@
 #include "solver/amr_solver.hpp"
 #include "solver/cell_types.hpp"
 #include "solver/physics_system.hpp"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <vector>
 
 int main()
 {
@@ -29,8 +31,8 @@ int main()
 #else
     std::cout << "CUDA DISABLED\n";
 #endif
-    constexpr std::size_t N         = 62;
-    constexpr std::size_t M         = 62;
+    constexpr std::size_t N         = 64;
+    constexpr std::size_t M         = 64;
     constexpr std::size_t Halo      = 1;
     constexpr double      physics_x = 1000;
     constexpr double      physics_y = 1000;
@@ -128,6 +130,16 @@ int main()
     };
 
     const auto acousticWaveCriterion = acoustic_wave_amr_criterion{ solver.get_tree() };
+    auto capture_topology = [&](const tree_t& tree) -> std::vector<patch_index_t>
+    {
+        std::vector<patch_index_t> topology;
+        topology.reserve(tree.size());
+        for (std::size_t i = 0; i != tree.size(); ++i)
+        {
+            topology.push_back(tree.get_node_index_at(i));
+        }
+        return topology;
+    };
 
     // Parameters for the Acoustic Pulse
     constexpr double RHO_BG    = 0.5;
@@ -189,7 +201,14 @@ int main()
 
     std::cout << "\nStarting AMR simulation...\n";
 
-    std::size_t cell_update_count = 0;
+    std::size_t cell_update_count                  = 0;
+    std::size_t total_solver_timesteps             = 0;
+    std::size_t initial_reconstruction_count       = static_cast<std::size_t>(inital_refinement);
+    std::size_t timed_reconstruction_count         = 0;
+    std::size_t identity_reconstruction_count      = 0;
+    std::size_t topology_changed_reconstruction_count = 0;
+    std::size_t min_patch_count                    = solver.get_tree().size();
+    std::size_t max_patch_count                    = solver.get_tree().size();
     constexpr int reconstruction_interval = 10;
 #ifdef AMR_ENABLE_CUDA_AMR
     amr::cuda::profile_capture_start();
@@ -202,14 +221,29 @@ int main()
         const auto patch_count_before_reconstruction = solver.get_tree().size();
         solver.advance_batch_async(reconstruction_interval, remaining_time);
 
+        const auto topology_before_reconstruction = capture_topology(solver.get_tree());
         solver.get_tree().reconstruct_tree(acousticWaveCriterion);
+        const auto topology_unchanged =
+            topology_before_reconstruction == capture_topology(solver.get_tree());
         solver.get_tree().halo_exchange_update();
+        ++timed_reconstruction_count;
+        if (topology_unchanged)
+        {
+            ++identity_reconstruction_count;
+        }
+        else
+        {
+            ++topology_changed_reconstruction_count;
+        }
 
         std::size_t executed_steps = 0;
         t += solver.finish_advance_batch(&executed_steps);
         cell_update_count += executed_steps * patch_count_before_reconstruction *
                              patch_layout_t::data_layout_t::flat_size();
+        total_solver_timesteps += executed_steps;
         step += static_cast<int>(executed_steps);
+        min_patch_count = std::min(min_patch_count, solver.get_tree().size());
+        max_patch_count = std::max(max_patch_count, solver.get_tree().size());
     }
 #ifdef AMR_ENABLE_CUDA_AMR
     amr::cuda::profile_capture_stop();
@@ -220,6 +254,15 @@ int main()
     std::cout << "Duration: " << duration.count() << '\n';
     std::cout << "Updates per second: " << (double)cell_update_count / duration.count()
               << '\n';
+    std::cout << "Solver timesteps: " << total_solver_timesteps << '\n';
+    std::cout << "Initial reconstructions: " << initial_reconstruction_count << '\n';
+    std::cout << "Timed reconstructions: " << timed_reconstruction_count << '\n';
+    std::cout << "Identity reconstructions: " << identity_reconstruction_count << '\n';
+    std::cout << "Topology-changing reconstructions: "
+              << topology_changed_reconstruction_count << '\n';
+    std::cout << "Final patch count: " << solver.get_tree().size() << '\n';
+    std::cout << "Min patch count: " << min_patch_count << '\n';
+    std::cout << "Max patch count: " << max_patch_count << '\n';
 
     std::cout << "\nSimulation completed. Files in vtk_output/ directory." << std::endl;
 
