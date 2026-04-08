@@ -211,7 +211,7 @@ int main()
     std::size_t topology_changed_reconstruction_count = 0;
     std::size_t min_patch_count                       = solver.get_tree().size();
     std::size_t max_patch_count                       = solver.get_tree().size();
-    constexpr int reconstruction_interval             = 10;
+    constexpr int reconstruction_interval             = 2;
 #ifdef AMR_ENABLE_CUDA_AMR
     amr::cuda::profile_capture_start();
 #endif
