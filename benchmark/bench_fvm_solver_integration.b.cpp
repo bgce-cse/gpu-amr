@@ -36,8 +36,9 @@ int main()
     constexpr std::size_t Halo      = 1;
     constexpr double      physics_x = 1000;
     constexpr double      physics_y = 1000;
-    double tmax = 50; 
-    int inital_refinement = 3;
+    constexpr double      tmax = 50;
+    constexpr int         inital_refinement = 3;
+    constexpr int         reconstruction_interval = 10;
 
     constexpr std::array<double, 2> physics_lengths = { physics_x, physics_y };
 
@@ -209,7 +210,6 @@ int main()
     std::size_t topology_changed_reconstruction_count = 0;
     std::size_t min_patch_count                    = solver.get_tree().size();
     std::size_t max_patch_count                    = solver.get_tree().size();
-    constexpr int reconstruction_interval = 10;
 #ifdef AMR_ENABLE_CUDA_AMR
     amr::cuda::profile_capture_start();
 #endif
