@@ -3,7 +3,6 @@
 #include "containers/static_vector.hpp"
 #ifdef AMR_ENABLE_CUDA_AMR
 #    include "cuda/fvm_refinement_criterion.hpp"
-#    include "cuda/profiler.hpp"
 #endif
 #include "morton/morton_id.hpp"
 #include "ndtree/intergrid_operator.hpp"
@@ -24,11 +23,6 @@
 int main()
 {
     std::cout << "Hello AMR 3D world\n";
-#ifdef AMR_ENABLE_CUDA_AMR
-    std::cout << "CUDA ENABLED\n";
-#else
-    std::cout << "CUDA DISABLED\n";
-#endif
     constexpr std::size_t N         = 8;
     constexpr std::size_t M         = 8;
     constexpr std::size_t O         = 8;
@@ -36,6 +30,10 @@ int main()
     constexpr double      physics_x = 1000;
     constexpr double      physics_y = 1000;
     constexpr double      physics_z = 1000;
+    constexpr double      tmax            = 200;
+    constexpr double      print_frequency = 5.0; // Print every 5 seconds
+    constexpr int         inital_refinement = 2;
+    constexpr int         reconstruction_interval = 5;
 
     constexpr std::array<double, 3> physics_lengths = { physics_x, physics_y, physics_z };
 
@@ -56,16 +54,11 @@ int main()
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
     amr::ndt::print::vtk_print<physics_t> printer("euler_print_3d");
-
-    double            tmax            = 200;  // Example tmax, adjust as needed
-    double            print_frequency = 5.0; // Print every 5 seconds
     const std::string output_prefix   = "solver_integration_test_3d_refine";
-
-    int inital_refinement = 2;
 
     // Instantiate the AMR solver.
     amr_solver<tree_t, physics_t, EulerPhysics3D, 3> solver(
-        10000, 1.4, 0.3
+        50000, 1.4, 0.3
     ); 
 
     auto refineAll = [&]([[maybe_unused]]
@@ -212,7 +205,6 @@ int main()
     std::cout << "\nStarting AMR simulation...\n";
 
     std::size_t cell_update_count = 0;
-    constexpr int reconstruction_interval = 5; // 3D reconstructs every 5 steps
 
     const auto  start = std::chrono::steady_clock::now();
 

@@ -29,6 +29,10 @@ int main()
     constexpr std::size_t Halo      = 1;
     constexpr double      physics_x = 1000;
     constexpr double      physics_y = 1000;
+    constexpr double      tmax = 400;
+    constexpr double      print_frequency = 5.0; 
+    constexpr int         inital_refinement = 3;
+    constexpr int         reconstruction_interval = 5;
 
     constexpr std::array<double, 2> physics_lengths = { physics_x, physics_y };
 
@@ -55,12 +59,7 @@ int main()
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
     amr::ndt::print::vtk_print<physics_t> printer("euler_print");
-
-    double tmax = 400; // Example tmax, adjust as needed
-    [[maybe_unused]] double print_frequency = 5.0; 
     [[maybe_unused]] const std::string output_prefix = "solver_integration_test_refine";
-
-    int inital_refinement = 3;
 
     // Instantiate the AMR solver.
     amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(
@@ -218,7 +217,7 @@ int main()
         cell_update_count +=
             solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
 
-        if (step % 5 == 0)
+        if (step % reconstruction_interval == 0)
         {
             solver.get_tree().reconstruct_tree(acousticWaveCriterion);
             solver.get_tree().halo_exchange_update();

@@ -10,48 +10,46 @@
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
-#include "solver/EulerPhysics.hpp"
 #include "solver/amr_solver.hpp"
 #include "solver/cell_types.hpp"
 #include "solver/physics_system.hpp"
-#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <string>
-#include <vector>
 
 int main()
 {
-    std::cout << "Hello AMR world\n";
-    std::cout << "Benchmark variant: active AMR topology\n";
+    std::cout << "Hello AMR 3D world\n";
 #ifdef AMR_ENABLE_CUDA_AMR
     std::cout << "CUDA ENABLED\n";
 #else
     std::cout << "CUDA DISABLED\n";
 #endif
-    constexpr std::size_t N         = 64;
-    constexpr std::size_t M         = 64;
+    constexpr std::size_t N         = 8;
+    constexpr std::size_t M         = 8;
+    constexpr std::size_t O         = 8;
     constexpr std::size_t Halo      = 1;
     constexpr double      physics_x = 1000;
     constexpr double      physics_y = 1000;
-    constexpr double      tmax      = 30;
-    constexpr int         initial_refinement = 2;
-    constexpr int         reconstruction_interval = 2;
+    constexpr double      physics_z = 1000;
+    constexpr double      tmax      = 200;
+    constexpr int         inital_refinement = 2;
+    constexpr int         reconstruction_interval = 5;
 
-    constexpr std::array<double, 2> physics_lengths = { physics_x, physics_y };
+    constexpr std::array<double, 3> physics_lengths = { physics_x, physics_y, physics_z };
 
-    using shape_t  = amr::containers::static_shape<N, M>;
+    using shape_t  = amr::containers::static_shape<N, M, O>;
     using layout_t = amr::containers::static_layout<shape_t>;
 
-    using patch_index_t  = amr::ndt::morton::morton_id<7u, 2u>;
+    using patch_index_t  = amr::ndt::morton::morton_id<5u, 3u>;
     using patch_layout_t = amr::ndt::patches::patch_layout<layout_t, Halo>;
     using intergrid_operator_t =
         amr::ndt::intergrid_operator::linear_interpolator<patch_layout_t>;
     using tree_t = amr::ndt::tree::ndtree<
-        amr::cell::EulerCell2D,
+        amr::cell::EulerCell3D,
         patch_index_t,
         patch_layout_t,
         intergrid_operator_t>;
@@ -59,29 +57,33 @@ int main()
     using physics_t =
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
-    amr_solver<tree_t, physics_t, EulerPhysics2D, 2> solver(
-        10000, 1.4, 0.3
-    );
 
-    auto refine_all = [&]([[maybe_unused]] const patch_index_t& idx)
+    // Instantiate the AMR solver
+    amr_solver<tree_t, physics_t, EulerPhysics3D, 3> solver(
+        50000, 1.4, 0.3
+    ); 
+
+    // Refinement criteria
+    auto refineAll = [&]([[maybe_unused]]
+                         const patch_index_t& idx)
     {
         return tree_t::refine_status_t::Refine;
     };
 
-    struct active_wave_amr_criterion
+    struct acoustic_wave_amr_criterion_3d
     {
         tree_t& tree;
 
-        double s_refine_threshold  = 0.512;
-        double s_coarsen_threshold = 0.506;
-        int    s_max_level         = 7;
+        double s_refine_threshold  = 0.53;
+        double s_coarsen_threshold = 0.49;
+        int    s_max_level         = 5;
         int    s_min_level         = 1;
 
         auto operator()(const patch_index_t& idx) const -> tree_t::refine_status_t
         {
             const int level = idx.level();
             auto      rho_patch = tree.template get_patch<amr::cell::Rho>(idx);
-            double    max_rho_value = 0.0;
+            double    max_rho_value = 0;
 
             for (std::size_t linear_idx = 0; linear_idx != patch_layout_t::flat_size();
                  ++linear_idx)
@@ -105,6 +107,8 @@ int main()
 #ifdef AMR_ENABLE_CUDA_AMR
         auto fill_refine_flags(tree_t& target_tree) const -> void
         {
+            target_tree.build_patch_levels_on_device();
+
             const auto* rho_device_buffer = reinterpret_cast<const double*>(
                 target_tree.template get_device_buffer<amr::cell::Rho>()
             );
@@ -130,7 +134,7 @@ int main()
 #endif
     };
 
-    const auto activeWaveCriterion = active_wave_amr_criterion{ solver.get_tree() };
+    const auto acousticWaveCriterion3D = acoustic_wave_amr_criterion_3d{ solver.get_tree() };
     auto capture_topology = [&](const tree_t& tree) -> std::vector<patch_index_t>
     {
         std::vector<patch_index_t> topology;
@@ -142,47 +146,48 @@ int main()
         return topology;
     };
 
-    constexpr double RHO_BG          = 0.5;
-    constexpr double P_BG            = 1.0;
-    constexpr double AMPLITUDE_A     = 12.0;
-    constexpr double AMPLITUDE_B     = 9.0;
-    constexpr double PULSE_WIDTH_SQ  = 0.004 * physics_x * physics_y;
-    constexpr double CENTER_AX       = 0.35 * physics_x;
-    constexpr double CENTER_AY       = 0.45 * physics_y;
-    constexpr double CENTER_BX       = 0.68 * physics_x;
-    constexpr double CENTER_BY       = 0.58 * physics_y;
+    // Initial Condition 3D Acoustic Pulse
+    constexpr double RHO_BG    = 0.5;
+    constexpr double P_BG      = 1.0;
+    constexpr double AMPLITUDE = 10.0;
+    constexpr double PULSE_WIDTH_SQ =
+        0.01 * physics_x * physics_x; // sigma^2 in physical units
+    constexpr double CENTER_X = 0.5 * physics_x;
+    constexpr double CENTER_Y = 0.5 * physics_y;
+    constexpr double CENTER_Z = 0.5 * physics_z;
 
-    auto multi_pulse_ic =
-        [&](auto const& coords) -> amr::containers::static_vector<double, 4>
+    auto acousticPulseIC_3D =
+        [&](auto const& coords) -> amr::containers::static_vector<double, 5>
     {
-        const double x = coords[0];
-        const double y = coords[1];
+        double x = coords[0];
+        double y = coords[1];
+        double z = coords[2];
 
-        amr::containers::static_vector<double, 4> prim;
+        amr::containers::static_vector<double, 5> prim;
 
-        const double dx_a = x - CENTER_AX;
-        const double dy_a = y - CENTER_AY;
-        const double dx_b = x - CENTER_BX;
-        const double dy_b = y - CENTER_BY;
+        // Calculate distance squared from the center
+        double dx   = x - CENTER_X;
+        double dy   = y - CENTER_Y;
+        double dz   = z - CENTER_Z;
+        double r_sq = dx * dx + dy * dy + dz * dz;
 
-        const double pulse_a =
-            AMPLITUDE_A * std::exp(-(dx_a * dx_a + dy_a * dy_a) / PULSE_WIDTH_SQ);
-        const double pulse_b =
-            AMPLITUDE_B * std::exp(-(dx_b * dx_b + dy_b * dy_b) / PULSE_WIDTH_SQ);
-        const double perturbation = pulse_a + pulse_b;
+        // Calculate the density/pressure perturbation
+        double perturbation = AMPLITUDE * std::exp(-r_sq / PULSE_WIDTH_SQ);
 
-        prim[0] = RHO_BG + (perturbation * 0.2);
-        prim[1] = 0.0;
-        prim[2] = 0.0;
-        prim[3] = P_BG + perturbation;
+        // Set primitive variables: [rho, u, v, w, p]
+        prim[0] = RHO_BG + (perturbation * 0.2); // Density (rho)
+        prim[1] = 0.0;                           // X-velocity (u)
+        prim[2] = 0.0;                           // Y-velocity (v)
+        prim[3] = 0.0;                           // Z-velocity (w)
+        prim[4] = P_BG + perturbation;           // Pressure (p)        
 
         return prim;
     };
 
     std::cout << "Initializing solver..." << std::endl;
-    for (int i = 0; i < initial_refinement; ++i)
+    for (int i = 0; i < inital_refinement; i++)
     {
-        solver.get_tree().reconstruct_tree(refine_all);
+        solver.get_tree().reconstruct_tree(refineAll);
 #ifdef AMR_ENABLE_CUDA_AMR
         solver.get_tree().sync_current_to_device();
 #endif
@@ -192,30 +197,31 @@ int main()
 #endif
     }
 
-    solver.initialize(multi_pulse_ic);
+    solver.initialize(acousticPulseIC_3D);
 #ifdef AMR_ENABLE_CUDA_AMR
     solver.get_tree().sync_current_to_device();
     solver.get_tree().build_patch_levels_on_device();
 #endif
     solver.get_tree().halo_exchange_update();
 
+    // Main Simulation Loop 
     double t    = 0.0;
     int    step = 1;
 
     std::cout << "\nStarting AMR simulation...\n";
 
-    std::size_t cell_update_count                     = 0;
-    std::size_t total_solver_timesteps                = 0;
-    std::size_t initial_reconstruction_count          = static_cast<std::size_t>(initial_refinement);
-    std::size_t timed_reconstruction_count            = 0;
-    std::size_t identity_reconstruction_count         = 0;
+    std::size_t cell_update_count                  = 0;
+    std::size_t total_solver_timesteps             = 0;
+    std::size_t initial_reconstruction_count       = static_cast<std::size_t>(inital_refinement);
+    std::size_t timed_reconstruction_count         = 0;
+    std::size_t identity_reconstruction_count      = 0;
     std::size_t topology_changed_reconstruction_count = 0;
-    std::size_t min_patch_count                       = solver.get_tree().size();
-    std::size_t max_patch_count                       = solver.get_tree().size();
+    std::size_t min_patch_count                    = solver.get_tree().size();
+    std::size_t max_patch_count                    = solver.get_tree().size();
 #ifdef AMR_ENABLE_CUDA_AMR
     amr::cuda::profile_capture_start();
 #endif
-    const auto start = std::chrono::steady_clock::now();
+    const auto  start = std::chrono::steady_clock::now();
 
     while (t < tmax)
     {
@@ -224,11 +230,10 @@ int main()
         solver.advance_batch_async(reconstruction_interval, remaining_time);
 
         const auto topology_before_reconstruction = capture_topology(solver.get_tree());
-        solver.get_tree().reconstruct_tree(activeWaveCriterion);
+        solver.get_tree().reconstruct_tree(acousticWaveCriterion3D);
         const auto topology_unchanged =
             topology_before_reconstruction == capture_topology(solver.get_tree());
         solver.get_tree().halo_exchange_update();
-
         ++timed_reconstruction_count;
         if (topology_unchanged)
         {
@@ -267,7 +272,7 @@ int main()
     std::cout << "Min patch count: " << min_patch_count << '\n';
     std::cout << "Max patch count: " << max_patch_count << '\n';
 
-    std::cout << "\nSimulation completed. Files in vtk_output/ directory." << std::endl;
+    std::cout << "\nSimulation completed." << std::endl;
 
     return 0;
 }
