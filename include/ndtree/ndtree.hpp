@@ -838,6 +838,10 @@ public:
 #ifdef AMR_ENABLE_CUDA_AMR
         if constexpr (s_cuda_scalar_patch_compatible)
         {
+            if (m_to_refine.empty())
+            {
+                return;
+            }
             std::vector<device_transfer_task_t> transfer_tasks;
             transfer_tasks.reserve(m_to_refine.size());
             for (auto i = m_to_refine.size(); i > 0; --i)
@@ -859,6 +863,10 @@ public:
 #ifdef AMR_ENABLE_CUDA_AMR
         if constexpr (s_cuda_scalar_patch_compatible)
         {
+            if (m_to_coarsen.empty())
+            {
+                return;
+            }
             std::vector<device_transfer_task_t> transfer_tasks;
             transfer_tasks.reserve(m_to_coarsen.size());
             for (const auto& node_id : m_to_coarsen)
@@ -1231,13 +1239,27 @@ public:
         }
     }
 
+    [[nodiscard]]
+    auto reconstruction_is_noop() const noexcept -> bool
+    {
+        return m_to_refine.empty() && m_to_coarsen.empty();
+    }
+
 public:
     template <typename Fn>
     auto reconstruct_tree(Fn&& fn) -> void
     {
         update_refine_flags(fn);
         apply_refine_coarsen();
+        if (reconstruction_is_noop())
+        {
+            return;
+        }
         balancing();
+        if (reconstruction_is_noop())
+        {
+            return;
+        }
         fragment();
         recombine();
         compact();
@@ -1718,11 +1740,6 @@ private:
     ) -> void
     {
         auto nvtx_range = amr::cuda::scoped_profile_range{ "sync_transfer_tasks_to_device" };
-        if (transfer_tasks.empty())
-        {
-            return;
-        }
-
         if (transfer_tasks.size() > m_device_transfer_task_capacity)
         {
             amr::cuda::device_free(static_cast<void*>(m_device_transfer_tasks));
@@ -1810,11 +1827,6 @@ private:
         std::vector<device_transfer_task_t> const& transfer_tasks
     ) -> void
     {
-        if (transfer_tasks.empty())
-        {
-            return;
-        }
-
         sync_transfer_tasks_to_device(transfer_tasks);
         [&transfer_tasks, this]<std::size_t... I>(std::index_sequence<I...>)
         {
@@ -1832,11 +1844,6 @@ private:
         std::vector<device_transfer_task_t> const& transfer_tasks
     ) -> void
     {
-        if (transfer_tasks.empty())
-        {
-            return;
-        }
-
         sync_transfer_tasks_to_device(transfer_tasks);
         [&transfer_tasks, this]<std::size_t... I>(std::index_sequence<I...>)
         {
@@ -2082,11 +2089,6 @@ private:
     ) -> void
     {
         auto nvtx_range = amr::cuda::scoped_profile_range{ "permute_device_current_buffers" };
-        if (sources.empty())
-        {
-            return;
-        }
-
         permute_device_buffer_set_impl(
             m_device_data_buffers,
             sources,
