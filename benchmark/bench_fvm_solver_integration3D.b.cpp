@@ -3,13 +3,13 @@
 #include "containers/static_vector.hpp"
 #ifdef AMR_ENABLE_CUDA_AMR
 #    include "cuda/fvm_refinement_criterion.hpp"
+#    include "cuda/profiler.hpp"
 #endif
 #include "morton/morton_id.hpp"
 #include "ndtree/intergrid_operator.hpp"
 #include "ndtree/ndhierarchy.hpp"
 #include "ndtree/ndtree.hpp"
 #include "ndtree/patch_layout.hpp"
-#include "ndtree/vtk_print.hpp"
 #include "solver/amr_solver.hpp"
 #include "solver/cell_types.hpp"
 #include "solver/physics_system.hpp"
@@ -23,6 +23,11 @@
 int main()
 {
     std::cout << "Hello AMR 3D world\n";
+#ifdef AMR_ENABLE_CUDA_AMR
+    std::cout << "CUDA ENABLED\n";
+#else
+    std::cout << "CUDA DISABLED\n";
+#endif
     constexpr std::size_t N         = 8;
     constexpr std::size_t M         = 8;
     constexpr std::size_t O         = 8;
@@ -30,8 +35,7 @@ int main()
     constexpr double      physics_x = 1000;
     constexpr double      physics_y = 1000;
     constexpr double      physics_z = 1000;
-    constexpr double      tmax            = 200;
-    constexpr double      print_frequency = 5.0; // Print every 5 seconds
+    constexpr double      tmax      = 200;
     constexpr int         inital_refinement = 2;
     constexpr int         reconstruction_interval = 5;
 
@@ -53,28 +57,26 @@ int main()
     using physics_t =
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
-    amr::ndt::print::vtk_print<physics_t> printer("euler_print_3d");
-    const std::string output_prefix   = "solver_integration_test_3d_refine";
 
-    // Instantiate the AMR solver.
+    // Instantiate the AMR solver
     amr_solver<tree_t, physics_t, EulerPhysics3D, 3> solver(
         50000, 1.4, 0.3
     ); 
 
+    // Refinement criteria
     auto refineAll = [&]([[maybe_unused]]
                          const patch_index_t& idx)
     {
         return tree_t::refine_status_t::Refine;
     };
 
-    // --- GPU-Enabled 3D AMR Criterion ---
     struct acoustic_wave_amr_criterion_3d
     {
         tree_t& tree;
 
         double s_refine_threshold  = 0.53;
         double s_coarsen_threshold = 0.49;
-        int    s_max_level         = 4;
+        int    s_max_level         = 5;
         int    s_min_level         = 1;
 
         auto operator()(const patch_index_t& idx) const -> tree_t::refine_status_t
@@ -133,8 +135,18 @@ int main()
     };
 
     const auto acousticWaveCriterion3D = acoustic_wave_amr_criterion_3d{ solver.get_tree() };
+    auto capture_topology = [&](const tree_t& tree) -> std::vector<patch_index_t>
+    {
+        std::vector<patch_index_t> topology;
+        topology.reserve(tree.size());
+        for (std::size_t i = 0; i != tree.size(); ++i)
+        {
+            topology.push_back(tree.get_node_index_at(i));
+        }
+        return topology;
+    };
 
-    // Parameters for the 3D Acoustic Pulse
+    // Initial Condition 3D Acoustic Pulse
     constexpr double RHO_BG    = 0.5;
     constexpr double P_BG      = 1.0;
     constexpr double AMPLITUDE = 10.0;
@@ -144,7 +156,6 @@ int main()
     constexpr double CENTER_Y = 0.5 * physics_y;
     constexpr double CENTER_Z = 0.5 * physics_z;
 
-    // Initial condition function for 3D
     auto acousticPulseIC_3D =
         [&](auto const& coords) -> amr::containers::static_vector<double, 5>
     {
@@ -193,61 +204,75 @@ int main()
 #endif
     solver.get_tree().halo_exchange_update();
 
-    // Print initial state
-    printer.print(solver.get_tree(), "_iteration_0.vtk");
-
     // Main Simulation Loop 
     double t    = 0.0;
     int    step = 1;
-    [[maybe_unused]] double next_print_time = print_frequency;
-    [[maybe_unused]] int output_counter = 1;
 
     std::cout << "\nStarting AMR simulation...\n";
 
-    std::size_t cell_update_count = 0;
-
+    std::size_t cell_update_count                  = 0;
+    std::size_t total_solver_timesteps             = 0;
+    std::size_t initial_reconstruction_count       = static_cast<std::size_t>(inital_refinement);
+    std::size_t timed_reconstruction_count         = 0;
+    std::size_t identity_reconstruction_count      = 0;
+    std::size_t topology_changed_reconstruction_count = 0;
+    std::size_t min_patch_count                    = solver.get_tree().size();
+    std::size_t max_patch_count                    = solver.get_tree().size();
+#ifdef AMR_ENABLE_CUDA_AMR
+    amr::cuda::profile_capture_start();
+#endif
     const auto  start = std::chrono::steady_clock::now();
 
     while (t < tmax)
     {
-        const double dt = solver.advance();
+        const auto remaining_time = tmax - t;
+        const auto patch_count_before_reconstruction = solver.get_tree().size();
+        solver.advance_batch_async(reconstruction_interval, remaining_time);
 
-        DEFAULT_SOURCE_LOG_PROGRESS("Step: {},\tt: {:.5f},\tdt: {:.5f} ", step, t, dt);
-        cell_update_count +=
-            solver.get_tree().size() * patch_layout_t::data_layout_t::flat_size();
-        
-        if (step % reconstruction_interval == 0)
+        const auto topology_before_reconstruction = capture_topology(solver.get_tree());
+        solver.get_tree().reconstruct_tree(acousticWaveCriterion3D);
+        const auto topology_unchanged =
+            topology_before_reconstruction == capture_topology(solver.get_tree());
+        solver.get_tree().halo_exchange_update();
+        ++timed_reconstruction_count;
+        if (topology_unchanged)
         {
-            solver.get_tree().reconstruct_tree(acousticWaveCriterion3D);
-            solver.get_tree().halo_exchange_update();
+            ++identity_reconstruction_count;
+        }
+        else
+        {
+            ++topology_changed_reconstruction_count;
         }
 
-        t += dt;
-
-        // Print only when we've passed the next print time
-        if (t >= next_print_time)
-        {
-#ifdef AMR_ENABLE_CUDA_AMR
-            solver.get_tree().sync_current_from_device();
-#endif
-            std::string file_extension =
-                "_iteration_" + std::to_string(output_counter) + ".vtk";
-            printer.print(solver.get_tree(), file_extension);
-            next_print_time += print_frequency;
-            output_counter++;
-            DEFAULT_SOURCE_LOG_INFO("Written vtk output: {}", file_extension);
-        }
-
-        step++;
+        std::size_t executed_steps = 0;
+        t += solver.finish_advance_batch(&executed_steps);
+        cell_update_count += executed_steps * patch_count_before_reconstruction *
+                             patch_layout_t::data_layout_t::flat_size();
+        total_solver_timesteps += executed_steps;
+        step += static_cast<int>(executed_steps);
+        min_patch_count = std::min(min_patch_count, solver.get_tree().size());
+        max_patch_count = std::max(max_patch_count, solver.get_tree().size());
     }
+#ifdef AMR_ENABLE_CUDA_AMR
+    amr::cuda::profile_capture_stop();
+#endif
     const auto                          end      = std::chrono::steady_clock::now();
     const std::chrono::duration<double> duration = end - start;
     std::cout << "Updated cells: " << cell_update_count << '\n';
     std::cout << "Duration: " << duration.count() << '\n';
     std::cout << "Updates per second: " << (double)cell_update_count / duration.count()
               << '\n';
+    std::cout << "Solver timesteps: " << total_solver_timesteps << '\n';
+    std::cout << "Initial reconstructions: " << initial_reconstruction_count << '\n';
+    std::cout << "Timed reconstructions: " << timed_reconstruction_count << '\n';
+    std::cout << "Identity reconstructions: " << identity_reconstruction_count << '\n';
+    std::cout << "Topology-changing reconstructions: "
+              << topology_changed_reconstruction_count << '\n';
+    std::cout << "Final patch count: " << solver.get_tree().size() << '\n';
+    std::cout << "Min patch count: " << min_patch_count << '\n';
+    std::cout << "Max patch count: " << max_patch_count << '\n';
 
-    std::cout << "\nSimulation completed. Files in vtk_output/ directory." << std::endl;
+    std::cout << "\nSimulation completed." << std::endl;
 
     return 0;
 }

@@ -201,7 +201,6 @@ public:
 
         for (std::size_t d = 0; d != s_rank; ++d)
         {
-            config.padded_sizes[d]   = patch_layout_t::padded_layout_t::sizes()[d];
             config.padded_strides[d] = patch_layout_t::padded_layout_t::strides()[d];
             config.data_sizes[d]     = patch_layout_t::data_layout_t::sizes()[d];
         }
@@ -319,7 +318,7 @@ public:
 
 public:
     ndtree(size_type size) noexcept
-        : m_size{}
+        : m_size{}, m_capacity{ size }
     {
         std::apply(
             [size](auto&... b)
@@ -379,6 +378,7 @@ public:
         m_device_refine_status_buffer = static_cast<pointer_t<refine_status_t>>(
             amr::cuda::device_malloc(size * sizeof(refine_status_t))
         );
+        m_refine_status_ready_fence = amr::cuda::async_copy_fence_create();
         m_halo_exchange_metadata.resize(size * patch_direction_t::elements());
         m_device_halo_exchange_metadata = static_cast<halo_metadata_t*>(
             amr::cuda::device_malloc(
@@ -440,6 +440,7 @@ public:
         amr::cuda::async_copy_fence_destroy(m_patch_level_copy_fence);
         amr::cuda::host_pinned_free(static_cast<void*>(m_patch_level_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_patch_level_buffer));
+        amr::cuda::async_copy_fence_destroy(m_refine_status_ready_fence);
         amr::cuda::device_free(static_cast<void*>(m_device_refine_status_buffer));
         amr::cuda::device_free(static_cast<void*>(m_device_halo_exchange_metadata));
         if (m_halo_exchange_metadata_copy_pending)
@@ -637,12 +638,21 @@ public:
 
     auto sync_refine_status_from_device() -> void
     {
-        auto nvtx_range = amr::cuda::scoped_profile_range{ "sync_refine_status_from_device" };
-        amr::cuda::copy_device_to_host(
-            static_cast<void*>(m_refine_status_buffer),
-            static_cast<void const*>(m_device_refine_status_buffer),
-            m_size * sizeof(refine_status_t)
-        );
+        {
+            auto nvtx_range =
+                amr::cuda::scoped_profile_range{ "wait_for_refine_status_ready" };
+            amr::cuda::async_copy_fence_record(m_refine_status_ready_fence);
+            amr::cuda::async_copy_fence_wait(m_refine_status_ready_fence);
+        }
+        {
+            auto nvtx_range =
+                amr::cuda::scoped_profile_range{ "copy_refine_status_from_device" };
+            amr::cuda::copy_device_to_host(
+                static_cast<void*>(m_refine_status_buffer),
+                static_cast<void const*>(m_device_refine_status_buffer),
+                m_size * sizeof(refine_status_t)
+            );
+        }
     }
 
     //to be renamed to sync patch level to device (when we implement the next comment)
@@ -828,6 +838,10 @@ public:
 #ifdef AMR_ENABLE_CUDA_AMR
         if constexpr (s_cuda_scalar_patch_compatible)
         {
+            if (m_to_refine.empty())
+            {
+                return;
+            }
             std::vector<device_transfer_task_t> transfer_tasks;
             transfer_tasks.reserve(m_to_refine.size());
             for (auto i = m_to_refine.size(); i > 0; --i)
@@ -835,7 +849,6 @@ public:
                 fragment(m_to_refine[i - 1], &transfer_tasks);
             }
             interpolate_patches_device(transfer_tasks);
-            // sort_buffers();
             return;
         }
 #endif
@@ -843,7 +856,6 @@ public:
         {
             fragment(m_to_refine[i - 1]);
         }
-        sort_buffers();
     }
 
     auto recombine() -> void
@@ -851,6 +863,10 @@ public:
 #ifdef AMR_ENABLE_CUDA_AMR
         if constexpr (s_cuda_scalar_patch_compatible)
         {
+            if (m_to_coarsen.empty())
+            {
+                return;
+            }
             std::vector<device_transfer_task_t> transfer_tasks;
             transfer_tasks.reserve(m_to_coarsen.size());
             for (const auto& node_id : m_to_coarsen)
@@ -858,7 +874,6 @@ public:
                 recombine(node_id, &transfer_tasks);
             }
             restrict_patches_device(transfer_tasks);
-            sort_buffers();
             return;
         }
 #endif
@@ -866,7 +881,6 @@ public:
         {
             recombine(node_id);
         }
-        sort_buffers();
     }
 
     template <typename Fn>
@@ -1225,15 +1239,31 @@ public:
         }
     }
 
+    [[nodiscard]]
+    auto reconstruction_is_noop() const noexcept -> bool
+    {
+        return m_to_refine.empty() && m_to_coarsen.empty();
+    }
+
 public:
     template <typename Fn>
     auto reconstruct_tree(Fn&& fn) -> void
     {
         update_refine_flags(fn);
         apply_refine_coarsen();
+        if (reconstruction_is_noop())
+        {
+            return;
+        }
         balancing();
+        if (reconstruction_is_noop())
+        {
+            return;
+        }
         fragment();
         recombine();
+        compact();
+        sort_buffers();
 #ifdef AMR_ENABLE_CUDA_AMR
         refresh_halo_exchange_metadata_on_device();
         build_patch_levels_on_device();
@@ -1304,7 +1334,7 @@ private:
 private:
     auto sort_buffers() noexcept -> void
     {
-        compact();
+        
         std::sort(
             m_reorder_buffer,
             &m_reorder_buffer[m_size],
@@ -1710,11 +1740,6 @@ private:
     ) -> void
     {
         auto nvtx_range = amr::cuda::scoped_profile_range{ "sync_transfer_tasks_to_device" };
-        if (transfer_tasks.empty())
-        {
-            return;
-        }
-
         if (transfer_tasks.size() > m_device_transfer_task_capacity)
         {
             amr::cuda::device_free(static_cast<void*>(m_device_transfer_tasks));
@@ -1802,11 +1827,6 @@ private:
         std::vector<device_transfer_task_t> const& transfer_tasks
     ) -> void
     {
-        if (transfer_tasks.empty())
-        {
-            return;
-        }
-
         sync_transfer_tasks_to_device(transfer_tasks);
         [&transfer_tasks, this]<std::size_t... I>(std::index_sequence<I...>)
         {
@@ -1824,11 +1844,6 @@ private:
         std::vector<device_transfer_task_t> const& transfer_tasks
     ) -> void
     {
-        if (transfer_tasks.empty())
-        {
-            return;
-        }
-
         sync_transfer_tasks_to_device(transfer_tasks);
         [&transfer_tasks, this]<std::size_t... I>(std::index_sequence<I...>)
         {
@@ -2063,6 +2078,7 @@ private:
             permutation_targets,
             permutation_patch_bytes,
             sources.size(),
+            m_capacity,
             sources.data(),
             sources.size()
         );
@@ -2073,11 +2089,6 @@ private:
     ) -> void
     {
         auto nvtx_range = amr::cuda::scoped_profile_range{ "permute_device_current_buffers" };
-        if (sources.empty())
-        {
-            return;
-        }
-
         permute_device_buffer_set_impl(
             m_device_data_buffers,
             sources,
@@ -2119,6 +2130,7 @@ private:
     patch_level_array_t        m_device_patch_level_buffer{};
     void*                      m_patch_level_copy_fence{};
     flat_refine_status_array_t m_device_refine_status_buffer{};
+    void*                      m_refine_status_ready_fence{};
     std::vector<halo_metadata_t> m_halo_exchange_metadata{};
     halo_metadata_t*             m_device_halo_exchange_metadata{};
     halo_metadata_t*             m_pinned_halo_exchange_metadata{};
@@ -2139,6 +2151,7 @@ private:
     flat_refine_status_array_t m_refine_status_buffer;
     neighbor_buffer_t          m_neighbors;
     size_type                  m_size;
+    size_type                  m_capacity;
     std::vector<patch_index_t> m_to_refine;
     std::vector<patch_index_t> m_to_coarsen;
 };

@@ -4,6 +4,7 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
@@ -139,27 +140,42 @@ auto permutation_scratch_mutex() -> std::mutex&
     return mutex;
 }
 
-__global__ void permute_patches_kernel(
-    const unsigned char* src,
-    unsigned char*       dst,
+template <typename Chunk>
+__global__ void permute_patches_kernel_chunked(
+    const unsigned char* source_bytes,
+    unsigned char*       destination_bytes,
     const std::size_t*   sources,
     std::size_t          patch_count,
     std::size_t          patch_bytes
 )
 {
-    const auto global_idx =
-        static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-    const auto total_bytes = patch_count * patch_bytes;
-    if (global_idx >= total_bytes)
+    const auto dst_patch = static_cast<std::size_t>(blockIdx.x);
+    if (dst_patch >= patch_count)
     {
         return;
     }
 
-    const auto dst_patch = global_idx / patch_bytes;
-    const auto byte_idx  = global_idx % patch_bytes;
     const auto src_patch = sources[dst_patch];
+    const auto* src_patch_base = source_bytes + src_patch * patch_bytes;
+    auto* dst_patch_base       = destination_bytes + dst_patch * patch_bytes;
 
-    dst[global_idx] = src[src_patch * patch_bytes + byte_idx];
+    constexpr auto chunk_bytes = sizeof(Chunk);
+    const auto chunk_count     = patch_bytes / chunk_bytes;
+    const auto tail_offset     = chunk_count * chunk_bytes;
+
+    auto const* src_chunks = reinterpret_cast<Chunk const*>(src_patch_base);
+    auto* dst_chunks       = reinterpret_cast<Chunk*>(dst_patch_base);
+    for (std::size_t chunk_idx = threadIdx.x; chunk_idx < chunk_count;
+         chunk_idx += blockDim.x)
+    {
+        dst_chunks[chunk_idx] = src_chunks[chunk_idx];
+    }
+
+    for (std::size_t byte_idx = tail_offset + threadIdx.x; byte_idx < patch_bytes;
+         byte_idx += blockDim.x)
+    {
+        dst_patch_base[byte_idx] = src_patch_base[byte_idx];
+    }
 }
 
 auto validate_permutation_size(std::size_t patch_count, std::size_t source_count)
@@ -171,6 +187,21 @@ auto validate_permutation_size(std::size_t patch_count, std::size_t source_count
     }
 }
 
+auto is_identity_permutation(
+    const std::size_t* host_sources,
+    std::size_t        patch_count
+) -> bool
+{
+    for (std::size_t i = 0; i < patch_count; ++i)
+    {
+        if (host_sources[i] != i)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 auto permute_patches_with_device_sources(
     unsigned char*     source_bytes,
     unsigned char*     destination_bytes,
@@ -179,20 +210,39 @@ auto permute_patches_with_device_sources(
     const std::size_t* device_sources
 ) -> unsigned char*
 {
-    const auto total_bytes = patch_count * patch_bytes;
-
     constexpr unsigned int threads_per_block = 256;
-    const auto blocks =
-        static_cast<unsigned int>((total_bytes + threads_per_block - 1) /
-                                  threads_per_block);
+    const auto blocks = static_cast<unsigned int>(patch_count);
 
-    permute_patches_kernel<<<blocks, threads_per_block>>>(
-        source_bytes,
-        destination_bytes,
-        device_sources,
-        patch_count,
-        patch_bytes
-    );
+    if ((patch_bytes % sizeof(uint4)) == 0)
+    {
+        permute_patches_kernel_chunked<uint4><<<blocks, threads_per_block>>>(
+            source_bytes,
+            destination_bytes,
+            device_sources,
+            patch_count,
+            patch_bytes
+        );
+    }
+    else if ((patch_bytes % sizeof(std::uint64_t)) == 0)
+    {
+        permute_patches_kernel_chunked<std::uint64_t><<<blocks, threads_per_block>>>(
+            source_bytes,
+            destination_bytes,
+            device_sources,
+            patch_count,
+            patch_bytes
+        );
+    }
+    else
+    {
+        permute_patches_kernel_chunked<unsigned char><<<blocks, threads_per_block>>>(
+            source_bytes,
+            destination_bytes,
+            device_sources,
+            patch_count,
+            patch_bytes
+        );
+    }
 
     throw_if_cuda_error(cudaGetLastError(), "permute_patches_kernel launch");
     return source_bytes;
@@ -204,6 +254,7 @@ auto permute_patches_inplace_batch(
     std::span<void**>            device_buffer_slots,
     std::span<const std::size_t> patch_bytes,
     std::size_t                  patch_count,
+    std::size_t                  patch_capacity,
     const std::size_t*           host_sources,
     std::size_t                  source_count
 ) -> void
@@ -219,6 +270,10 @@ auto permute_patches_inplace_batch(
     }
 
     validate_permutation_size(patch_count, source_count);
+    if (is_identity_permutation(host_sources, patch_count))
+    {
+        return;
+    }
 
     auto& scratch = permutation_scratch();
     auto  lock    = std::lock_guard<std::mutex>(permutation_scratch_mutex());
@@ -243,9 +298,9 @@ auto permute_patches_inplace_batch(
     for (std::size_t i = 0; i < device_buffer_slots.size(); ++i)
     {
         auto* source_bytes      = static_cast<unsigned char*>(*device_buffer_slots[i]);
-        const auto total_bytes  = patch_count * patch_bytes[i];
+        const auto capacity_bytes = patch_capacity * patch_bytes[i];
 
-        scratch.ensure_alternate_capacity(i, total_bytes);
+        scratch.ensure_alternate_capacity(i, capacity_bytes);
         auto* destination_bytes = scratch.alternate_buffers[i];
 
         scratch.alternate_buffers[i] = permute_patches_with_device_sources(

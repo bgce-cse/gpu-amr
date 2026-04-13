@@ -20,17 +20,18 @@ int main()
 {
     std::cout << "Hello Advection world\n";
 
-    // --- 1. Simulation Parameters ---
+    // Simulation Parameters
     constexpr int         DIM         = 2;
     constexpr std::size_t N           = 10;
     constexpr std::size_t Halo        = 2;
     constexpr double      domain_size = 1.0;
+    constexpr double      t_max = 3.0;
 
     constexpr std::array<double, 2> physics_lengths = { domain_size, domain_size };
 
     using Cell = amr::cell::AdvectionCell;
 
-    // --- 2. Boilerplate Types ---
+    // Boilerplate Types
     using shape_t        = amr::containers::static_shape<N, N>;
     using layout_t       = amr::containers::static_layout<shape_t>;
     using patch_index_t  = amr::ndt::morton::morton_id<7u, 2u>;
@@ -48,12 +49,11 @@ int main()
     using physics_t =
         amr::ndt::solver::physics_system<patch_index_t, patch_layout_t, physics_lengths>;
 
-    // --- 3. Instantiate Solver ---
-    // Capacity=1000, Gamma=0 (unused), Courant=0.4
+    // Instantiate Solver
     amr_solver<tree_t, physics_t, AdvectionPhysics<2>, DIM> solver(1000, 1.0, 0.4);
     amr::ndt::print::vtk_print<physics_t>                   printer("advection_test");
 
-    // --- 4. Define Initial Condition (Gaussian Pulse) ---
+    // Initial Condition (Gaussian Pulse)
     auto gaussianIC = [](auto const& coords) -> amr::containers::static_vector<double, 1>
     {
         double dx = coords[0] - 0.2;
@@ -62,7 +62,7 @@ int main()
         return { std::exp(-r2 / 0.005) };
     };
 
-    // --- 5. AMR Criterion (Refine where scalar > 0.1) ---
+    // AMR Criterion
     struct advection_amr_criterion
     {
         tree_t& tree;
@@ -121,7 +121,7 @@ int main()
 
     const auto amrCriterion = advection_amr_criterion{ solver.get_tree() };
 
-    // --- 6. Initialization & Execution ---
+    // Initialization & Execution
     std::cout << "Initializing Advection Test...\n";
     solver.initialize(gaussianIC);
 #ifdef AMR_ENABLE_CUDA_AMR
@@ -131,7 +131,6 @@ int main()
     solver.get_tree().halo_exchange_update();
 
     double t     = 0.0;
-    double t_max = 3.0;
     int    step  = 0;
 
     while (t < t_max)
