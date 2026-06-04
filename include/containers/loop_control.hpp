@@ -35,7 +35,7 @@ private:
                 std::array<index_t, s_rank> start{};
                 for (auto i = rank_t{}; i != s_rank; ++i)
                     start[i] = static_cast<index_t>(
-                        utility::casts::safe_cast<decltype(Start)>(s_sizes[i]) + Start
+                        utility::casts::safe_cast<decltype(Start)>(s_sizes[i]) + Start + 1
                     );
                 return start;
             }
@@ -62,7 +62,7 @@ private:
                 std::array<index_t, s_rank> end{};
                 for (auto i = rank_t{}; i != s_rank; ++i)
                     end[i] = static_cast<index_t>(
-                        utility::casts::safe_cast<decltype(End)>(s_sizes[i]) + End
+                        utility::casts::safe_cast<decltype(End)>(s_sizes[i]) + End + 1
                     );
                 return end;
             }
