@@ -1,8 +1,8 @@
-# GPU-Driven Adaptative Mesh Refinement
+# GPU-Driven Adaptive Mesh Refinement
 
 ## Introduction
 
-Adaptative Mesh Refinement (AMR) framework.
+Adaptive Mesh Refinement (AMR) framework.
 
 ## Build
 
